@@ -2,182 +2,118 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Titan AI Theme Variables */
+/* Titan AI Theme - Cursor Dark Style */
 :root {
-  /* Titan Dark Theme (Default) */
-  --titan-primary: #00d9ff;
-  --titan-primary-foreground: #000000;
-  --titan-secondary: #1a1a2e;
-  --titan-secondary-foreground: #e0e0ff;
-  --titan-accent: #a855f7;
-  --titan-accent-foreground: #ffffff;
-  
-  --titan-background: #0a0a14;
-  --titan-background-alt: #12121f;
-  --titan-foreground: #e0e0ff;
-  --titan-foreground-muted: #8b8ba7;
-  
-  --titan-border: #252542;
-  --titan-border-focus: #00d9ff;
-  
-  --titan-editor-background: #0a0a14;
-  --titan-editor-foreground: #e0e0ff;
-  --titan-editor-selection: rgba(0, 217, 255, 0.2);
-  --titan-editor-cursor: #00d9ff;
-  
-  --titan-ai-accent: #00d9ff;
-  --titan-ai-thinking: #ffaa00;
-  --titan-ai-generating: #00ff88;
-  --titan-ai-success: #00ff88;
-  --titan-ai-error: #ff4466;
-  
-  --titan-font-sans: 'Inter', system-ui, sans-serif;
-  --titan-font-mono: 'JetBrains Mono', monospace;
-  
-  --titan-spacing-xs: 4px;
-  --titan-spacing-sm: 8px;
-  --titan-spacing-md: 16px;
-  --titan-spacing-lg: 24px;
-  --titan-spacing-xl: 32px;
-  
-  --titan-border-radius: 6px;
-  --titan-border-radius-small: 4px;
-  --titan-border-radius-large: 8px;
-  
-  --titan-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --titan-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
-  --titan-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4);
-  --titan-shadow-focus: 0 0 0 2px rgb(0 217 255 / 0.5);
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #2b2b2b;
+  --bg-tertiary: #2d2d2d;
+  --bg-hover: #2a2a2a;
+  --bg-active: #333333;
+  --border-default: #3c3c3c;
+  --border-subtle: #333;
+  --text-primary: #cccccc;
+  --text-secondary: #808080;
+  --text-muted: #555555;
+  --text-bright: #e0e0e0;
+  --accent-blue: #007acc;
+  --accent-green: #3fb950;
+  --accent-red: #f14c4c;
+  --accent-cyan: #22d3ee;
+  --accent-orange: #d97706;
+  --accent-purple: #a371f7;
 }
 
-/* Light theme */
-[data-theme="light"] {
-  --titan-primary: #0284c7;
-  --titan-primary-foreground: #ffffff;
-  --titan-secondary: #f1f5f9;
-  --titan-secondary-foreground: #0f172a;
-  --titan-accent: #7c3aed;
-  --titan-accent-foreground: #ffffff;
-  
-  --titan-background: #ffffff;
-  --titan-background-alt: #f8fafc;
-  --titan-foreground: #0f172a;
-  --titan-foreground-muted: #475569;
-  
-  --titan-border: #e2e8f0;
-  --titan-border-focus: #0284c7;
-  
-  --titan-editor-background: #ffffff;
-  --titan-editor-foreground: #0f172a;
-  --titan-editor-selection: rgba(59, 130, 246, 0.25);
-  --titan-editor-cursor: #0284c7;
-  
-  --titan-ai-accent: #0284c7;
-  --titan-ai-thinking: #d97706;
-  --titan-ai-generating: #16a34a;
-  --titan-ai-success: #16a34a;
-  --titan-ai-error: #dc2626;
-}
-
-/* Base styles */
 @layer base {
   * {
-    @apply border-[var(--titan-border)];
+    @apply border-[var(--border-default)];
   }
-  
+
   body {
-    @apply bg-[var(--titan-background)] text-[var(--titan-foreground)];
+    @apply bg-[var(--bg-primary)] text-[var(--text-primary)];
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  
+
   ::selection {
-    @apply bg-[var(--titan-editor-selection)];
+    background: #264f78;
   }
 }
 
-/* Custom scrollbar */
+/* Scrollbar styling */
 @layer utilities {
-  .scrollbar-thin {
+  * {
     scrollbar-width: thin;
+    scrollbar-color: #3c3c3c transparent;
   }
-  
-  .scrollbar-none {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  
-  .scrollbar-none::-webkit-scrollbar {
-    display: none;
-  }
-  
-  .scrollbar-thumb-titan {
-    scrollbar-color: var(--titan-border) transparent;
-  }
-  
-  .scrollbar-thumb-titan::-webkit-scrollbar {
+
+  *::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
-  
-  .scrollbar-thumb-titan::-webkit-scrollbar-track {
+
+  *::-webkit-scrollbar-track {
     background: transparent;
   }
-  
-  .scrollbar-thumb-titan::-webkit-scrollbar-thumb {
-    background-color: var(--titan-border);
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #3c3c3c;
     border-radius: 4px;
   }
-  
-  .scrollbar-thumb-titan::-webkit-scrollbar-thumb:hover {
-    background-color: var(--titan-foreground-muted);
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #555;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
-/* App region styles for Electron */
-.app-region-drag {
-  -webkit-app-region: drag;
+/* Textarea auto-resize */
+textarea {
+  field-sizing: content;
 }
 
-.app-region-no-drag {
-  -webkit-app-region: no-drag;
+/* Focus styles */
+input:focus,
+textarea:focus {
+  outline: none;
 }
 
-/* Focus visible styles */
-@layer utilities {
-  .focus-titan {
-    @apply outline-none ring-2 ring-[var(--titan-border-focus)] ring-offset-2 ring-offset-[var(--titan-background)];
-  }
+/* Remove button default styles */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
 }
 
-/* Animation classes */
-@layer utilities {
-  .animate-ai-pulse {
-    animation: ai-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-  
-  @keyframes ai-pulse {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
-  }
-  
-  .animate-ai-glow {
-    animation: ai-glow 3s ease-in-out infinite alternate;
-  }
-  
-  @keyframes ai-glow {
-    from {
-      box-shadow: 0 0 5px var(--titan-ai-accent),
-                  0 0 10px var(--titan-ai-accent),
-                  0 0 15px var(--titan-ai-accent);
-    }
-    to {
-      box-shadow: 0 0 10px var(--titan-ai-accent),
-                  0 0 20px var(--titan-ai-accent),
-                  0 0 30px var(--titan-ai-accent);
-    }
-  }
+/* Smooth transitions globally */
+* {
+  transition-property: color, background-color, border-color, opacity;
+  transition-timing-function: ease;
+  transition-duration: 0ms;
+}
+
+/* ═══ BROWSER EXTENSION INTERFERENCE FIX ═══ */
+/* Hide any elements injected by browser extensions that cause hydration errors */
+.supplier-app-container,
+.react-draggable,
+.az-app,
+[class*="supplier"],
+[class*="forecast-popup"],
+[class*="amazon-assistant"],
+[class*="honey-"],
+[class*="rakuten-"],
+[class*="price-tracker"] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
 }

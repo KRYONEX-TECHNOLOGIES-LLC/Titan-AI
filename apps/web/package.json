@@ -9,17 +9,6 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@titan/core-editor": "workspace:*",
-    "@titan/core-workspace": "workspace:*",
-    "@titan/ai-gateway": "workspace:*",
-    "@titan/ui-primitives": "workspace:*",
-    "@titan/ui-editor": "workspace:*",
-    "@titan/ui-sidebar": "workspace:*",
-    "@titan/ui-terminal": "workspace:*",
-    "@titan/ui-status-bar": "workspace:*",
-    "@titan/ui-chat": "workspace:*",
-    "@titan/ui-layouts": "workspace:*",
-    "@titan/ui-themes": "workspace:*",
     "next": "15.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

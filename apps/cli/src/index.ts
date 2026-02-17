@@ -10,6 +10,7 @@ import { chatCommand } from './commands/chat';
 import { agentCommand } from './commands/agent';
 import { serveCommand } from './commands/serve';
 import { configCommand } from './commands/config';
+import { midnightCommand } from './commands/midnight';
 
 const program = new Command();
 
@@ -25,6 +26,7 @@ program.addCommand(chatCommand);
 program.addCommand(agentCommand);
 program.addCommand(serveCommand);
 program.addCommand(configCommand);
+program.addCommand(midnightCommand);
 
 // Parse arguments
 program.parse();

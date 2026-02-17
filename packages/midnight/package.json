@@ -1,0 +1,77 @@
+{
+  "name": "@titan/midnight",
+  "version": "0.1.0",
+  "description": "Titan AI Project Midnight - Autonomous Factory Architecture",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "clean": "rimraf dist",
+    "lint": "eslint src",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@titan/ai-gateway": "workspace:*",
+    "@titan/ai-agents": "workspace:*",
+    "@titan/shadow": "workspace:*",
+    "@titan/repo-map": "workspace:*",
+    "@titan/mcp": "workspace:*",
+    "better-sqlite3": "^11.0.0",
+    "crypto-js": "^4.2.0",
+    "simple-git": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/crypto-js": "^4.2.1",
+    "@types/node": "^20.11.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "rimraf": "^5.0.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./queue": {
+      "import": "./dist/queue/index.mjs",
+      "require": "./dist/queue/index.js",
+      "types": "./dist/queue/index.d.ts"
+    },
+    "./agents": {
+      "import": "./dist/agents/index.mjs",
+      "require": "./dist/agents/index.js",
+      "types": "./dist/agents/index.d.ts"
+    },
+    "./state": {
+      "import": "./dist/state/index.mjs",
+      "require": "./dist/state/index.js",
+      "types": "./dist/state/index.d.ts"
+    },
+    "./service": {
+      "import": "./dist/service/index.mjs",
+      "require": "./dist/service/index.js",
+      "types": "./dist/service/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "titan-ai",
+    "project-midnight",
+    "autonomous",
+    "ai-agents",
+    "factory"
+  ],
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "MIT"
+}

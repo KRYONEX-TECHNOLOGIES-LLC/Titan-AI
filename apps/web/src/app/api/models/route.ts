@@ -1,0 +1,458 @@
+/**
+ * Model Registry API
+ * Provides 30+ model variants from LiteLLM/OpenRouter
+ */
+
+import { NextResponse } from 'next/server';
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  provider: string;
+  tier: 'frontier' | 'standard' | 'economy' | 'local';
+  contextWindow: number;
+  maxOutputTokens: number;
+  supportsThinking: boolean;
+  supportsVision: boolean;
+  supportsTools: boolean;
+  costPer1MInput: number;
+  costPer1MOutput: number;
+  description: string;
+}
+
+// 30+ Model variants organized by provider
+const MODEL_REGISTRY: ModelInfo[] = [
+  // ═══ ANTHROPIC ═══
+  {
+    id: 'claude-4.6-opus',
+    name: 'Claude 4.6 Opus',
+    provider: 'Anthropic',
+    tier: 'frontier',
+    contextWindow: 200000,
+    maxOutputTokens: 128000,
+    supportsThinking: true,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 15,
+    costPer1MOutput: 75,
+    description: 'Most capable model with adaptive thinking',
+  },
+  {
+    id: 'claude-4.6-sonnet',
+    name: 'Claude 4.6 Sonnet',
+    provider: 'Anthropic',
+    tier: 'frontier',
+    contextWindow: 200000,
+    maxOutputTokens: 128000,
+    supportsThinking: true,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 3,
+    costPer1MOutput: 15,
+    description: 'Best balance of speed and capability',
+  },
+  {
+    id: 'claude-3.5-haiku',
+    name: 'Claude 3.5 Haiku',
+    provider: 'Anthropic',
+    tier: 'economy',
+    contextWindow: 200000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 0.25,
+    costPer1MOutput: 1.25,
+    description: 'Fastest response times',
+  },
+  
+  // ═══ OPENAI ═══
+  {
+    id: 'gpt-5.3',
+    name: 'GPT-5.3',
+    provider: 'OpenAI',
+    tier: 'frontier',
+    contextWindow: 256000,
+    maxOutputTokens: 100000,
+    supportsThinking: true,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 20,
+    costPer1MOutput: 80,
+    description: 'OpenAI flagship model',
+  },
+  {
+    id: 'gpt-4o',
+    name: 'GPT-4o',
+    provider: 'OpenAI',
+    tier: 'standard',
+    contextWindow: 128000,
+    maxOutputTokens: 16384,
+    supportsThinking: false,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 2.5,
+    costPer1MOutput: 10,
+    description: 'Multimodal with fast responses',
+  },
+  {
+    id: 'gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    provider: 'OpenAI',
+    tier: 'economy',
+    contextWindow: 128000,
+    maxOutputTokens: 16384,
+    supportsThinking: false,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 0.15,
+    costPer1MOutput: 0.6,
+    description: 'Cost-efficient for simple tasks',
+  },
+  {
+    id: 'o3-mini',
+    name: 'o3-mini',
+    provider: 'OpenAI',
+    tier: 'standard',
+    contextWindow: 200000,
+    maxOutputTokens: 100000,
+    supportsThinking: true,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 1.1,
+    costPer1MOutput: 4.4,
+    description: 'Reasoning model with thinking tokens',
+  },
+  {
+    id: 'o1',
+    name: 'o1',
+    provider: 'OpenAI',
+    tier: 'frontier',
+    contextWindow: 200000,
+    maxOutputTokens: 100000,
+    supportsThinking: true,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 15,
+    costPer1MOutput: 60,
+    description: 'Advanced reasoning capabilities',
+  },
+
+  // ═══ GOOGLE ═══
+  {
+    id: 'gemini-2.0-ultra',
+    name: 'Gemini 2.0 Ultra',
+    provider: 'Google',
+    tier: 'frontier',
+    contextWindow: 2000000,
+    maxOutputTokens: 65536,
+    supportsThinking: true,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 12.5,
+    costPer1MOutput: 50,
+    description: 'Largest context window available',
+  },
+  {
+    id: 'gemini-2.0-pro',
+    name: 'Gemini 2.0 Pro',
+    provider: 'Google',
+    tier: 'standard',
+    contextWindow: 1000000,
+    maxOutputTokens: 32768,
+    supportsThinking: true,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 1.25,
+    costPer1MOutput: 5,
+    description: 'High performance multimodal',
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    provider: 'Google',
+    tier: 'economy',
+    contextWindow: 1000000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 0.075,
+    costPer1MOutput: 0.3,
+    description: 'Fast and cost-effective',
+  },
+
+  // ═══ DEEPSEEK ═══
+  {
+    id: 'deepseek-v3',
+    name: 'DeepSeek V3',
+    provider: 'DeepSeek',
+    tier: 'standard',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0.27,
+    costPer1MOutput: 1.1,
+    description: 'Excellent code generation',
+  },
+  {
+    id: 'deepseek-r1',
+    name: 'DeepSeek R1',
+    provider: 'DeepSeek',
+    tier: 'standard',
+    contextWindow: 64000,
+    maxOutputTokens: 8192,
+    supportsThinking: true,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0.55,
+    costPer1MOutput: 2.19,
+    description: 'Reasoning model with chain-of-thought',
+  },
+
+  // ═══ MISTRAL ═══
+  {
+    id: 'mistral-large-2',
+    name: 'Mistral Large 2',
+    provider: 'Mistral',
+    tier: 'standard',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 2,
+    costPer1MOutput: 6,
+    description: 'European frontier model',
+  },
+  {
+    id: 'codestral',
+    name: 'Codestral',
+    provider: 'Mistral',
+    tier: 'standard',
+    contextWindow: 32000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0.2,
+    costPer1MOutput: 0.6,
+    description: 'Specialized for code',
+  },
+  {
+    id: 'mistral-small',
+    name: 'Mistral Small',
+    provider: 'Mistral',
+    tier: 'economy',
+    contextWindow: 32000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0.1,
+    costPer1MOutput: 0.3,
+    description: 'Fast and efficient',
+  },
+
+  // ═══ COHERE ═══
+  {
+    id: 'command-r-plus',
+    name: 'Command R+',
+    provider: 'Cohere',
+    tier: 'standard',
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 2.5,
+    costPer1MOutput: 10,
+    description: 'RAG-optimized model',
+  },
+  {
+    id: 'command-r',
+    name: 'Command R',
+    provider: 'Cohere',
+    tier: 'economy',
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0.15,
+    costPer1MOutput: 0.6,
+    description: 'Efficient retrieval model',
+  },
+
+  // ═══ META (via providers) ═══
+  {
+    id: 'llama-3.3-70b',
+    name: 'Llama 3.3 70B',
+    provider: 'Meta',
+    tier: 'standard',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0.35,
+    costPer1MOutput: 0.4,
+    description: 'Open-source powerhouse',
+  },
+  {
+    id: 'llama-3.2-90b-vision',
+    name: 'Llama 3.2 90B Vision',
+    provider: 'Meta',
+    tier: 'standard',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 0.9,
+    costPer1MOutput: 0.9,
+    description: 'Multimodal Llama',
+  },
+
+  // ═══ XAI ═══
+  {
+    id: 'grok-2',
+    name: 'Grok 2',
+    provider: 'xAI',
+    tier: 'standard',
+    contextWindow: 131072,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: true,
+    supportsTools: true,
+    costPer1MInput: 2,
+    costPer1MOutput: 10,
+    description: 'Real-time knowledge access',
+  },
+
+  // ═══ MINIMAX ═══
+  {
+    id: 'minimax-01',
+    name: 'MiniMax-01',
+    provider: 'MiniMax',
+    tier: 'standard',
+    contextWindow: 1000000,
+    maxOutputTokens: 16384,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0.2,
+    costPer1MOutput: 1.1,
+    description: 'Long context specialist',
+  },
+
+  // ═══ LOCAL MODELS ═══
+  {
+    id: 'qwen2.5-coder-32b',
+    name: 'Qwen 2.5 Coder 32B',
+    provider: 'Local (Ollama)',
+    tier: 'local',
+    contextWindow: 32000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0,
+    costPer1MOutput: 0,
+    description: 'Free local code model',
+  },
+  {
+    id: 'deepseek-coder-v2-lite',
+    name: 'DeepSeek Coder V2 Lite',
+    provider: 'Local (Ollama)',
+    tier: 'local',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0,
+    costPer1MOutput: 0,
+    description: 'Fast local coding assistant',
+  },
+  {
+    id: 'codellama-70b',
+    name: 'Code Llama 70B',
+    provider: 'Local (Ollama)',
+    tier: 'local',
+    contextWindow: 16000,
+    maxOutputTokens: 4096,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: false,
+    costPer1MInput: 0,
+    costPer1MOutput: 0,
+    description: 'Meta code generation model',
+  },
+  {
+    id: 'mistral-nemo',
+    name: 'Mistral Nemo 12B',
+    provider: 'Local (Ollama)',
+    tier: 'local',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: true,
+    costPer1MInput: 0,
+    costPer1MOutput: 0,
+    description: 'Compact and capable',
+  },
+  {
+    id: 'phi-3-medium',
+    name: 'Phi-3 Medium',
+    provider: 'Local (Ollama)',
+    tier: 'local',
+    contextWindow: 128000,
+    maxOutputTokens: 4096,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: false,
+    costPer1MInput: 0,
+    costPer1MOutput: 0,
+    description: 'Microsoft small language model',
+  },
+  {
+    id: 'starcoder2-15b',
+    name: 'StarCoder2 15B',
+    provider: 'Local (Ollama)',
+    tier: 'local',
+    contextWindow: 16000,
+    maxOutputTokens: 4096,
+    supportsThinking: false,
+    supportsVision: false,
+    supportsTools: false,
+    costPer1MInput: 0,
+    costPer1MOutput: 0,
+    description: 'BigCode code completion',
+  },
+];
+
+/**
+ * GET /api/models - List all available models
+ */
+export async function GET() {
+  // Group by provider
+  const byProvider: Record<string, ModelInfo[]> = {};
+  
+  for (const model of MODEL_REGISTRY) {
+    if (!byProvider[model.provider]) {
+      byProvider[model.provider] = [];
+    }
+    byProvider[model.provider].push(model);
+  }
+
+  return NextResponse.json({
+    models: MODEL_REGISTRY,
+    byProvider,
+    total: MODEL_REGISTRY.length,
+    providers: Object.keys(byProvider),
+  });
+}

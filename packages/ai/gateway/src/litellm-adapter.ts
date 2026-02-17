@@ -148,10 +148,22 @@ export class LiteLLMAdapter {
       body.temperature = request.config.temperature;
     }
 
-    if (request.config?.thinking) {
+    if (request.config?.thinking || request.config?.effort) {
+      // Map effort levels to token budgets
+      const effortToBudget: Record<string, number> = {
+        low: 5000,
+        medium: 25000,
+        high: 100000,
+        max: 128000,
+      };
+
+      const budget = request.config?.effort
+        ? effortToBudget[request.config.effort] ?? 10000
+        : request.config?.thinkingBudget ?? 10000;
+
       body.thinking = {
         type: 'enabled',
-        budget_tokens: request.config.thinkingBudget ?? 10000,
+        budget_tokens: budget,
       };
     }
 
@@ -178,7 +190,8 @@ export class LiteLLMAdapter {
         model: string;
         content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
         stop_reason: string;
-        usage: { input_tokens: number; output_tokens: number };
+        usage: { input_tokens: number; output_tokens: number; thinking_tokens?: number };
+        thinking?: string;
       }>();
 
     const textContent = response.content
@@ -208,7 +221,9 @@ export class LiteLLMAdapter {
         promptTokens: response.usage.input_tokens,
         completionTokens: response.usage.output_tokens,
         totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+        thinkingTokens: response.usage.thinking_tokens,
       },
+      thinking: response.thinking,
       latencyMs: Date.now() - startTime,
     };
   }

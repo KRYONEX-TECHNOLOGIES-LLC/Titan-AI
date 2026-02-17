@@ -15,10 +15,18 @@ packages:
   - "packages/vectordb"
   - "packages/repo-map"
   - "packages/mcp"
+  - "packages/mcp/*"
   - "packages/shadow"
+  - "packages/shadow/*"
   - "packages/security"
+  - "packages/security/*"
   - "packages/performance"
+  - "packages/performance/*"
   - "packages/ui"
+  - "packages/ui/**"
+  
+  # Project Midnight - Autonomous Factory
+  - "packages/midnight"
   
   # Applications
   - "apps/*"

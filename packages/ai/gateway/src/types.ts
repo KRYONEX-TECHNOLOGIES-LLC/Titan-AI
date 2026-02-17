@@ -72,6 +72,9 @@ export interface ToolCall {
   };
 }
 
+// Effort levels for adaptive thinking (Claude Opus)
+export type EffortLevel = 'low' | 'medium' | 'high' | 'max';
+
 // Model configuration
 export interface ModelConfig {
   provider: Provider;
@@ -87,6 +90,8 @@ export interface ModelConfig {
   stop?: string[];
   thinking?: boolean;
   thinkingBudget?: number;
+  /** Effort level for Claude Opus adaptive thinking */
+  effort?: EffortLevel;
 }
 
 // Model definition for registry
