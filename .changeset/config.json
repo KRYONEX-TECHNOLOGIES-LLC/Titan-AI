@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [],
+  "linked": [
+    ["@titan/ai-gateway", "@titan/ai-router", "@titan/ai-speculative", "@titan/ai-agents"],
+    ["@titan/editor-core", "@titan/extension-api", "@titan/ai-integration"]
+  ],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}

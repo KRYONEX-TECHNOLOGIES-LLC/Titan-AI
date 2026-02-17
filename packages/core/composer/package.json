@@ -1,0 +1,32 @@
+{
+  "name": "@titan/composer",
+  "version": "0.1.0",
+  "description": "Titan AI - Diff composer with side-by-side view and accept/reject UI",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --external react",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --external react --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "diff": "^7.0.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
+  },
+  "devDependencies": {
+    "@types/diff": "^6.0.0",
+    "@types/node": "^20.17.10",
+    "@types/react": "^18.3.17",
+    "react": "^18.3.1",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "MIT"
+}

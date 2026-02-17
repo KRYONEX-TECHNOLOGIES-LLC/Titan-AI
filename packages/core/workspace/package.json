@@ -1,0 +1,26 @@
+{
+  "name": "@titan/workspace",
+  "version": "0.1.0",
+  "description": "Titan AI - Workspace manager with file watcher and session state",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "simple-git": "^3.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "MIT"
+}

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    ".env",
+    ".env.local"
+  ],
+  "globalEnv": [
+    "NODE_ENV",
+    "TITAN_AI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY"
+  ],
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "out/**", "*.node"],
+      "cache": true
+    },
+    "build:native": {
+      "dependsOn": [],
+      "outputs": ["*.node", "index.js", "index.d.ts"],
+      "cache": true,
+      "env": ["CARGO_TARGET_DIR", "RUSTFLAGS"]
+    },
+    "dev": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": true
+    },
+    "lint:fix": {
+      "dependsOn": [],
+      "outputs": [],
+      "cache": false
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": [],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": ["coverage/**"],
+      "cache": true
+    },
+    "test:e2e": {
+      "dependsOn": ["build"],
+      "outputs": [],
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

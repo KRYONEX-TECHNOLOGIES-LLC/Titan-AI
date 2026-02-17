@@ -1,0 +1,51 @@
+{
+  "name": "@titan/ai-gateway",
+  "version": "0.1.0",
+  "description": "Titan AI - LLM Gateway with multi-provider support",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "eventsource-parser": "^3.0.0",
+    "ky": "^1.7.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "ai",
+    "llm",
+    "gateway",
+    "litellm",
+    "openai",
+    "anthropic",
+    "claude"
+  ],
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "MIT"
+}

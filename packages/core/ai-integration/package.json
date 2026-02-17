@@ -1,0 +1,30 @@
+{
+  "name": "@titan/ai-integration",
+  "version": "0.1.0",
+  "description": "Titan AI - AI Integration layer for editor features",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@titan/ai-gateway": "workspace:*",
+    "@titan/ai-router": "workspace:*",
+    "@titan/ai-speculative": "workspace:*",
+    "@titan/ai-agents": "workspace:*",
+    "@titan/editor-core": "workspace:*",
+    "@titan/vectordb": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "MIT"
+}

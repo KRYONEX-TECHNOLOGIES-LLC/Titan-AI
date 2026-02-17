@@ -1,0 +1,30 @@
+# Titan AI - pnpm Workspace Configuration
+# https://pnpm.io/workspaces
+
+packages:
+  # Core packages
+  - "packages/core/*"
+  
+  # AI packages
+  - "packages/ai/*"
+  
+  # Native packages (Rust via napi-rs)
+  - "packages/indexer-native"
+  
+  # Infrastructure packages
+  - "packages/vectordb"
+  - "packages/repo-map"
+  - "packages/mcp"
+  - "packages/shadow"
+  - "packages/security"
+  - "packages/performance"
+  - "packages/ui"
+  
+  # Applications
+  - "apps/*"
+  
+  # VS Code extensions
+  - "extensions/*"
+  
+  # Shared configurations
+  - "config/*"

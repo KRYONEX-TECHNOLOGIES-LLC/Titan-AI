@@ -1,0 +1,72 @@
+{
+  "name": "titan-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Titan AI - Next-Generation AI-Native IDE",
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI.git"
+  },
+  "homepage": "https://titan-ai.dev",
+  "keywords": [
+    "ide",
+    "ai",
+    "code-editor",
+    "vscode",
+    "ai-native",
+    "llm",
+    "developer-tools"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "turbo run build",
+    "build:packages": "turbo run build --filter='./packages/*'",
+    "build:desktop": "turbo run build --filter=@titan/desktop",
+    "build:web": "turbo run build --filter=@titan/web",
+    "build:native": "cd packages/indexer-native && npm run build",
+    "dev": "turbo run dev --parallel",
+    "dev:web": "turbo run dev --filter=@titan/web",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "clean": "turbo run clean && rimraf node_modules .turbo",
+    "prepare": "husky install",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "turbo run build --filter='./packages/*' && changeset publish",
+    "setup:fork": "ts-node scripts/setup-fork.ts",
+    "sync:upstream": "ts-node scripts/sync-upstream.ts",
+    "inject:packages": "ts-node scripts/inject-packages.ts"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.10",
+    "@types/node": "^20.17.10",
+    "eslint": "^9.17.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  }
+}

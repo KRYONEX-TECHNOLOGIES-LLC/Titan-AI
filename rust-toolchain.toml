@@ -1,0 +1,17 @@
+# Titan AI - Rust Toolchain Configuration
+# Used by packages/indexer-native for Tree-sitter and Merkle tree sync
+
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc"
+]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

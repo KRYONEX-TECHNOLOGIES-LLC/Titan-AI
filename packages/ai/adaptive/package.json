@@ -1,0 +1,25 @@
+{
+  "name": "@titan/ai-adaptive",
+  "version": "0.1.0",
+  "description": "Titan AI - Adaptive context management and long-horizon reasoning",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rimraf dist",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@titan/ai-gateway": "workspace:*",
+    "@titan/vectordb": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0",
+    "rimraf": "^5.0.0",
+    "vitest": "^1.3.0"
+  },
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "MIT"
+}
