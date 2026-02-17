@@ -406,6 +406,49 @@ interface ModelInfo {
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyboard = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + Key combinations
+      const ctrl = e.ctrlKey || e.metaKey;
+      
+      if (ctrl && e.key === 'b') {
+        e.preventDefault();
+        setActiveView(prev => prev ? '' : 'titan-agent');
+      } else if (ctrl && e.key === 's') {
+        e.preventDefault();
+        executeCommand('save');
+      } else if (ctrl && e.key === 'n') {
+        e.preventDefault();
+        executeCommand('newFile');
+      } else if (ctrl && e.key === '`') {
+        e.preventDefault();
+        setShowTerminal(prev => !prev);
+      } else if (ctrl && e.shiftKey && e.key === 'E') {
+        e.preventDefault();
+        setActiveView('explorer');
+      } else if (ctrl && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        setActiveView('search');
+      } else if (ctrl && e.shiftKey && e.key === 'G') {
+        e.preventDefault();
+        setActiveView('git');
+      } else if (ctrl && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        executeCommand('commandPalette');
+      } else if (e.key === 'Escape') {
+        // Escape to close modals/dropdowns
+        setShowModelDropdown(false);
+        setShowPlusDropdown(false);
+        setOpenMenu(null);
+        if (showFactoryView) setShowFactoryView(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyboard);
+    return () => document.removeEventListener('keydown', handleKeyboard);
+  }, [executeCommand, showFactoryView]);
+
   // Get file icon and color
   const getFileInfo = (fileName: string): { icon: string; color: string } => {
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -1230,7 +1273,19 @@ interface ModelInfo {
           <div className="w-[320px] bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
             {/* EXPLORER */}
             {activeView === 'explorer' && (
-              <ExplorerPanel activeTab={activeTab} onFileClick={handleFileClick} fileContents={fileContents} />
+              <ExplorerPanel 
+                activeTab={activeTab} 
+                onFileClick={handleFileClick} 
+                fileContents={fileContents}
+                openTabs={tabs}
+                onCloseTab={(name) => {
+                  const newTabs = tabs.filter(t => t.name !== name);
+                  setTabs(newTabs);
+                  if (activeTab === name && newTabs.length > 0) {
+                    setActiveTab(newTabs[newTabs.length - 1].name);
+                  }
+                }}
+              />
             )}
 
             {/* SEARCH */}
@@ -1618,16 +1673,20 @@ function DropdownItem({ icon, label, shortcut, onClick }: { icon: string; label:
 
 /* ─── PANEL COMPONENTS ─── */
 
-function ExplorerPanel({ activeTab, onFileClick, fileContents, isRight, onAddToContext }: { 
+function ExplorerPanel({ activeTab, onFileClick, fileContents, isRight, onAddToContext, openTabs, onCloseTab }: { 
   activeTab: string; 
   onFileClick: (name: string) => void; 
   fileContents: Record<string, string>; 
   isRight?: boolean;
   onAddToContext?: (fileName: string) => void;
+  openTabs?: Array<{ name: string; icon: string; color: string; modified?: boolean }>;
+  onCloseTab?: (name: string) => void;
 }) {
   const files = Object.keys(fileContents);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: string } | null>(null);
   const [contextFiles, setContextFiles] = useState<string[]>([]);
+  const [showOpenEditors, setShowOpenEditors] = useState(true);
+  const [showFolderTree, setShowFolderTree] = useState(true);
 
   const handleContextMenu = (e: React.MouseEvent, file: string) => {
     e.preventDefault();
@@ -1659,25 +1718,75 @@ function ExplorerPanel({ activeTab, onFileClick, fileContents, isRight, onAddToC
     <>
       <div className="h-[28px] flex items-center px-3 text-[11px] font-semibold text-[#808080] uppercase tracking-wider shrink-0">Explorer</div>
       <div className="flex-1 overflow-y-auto text-[13px] px-1">
-        <div className="px-2 py-1 text-[11px] uppercase text-[#e0e0e0] font-semibold">TITAN AI</div>
-        {files.map(file => {
-          const ext = file.split('.').pop();
-          const icon = ext === 'ts' || ext === 'tsx' ? 'TS' : ext === 'css' ? 'CSS' : ext === 'json' ? '{}' : 'TXT';
-          const color = ext === 'ts' || ext === 'tsx' ? '#3178c6' : ext === 'css' ? '#563d7c' : ext === 'json' ? '#f1e05a' : '#808080';
-          const isInContext = contextFiles.includes(file);
-          return (
-            <button
-              key={file}
-              onClick={() => onFileClick(file)}
-              onContextMenu={(e) => handleContextMenu(e, file)}
-              className={`w-full flex items-center gap-1.5 py-[2px] px-3 text-[13px] rounded transition-colors ${activeTab === file ? 'bg-[#37373d] text-white' : 'text-[#cccccc] hover:bg-[#2a2a2a]'}`}
+        
+        {/* OPEN EDITORS Section */}
+        {openTabs && openTabs.length > 0 && (
+          <div className="mb-2">
+            <button 
+              onClick={() => setShowOpenEditors(!showOpenEditors)}
+              className="w-full px-2 py-1 text-[11px] uppercase text-[#e0e0e0] font-semibold flex items-center gap-1 hover:bg-[#2a2a2a] rounded"
             >
-              <span className="text-[9px] font-bold" style={{ color }}>{icon}</span>
-              <span className="truncate flex-1 text-left">{file}</span>
-              {isInContext && <span className="text-[10px] text-[#007acc]" title="In AI Context">⚡</span>}
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${showOpenEditors ? 'rotate-90' : ''}`}>
+                <path d="M6 4l4 4-4 4z"/>
+              </svg>
+              OPEN EDITORS ({openTabs.length})
             </button>
-          );
-        })}
+            {showOpenEditors && (
+              <div className="mt-0.5">
+                {openTabs.map(tab => (
+                  <div
+                    key={tab.name}
+                    onClick={() => onFileClick(tab.name)}
+                    className={`group w-full flex items-center gap-1.5 py-[2px] px-3 text-[13px] rounded transition-colors cursor-pointer ${activeTab === tab.name ? 'bg-[#37373d] text-white' : 'text-[#cccccc] hover:bg-[#2a2a2a]'}`}
+                  >
+                    <span className="text-[9px] font-bold" style={{ color: tab.color }}>{tab.icon}</span>
+                    <span className="truncate flex-1 text-left">{tab.name}</span>
+                    {tab.modified && <span className="text-[#007acc]">●</span>}
+                    {onCloseTab && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onCloseTab(tab.name); }}
+                        className="text-[#666] hover:text-white text-[12px] opacity-0 group-hover:opacity-100"
+                      >×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* FOLDER TREE Section */}
+        <button 
+          onClick={() => setShowFolderTree(!showFolderTree)}
+          className="w-full px-2 py-1 text-[11px] uppercase text-[#e0e0e0] font-semibold flex items-center gap-1 hover:bg-[#2a2a2a] rounded"
+        >
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${showFolderTree ? 'rotate-90' : ''}`}>
+            <path d="M6 4l4 4-4 4z"/>
+          </svg>
+          TITAN AI
+        </button>
+        {showFolderTree && (
+          <div className="mt-0.5">
+            {files.map(file => {
+              const ext = file.split('.').pop();
+              const icon = ext === 'ts' || ext === 'tsx' ? 'TS' : ext === 'css' ? 'CSS' : ext === 'json' ? '{}' : 'TXT';
+              const color = ext === 'ts' || ext === 'tsx' ? '#3178c6' : ext === 'css' ? '#563d7c' : ext === 'json' ? '#f1e05a' : '#808080';
+              const isInContext = contextFiles.includes(file);
+              return (
+                <button
+                  key={file}
+                  onClick={() => onFileClick(file)}
+                  onContextMenu={(e) => handleContextMenu(e, file)}
+                  className={`w-full flex items-center gap-1.5 py-[2px] px-3 text-[13px] rounded transition-colors ${activeTab === file ? 'bg-[#37373d] text-white' : 'text-[#cccccc] hover:bg-[#2a2a2a]'}`}
+                >
+                  <span className="text-[9px] font-bold" style={{ color }}>{icon}</span>
+                  <span className="truncate flex-1 text-left">{file}</span>
+                  {isInContext && <span className="text-[10px] text-[#007acc]" title="In AI Context">⚡</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* AI Context Section */}
         {contextFiles.length > 0 && (
@@ -1981,25 +2090,116 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
 }
 
 function AccountsPanel() {
+  const [apiKeys, setApiKeys] = useState({
+    openai: { connected: true, key: 'sk-...4a2f' },
+    anthropic: { connected: true, key: 'sk-ant-...b3d1' },
+    google: { connected: false, key: '' },
+    openrouter: { connected: true, key: 'sk-or-...9e1c' },
+    deepseek: { connected: false, key: '' },
+    mistral: { connected: false, key: '' },
+  });
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [keyInput, setKeyInput] = useState('');
+
+  const handleAddKey = (provider: string) => {
+    if (keyInput.trim()) {
+      setApiKeys(prev => ({
+        ...prev,
+        [provider]: { connected: true, key: keyInput.slice(0, 6) + '...' + keyInput.slice(-4) }
+      }));
+      setEditingKey(null);
+      setKeyInput('');
+    }
+  };
+
+  const providers = [
+    { id: 'openai', name: 'OpenAI', icon: '⚪' },
+    { id: 'anthropic', name: 'Anthropic', icon: '🟠' },
+    { id: 'google', name: 'Google AI', icon: '🔵' },
+    { id: 'openrouter', name: 'OpenRouter', icon: '🟣' },
+    { id: 'deepseek', name: 'DeepSeek', icon: '🔴' },
+    { id: 'mistral', name: 'Mistral', icon: '🟡' },
+  ];
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 pt-3 pb-2">
         <div className="flex items-center gap-3 p-3 bg-[#2a2a2a] rounded-lg">
           <div className="w-12 h-12 rounded-full bg-[#007acc] flex items-center justify-center text-white text-[18px] font-bold">T</div>
-          <div><div className="text-[14px] text-[#e0e0e0] font-medium">Titan User</div><div className="text-[12px] text-[#808080]">titan@example.com</div></div>
+          <div>
+            <div className="text-[14px] text-[#e0e0e0] font-medium">Titan User</div>
+            <div className="text-[12px] text-[#808080]">titan@example.com</div>
+          </div>
         </div>
       </div>
-      <div className="px-2">
-        <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5">API Keys</div>
-        {['OpenAI', 'Anthropic', 'Google'].map(k => (
-          <div key={k} className="flex items-center justify-between px-2 py-1.5">
-            <span className="text-[12px] text-[#cccccc]">{k}</span>
-            <span className="text-[11px] text-[#3fb950]">✓ Connected</span>
+      <div className="flex-1 overflow-y-auto px-2">
+        <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5 flex items-center justify-between">
+          <span>API Keys (BYOK)</span>
+          <span className="text-[10px] text-[#007acc] font-normal">Bring Your Own Key</span>
+        </div>
+        {providers.map(p => {
+          const data = apiKeys[p.id as keyof typeof apiKeys];
+          return (
+            <div key={p.id} className="px-2 py-2 hover:bg-[#2a2a2a] rounded">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span>{p.icon}</span>
+                  <span className="text-[12px] text-[#cccccc]">{p.name}</span>
+                </div>
+                {data.connected ? (
+                  <span className="text-[11px] text-[#3fb950]">✓ Connected</span>
+                ) : (
+                  <button 
+                    onClick={() => setEditingKey(p.id)}
+                    className="text-[11px] text-[#007acc] hover:text-[#0098ff]"
+                  >
+                    + Add Key
+                  </button>
+                )}
+              </div>
+              {data.connected && (
+                <div className="text-[10px] text-[#555] mt-0.5 ml-6">{data.key}</div>
+              )}
+              {editingKey === p.id && (
+                <div className="mt-2 flex gap-1">
+                  <input
+                    type="password"
+                    placeholder={`Enter ${p.name} API key...`}
+                    value={keyInput}
+                    onChange={(e) => setKeyInput(e.target.value)}
+                    className="flex-1 bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[11px] text-[#cccccc] focus:outline-none focus:border-[#007acc]"
+                  />
+                  <button
+                    onClick={() => handleAddKey(p.id)}
+                    className="px-2 py-1 bg-[#007acc] hover:bg-[#0098ff] text-white text-[10px] rounded"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setEditingKey(null); setKeyInput(''); }}
+                    className="px-2 py-1 bg-[#3c3c3c] hover:bg-[#4c4c4c] text-white text-[10px] rounded"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        
+        <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5 mt-3">Usage This Month</div>
+        <div className="px-2">
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-[#cccccc]">Credits Used</span>
+            <span className="text-[#3fb950]">$47.50</span>
           </div>
-        ))}
-        <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5 mt-3">Usage</div>
-        <div className="px-2"><div className="text-[12px] text-[#cccccc]">Credits: <span className="text-[#3fb950]">$47.50</span></div>
-          <div className="w-full h-2 bg-[#3c3c3c] rounded-full mt-2"><div className="h-full w-[25%] bg-[#007acc] rounded-full"></div></div>
+          <div className="w-full h-2 bg-[#3c3c3c] rounded-full mt-2">
+            <div className="h-full w-[25%] bg-gradient-to-r from-[#007acc] to-[#3fb950] rounded-full"></div>
+          </div>
+          <div className="flex justify-between text-[10px] text-[#666] mt-1">
+            <span>0</span>
+            <span>Limit: $200</span>
+          </div>
         </div>
       </div>
     </div>

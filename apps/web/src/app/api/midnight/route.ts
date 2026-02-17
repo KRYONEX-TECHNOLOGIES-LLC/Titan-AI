@@ -82,10 +82,53 @@ function startExecution() {
       
       if (passed) {
         midnightState.tasksCompleted++;
+        
+        // AUTO-HANDOFF: When project passes, close it and start next in queue
+        if (midnightState.currentProject) {
+          midnightState.actorLogs.push(
+            `[${new Date().toISOString()}] Actor: ✓ Project "${midnightState.currentProject.name}" COMPLETED - Closing worktree`
+          );
+          midnightState.sentinelLogs.push(
+            `[${new Date().toISOString()}] Sentinel: ✓ APPROVED - Moving to next project in queue`
+          );
+          
+          // Close current project and initialize next
+          if (midnightState.queue.length > 0) {
+            // Mark current project as completed
+            const currentIdx = midnightState.queue.findIndex(p => p.id === midnightState.currentProject?.id);
+            if (currentIdx >= 0) {
+              midnightState.queue[currentIdx].status = 'completed';
+            }
+            
+            // Find next queued project
+            const nextProject = midnightState.queue.find(p => p.status === 'queued');
+            if (nextProject) {
+              nextProject.status = 'building';
+              midnightState.currentProject = {
+                id: nextProject.id,
+                name: nextProject.name,
+                path: nextProject.path,
+                currentTask: 'Initializing...',
+              };
+              midnightState.actorLogs.push(
+                `[${new Date().toISOString()}] Actor: 🚀 AUTO-HANDOFF - Starting project "${nextProject.name}"`
+              );
+            } else {
+              // No more projects in queue
+              midnightState.actorLogs.push(
+                `[${new Date().toISOString()}] Actor: 🎉 ALL PROJECTS COMPLETED - Queue empty`
+              );
+              midnightState.currentProject = null;
+            }
+          }
+        }
       } else {
         midnightState.tasksFailed++;
         midnightState.sentinelLogs.push(
           `[${new Date().toISOString()}] Sentinel: REVERTING worktree to last verified hash`
+        );
+        midnightState.actorLogs.push(
+          `[${new Date().toISOString()}] Actor: 🔄 REDLINE PROTOCOL - Reverting and re-attempting task`
         );
       }
     }
