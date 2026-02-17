@@ -1,0 +1,19 @@
+{
+  "name": "@titan/ui-themes",
+  "version": "0.1.0",
+  "description": "Titan AI themes - dark, light, and titan-dark themes",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc && npm run build:css",
+    "build:css": "node scripts/build-themes.js",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "files": [
+    "dist",
+    "themes"
+  ]
+}

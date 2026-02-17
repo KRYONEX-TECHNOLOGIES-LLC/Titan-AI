@@ -1,0 +1,24 @@
+{
+  "name": "@titan/ui-terminal",
+  "version": "0.1.0",
+  "description": "Terminal UI components - terminal panel and tabs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@titan/ui-primitives": "workspace:*",
+    "react": "^18.2.0",
+    "clsx": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.0",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  }
+}
