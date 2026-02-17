@@ -11,6 +11,8 @@ use std::collections::HashMap;
 mod parser;
 mod merkle;
 mod chunker;
+mod embeddings;
+mod performance;
 
 /// Code chunk extracted from source
 #[napi(object)]

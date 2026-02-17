@@ -40,6 +40,9 @@ anyhow = "1.0"
 # Logging
 tracing = "0.1"
 
+# Static initialization
+lazy_static = "1.4"
+
 [build-dependencies]
 napi-build = "2"
 

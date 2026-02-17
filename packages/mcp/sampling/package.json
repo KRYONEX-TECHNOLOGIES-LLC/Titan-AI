@@ -1,0 +1,22 @@
+{
+  "name": "@titan/mcp-sampling",
+  "version": "0.1.0",
+  "description": "MCP sampling provider and sub-agent sampler for nested AI calls",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@titan/mcp-host": "workspace:*",
+    "@titan/ai-gateway": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}

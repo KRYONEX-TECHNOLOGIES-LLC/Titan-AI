@@ -1,0 +1,23 @@
+{
+  "name": "@titan/shadow-sandbox",
+  "version": "0.1.0",
+  "description": "Secure sandbox implementations - Kata VM, Docker, WASM, hardware isolation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@titan/shadow": "workspace:*",
+    "dockerode": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}
