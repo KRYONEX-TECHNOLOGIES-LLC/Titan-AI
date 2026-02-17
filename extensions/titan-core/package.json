@@ -1,0 +1,267 @@
+{
+  "name": "titan-ai-core",
+  "displayName": "Titan AI Core",
+  "description": "Core extension for Titan AI - AI-native code assistance",
+  "version": "0.1.0",
+  "publisher": "kryonex",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "copilot",
+    "code",
+    "assistant",
+    "titan"
+  ],
+  "icon": "resources/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "titan.openChat",
+        "title": "Titan AI: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "titan.inlineEdit",
+        "title": "Titan AI: Inline Edit",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "titan.explainCode",
+        "title": "Titan AI: Explain Code"
+      },
+      {
+        "command": "titan.generateCode",
+        "title": "Titan AI: Generate Code"
+      },
+      {
+        "command": "titan.refactorCode",
+        "title": "Titan AI: Refactor Code"
+      },
+      {
+        "command": "titan.fixErrors",
+        "title": "Titan AI: Fix Errors"
+      },
+      {
+        "command": "titan.generateTests",
+        "title": "Titan AI: Generate Tests"
+      },
+      {
+        "command": "titan.addDocumentation",
+        "title": "Titan AI: Add Documentation"
+      },
+      {
+        "command": "titan.reviewCode",
+        "title": "Titan AI: Review Code"
+      },
+      {
+        "command": "titan.indexWorkspace",
+        "title": "Titan AI: Index Workspace"
+      },
+      {
+        "command": "titan.selectModel",
+        "title": "Titan AI: Select Model"
+      },
+      {
+        "command": "titan.openSettings",
+        "title": "Titan AI: Open Settings"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "titan.openChat",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i"
+      },
+      {
+        "command": "titan.inlineEdit",
+        "key": "ctrl+k",
+        "mac": "cmd+k"
+      },
+      {
+        "command": "titan.explainCode",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorHasSelection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "submenu": "titan.submenu",
+          "group": "titan"
+        }
+      ],
+      "titan.submenu": [
+        {
+          "command": "titan.explainCode",
+          "group": "1_understand"
+        },
+        {
+          "command": "titan.refactorCode",
+          "group": "2_modify"
+        },
+        {
+          "command": "titan.fixErrors",
+          "group": "2_modify"
+        },
+        {
+          "command": "titan.generateTests",
+          "group": "3_generate"
+        },
+        {
+          "command": "titan.addDocumentation",
+          "group": "3_generate"
+        },
+        {
+          "command": "titan.reviewCode",
+          "group": "4_review"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "titan.openChat"
+        },
+        {
+          "command": "titan.inlineEdit"
+        },
+        {
+          "command": "titan.selectModel"
+        },
+        {
+          "command": "titan.indexWorkspace"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "titan.submenu",
+        "label": "Titan AI"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "titan-ai",
+          "title": "Titan AI",
+          "icon": "resources/activity-bar-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "titan-ai": [
+        {
+          "type": "webview",
+          "id": "titan.chatView",
+          "name": "Chat"
+        },
+        {
+          "id": "titan.agentsView",
+          "name": "Agents"
+        },
+        {
+          "id": "titan.historyView",
+          "name": "History"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Titan AI",
+      "properties": {
+        "titan.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for Titan AI services",
+          "scope": "application"
+        },
+        "titan.model.default": {
+          "type": "string",
+          "default": "claude-3.5-sonnet",
+          "enum": [
+            "claude-4.6-sonnet",
+            "claude-3.5-sonnet",
+            "gpt-5.3-turbo",
+            "gpt-4o",
+            "deepseek-v3",
+            "llama-3.2-8b",
+            "qwen-2.5-coder-7b"
+          ],
+          "description": "Default AI model to use"
+        },
+        "titan.model.useLocal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Prefer local models when available"
+        },
+        "titan.indexing.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic workspace indexing"
+        },
+        "titan.indexing.excludePatterns": {
+          "type": "array",
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/dist/**",
+            "**/build/**"
+          ],
+          "description": "Glob patterns to exclude from indexing"
+        },
+        "titan.chat.contextLines": {
+          "type": "number",
+          "default": 50,
+          "description": "Number of context lines to include in chat"
+        },
+        "titan.suggestions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline code suggestions"
+        },
+        "titan.suggestions.delay": {
+          "type": "number",
+          "default": 300,
+          "description": "Delay in ms before showing suggestions"
+        },
+        "titan.telemetry.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable anonymous usage telemetry (disabled by default)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@titan/ai-gateway": "workspace:*",
+    "@titan/core-editor": "workspace:*",
+    "@titan/vectordb": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
