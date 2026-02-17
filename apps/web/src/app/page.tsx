@@ -284,6 +284,14 @@ export default function TitanIDE() {
   const [confidenceScore, setConfidenceScore] = useState(100);
   const [confidenceStatus, setConfidenceStatus] = useState<'healthy' | 'warning' | 'error'>('healthy');
 
+  // Diff decorations state (for AI edits shown as red/green in editor)
+  const [pendingDiff, setPendingDiff] = useState<{
+    file: string;
+    oldContent: string;
+    newContent: string;
+    decorationIds: string[];
+  } | null>(null);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
   const terminalInputRef = useRef<HTMLInputElement>(null);
   
@@ -327,11 +335,12 @@ interface ModelInfo {
   useEffect(() => {
     if (!mounted) return;
     const state = {
-      tabs: tabs.map(t => t.name),
+      tabs: tabs.map(t => ({ name: t.name, icon: t.icon, color: t.color, modified: t.modified })),
       activeTab,
       sessions: sessions.map(s => ({
         id: s.id,
         name: s.name,
+        time: s.time,
         messages: s.messages,
         changedFiles: s.changedFiles,
       })),
@@ -339,24 +348,51 @@ interface ModelInfo {
       activeModel,
       trustLevel,
       midnightActive,
+      fileContents,
+      gitBranch,
+      fontSize,
+      tabSize,
+      wordWrap,
     };
     localStorage.setItem('titan-ai-state', JSON.stringify(state));
-  }, [mounted, tabs, activeTab, sessions, activeSessionId, activeModel, trustLevel, midnightActive]);
+  }, [mounted, tabs, activeTab, sessions, activeSessionId, activeModel, trustLevel, midnightActive, fileContents, gitBranch, fontSize, tabSize, wordWrap]);
 
-  // ═══ PERSISTENCE: Restore state from localStorage ═══
+  // ═══ PERSISTENCE: Restore state from localStorage (FULL) ═══
   useEffect(() => {
     if (!mounted) return;
     try {
       const saved = localStorage.getItem('titan-ai-state');
       if (saved) {
         const state = JSON.parse(saved);
+        // Restore tabs
+        if (state.tabs && Array.isArray(state.tabs) && state.tabs.length > 0) {
+          setTabs(state.tabs);
+        }
+        if (state.activeTab) setActiveTab(state.activeTab);
+        // Restore sessions
+        if (state.sessions && Array.isArray(state.sessions) && state.sessions.length > 0) {
+          setSessions(state.sessions);
+        }
+        if (state.activeSessionId) setActiveSessionId(state.activeSessionId);
+        // Restore model and settings
         if (state.activeModel) setActiveModel(state.activeModel);
         if (state.trustLevel) setTrustLevel(state.trustLevel);
-        // Note: Full restoration would need more complex logic
+        if (state.midnightActive !== undefined) setMidnightActive(state.midnightActive);
+        // Restore file contents
+        if (state.fileContents && Object.keys(state.fileContents).length > 0) {
+          setFileContents(prev => ({ ...prev, ...state.fileContents }));
+        }
+        // Restore git branch
+        if (state.gitBranch) setGitBranch(state.gitBranch);
+        // Restore editor settings
+        if (state.fontSize) setFontSize(state.fontSize);
+        if (state.tabSize) setTabSize(state.tabSize);
+        if (state.wordWrap !== undefined) setWordWrap(state.wordWrap);
       }
     } catch (e) {
       console.error('Failed to restore state:', e);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted]);
 
   // Close dropdowns when clicking outside
@@ -548,11 +584,30 @@ interface ModelInfo {
         time: 'just now',
       };
 
-      // Check for suggested edits
-      const newChangedFiles = data.suggestedEdits?.map((edit: { file: string }) => {
+      // Check for suggested edits and apply as DIFFS
+      const newChangedFiles = data.suggestedEdits?.map((edit: { file: string; content?: string }) => {
         const info = getFileInfo(edit.file);
         return { name: edit.file, additions: 15, deletions: 3, icon: info.icon, color: info.color };
       }) || [];
+
+      // If there are code suggestions, apply them as diff decorations
+      if (data.suggestedEdits && data.suggestedEdits.length > 0) {
+        const edit = data.suggestedEdits[0];
+        if (edit.content && edit.file === activeTab) {
+          // Apply diff decorations showing red/green
+          applyDiffDecorations(currentCode, edit.content);
+        }
+      } else if (data.content?.includes('```')) {
+        // Extract code from markdown code blocks
+        const codeMatch = data.content.match(/```(?:\w+)?\n([\s\S]*?)```/);
+        if (codeMatch && codeMatch[1]) {
+          const suggestedCode = codeMatch[1].trim();
+          // If the code looks like a full replacement, apply as diff
+          if (suggestedCode.length > 50) {
+            applyDiffDecorations(currentCode, suggestedCode);
+          }
+        }
+      }
 
       setSessions(prev => prev.map(s =>
         s.id === activeSessionId
@@ -581,7 +636,7 @@ interface ModelInfo {
           : s
       ));
     }
-  }, [chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel]);
+  }, [chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, applyDiffDecorations]);
 
   const generateAIResponse = (query: string, file: string, selectedCode: string): string => {
     const lowerQuery = query.toLowerCase();
@@ -772,18 +827,100 @@ interface ModelInfo {
     }
   }, [terminalInput, gitBranch, tabs]);
 
-  // Handle apply changes
+  // Handle apply changes - ACTUALLY APPLIES DIFFS TO EDITOR
   const handleApplyChanges = useCallback(() => {
+    if (pendingDiff && editorInstance && monacoInstance) {
+      // Apply the new content to the editor
+      const model = editorInstance.getModel();
+      if (model) {
+        // Clear decorations first
+        if (pendingDiff.decorationIds.length > 0) {
+          editorInstance.deltaDecorations(pendingDiff.decorationIds, []);
+        }
+        
+        // Apply the new content
+        model.setValue(pendingDiff.newContent);
+        
+        // Update file contents state
+        setFileContents(prev => ({ ...prev, [pendingDiff.file]: pendingDiff.newContent }));
+        
+        // Mark tab as modified
+        setTabs(prev => prev.map(t => t.name === pendingDiff.file ? { ...t, modified: true } : t));
+        
+        // Clear pending diff
+        setPendingDiff(null);
+      }
+    }
+    
     setTerminalOutput(prev => [
       ...prev,
       '$ Applying AI changes...',
       '$ Changes merged successfully!',
       `$ ${currentSession.changedFiles.length} file(s) updated`,
     ]);
+    
     setSessions(prev => prev.map(s =>
       s.id === activeSessionId ? { ...s, changedFiles: [] } : s
     ));
-  }, [currentSession, activeSessionId]);
+  }, [currentSession, activeSessionId, pendingDiff, editorInstance, monacoInstance]);
+
+  // Apply diff decorations to Monaco (red/green highlighting)
+  const applyDiffDecorations = useCallback((oldContent: string, newContent: string) => {
+    if (!editorInstance || !monacoInstance) return;
+    
+    const model = editorInstance.getModel();
+    if (!model) return;
+
+    // Clear any existing decorations
+    if (pendingDiff?.decorationIds) {
+      editorInstance.deltaDecorations(pendingDiff.decorationIds, []);
+    }
+
+    // Compute simple line-based diff
+    const oldLines = oldContent.split('\n');
+    const newLines = newContent.split('\n');
+    const decorations: Monaco.editor.IModelDeltaDecoration[] = [];
+
+    // Find added/removed lines (simplified diff)
+    const maxLines = Math.max(oldLines.length, newLines.length);
+    for (let i = 0; i < maxLines; i++) {
+      const oldLine = oldLines[i];
+      const newLine = newLines[i];
+      
+      if (oldLine !== newLine) {
+        if (newLine !== undefined && i < newLines.length) {
+          // Line was added or modified - show green
+          decorations.push({
+            range: new monacoInstance.Range(i + 1, 1, i + 1, 1),
+            options: {
+              isWholeLine: true,
+              className: 'diff-line-added',
+              glyphMarginClassName: 'diff-glyph-added',
+              linesDecorationsClassName: 'diff-line-decoration-added',
+              overviewRuler: {
+                color: '#3fb950',
+                position: monacoInstance.editor.OverviewRulerLane.Full,
+              },
+            },
+          });
+        }
+      }
+    }
+
+    // Apply decorations
+    const decorationIds = editorInstance.deltaDecorations([], decorations);
+    
+    // Store pending diff
+    setPendingDiff({
+      file: activeTab,
+      oldContent,
+      newContent,
+      decorationIds,
+    });
+
+    // Show the new content with decorations
+    model.setValue(newContent);
+  }, [editorInstance, monacoInstance, pendingDiff, activeTab]);
 
   // Handle editor content change
   const handleEditorChange = useCallback((value: string | undefined) => {
@@ -1153,6 +1290,22 @@ interface ModelInfo {
                 onKeyDown={handleKeyDown}
                 onApply={handleApplyChanges}
                 chatEndRef={chatEndRef}
+                hasPendingDiff={pendingDiff !== null}
+                onRejectDiff={() => {
+                  // Reject diff - revert to original content
+                  if (pendingDiff && editorInstance) {
+                    const model = editorInstance.getModel();
+                    if (model) {
+                      // Clear decorations
+                      if (pendingDiff.decorationIds.length > 0) {
+                        editorInstance.deltaDecorations(pendingDiff.decorationIds, []);
+                      }
+                      // Restore original content
+                      model.setValue(pendingDiff.oldContent);
+                    }
+                  }
+                  setPendingDiff(null);
+                }}
               />
             )}
 
@@ -1279,6 +1432,36 @@ interface ModelInfo {
                   noSyntaxValidation: true,
                   noSuggestionDiagnostics: true,
                 });
+
+                // Add CSS for diff decorations
+                const style = document.createElement('style');
+                style.textContent = `
+                  .diff-line-added {
+                    background-color: rgba(63, 185, 80, 0.2) !important;
+                  }
+                  .diff-line-removed {
+                    background-color: rgba(248, 81, 73, 0.2) !important;
+                  }
+                  .diff-glyph-added {
+                    background-color: #3fb950;
+                    width: 4px !important;
+                    margin-left: 3px;
+                  }
+                  .diff-glyph-removed {
+                    background-color: #f85149;
+                    width: 4px !important;
+                    margin-left: 3px;
+                  }
+                  .diff-line-decoration-added {
+                    background-color: #3fb950;
+                    width: 3px !important;
+                  }
+                  .diff-line-decoration-removed {
+                    background-color: #f85149;
+                    width: 3px !important;
+                  }
+                `;
+                document.head.appendChild(style);
               }}
             />
           </div>
@@ -1330,12 +1513,36 @@ interface ModelInfo {
           {/* Project Midnight Toggle */}
           <MidnightToggle
             isActive={midnightActive}
-            onToggle={() => {
+            onToggle={async () => {
               if (midnightActive) {
+                // Just show the factory view if already active
                 setShowFactoryView(true);
               } else {
-                setMidnightActive(true);
-                setShowFactoryView(true);
+                // Start Project Midnight via API
+                try {
+                  const res = await fetch('/api/midnight', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'start', trustLevel }),
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    setMidnightActive(true);
+                    setShowFactoryView(true);
+                    setTerminalOutput(prev => [
+                      ...prev,
+                      '$ Project Midnight initialized',
+                      '$ Trust Level: ' + trustLevel,
+                      '$ Actor agent starting...',
+                      '$ Sentinel Elite verification enabled',
+                    ]);
+                  }
+                } catch (e) {
+                  console.error('Failed to start Midnight:', e);
+                  // Fallback to local state
+                  setMidnightActive(true);
+                  setShowFactoryView(true);
+                }
               }
             }}
           />
@@ -1356,6 +1563,11 @@ interface ModelInfo {
       <FactoryView
         isOpen={showFactoryView}
         onClose={() => setShowFactoryView(false)}
+        onStop={() => {
+          setMidnightActive(false);
+          setTerminalOutput(prev => [...prev, '$ Project Midnight stopped']);
+        }}
+        trustLevel={trustLevel}
       />
     </div>
   );
@@ -1517,17 +1729,34 @@ function ExplorerPanel({ activeTab, onFileClick, fileContents, isRight, onAddToC
             </button>
           )}
           <button
+            onClick={() => {
+              navigator.clipboard.writeText(`src/${contextMenu.file}`);
+              setContextMenu(null);
+            }}
             className="w-full text-left px-3 py-1.5 text-[12px] text-[#cccccc] hover:bg-[#3c3c3c] flex items-center gap-2"
           >
             <span>📋</span> Copy Path
           </button>
           <button
+            onClick={() => {
+              const newName = prompt('Enter new file name:', contextMenu.file);
+              if (newName && newName !== contextMenu.file) {
+                // Rename logic would go here
+                setContextMenu(null);
+              }
+            }}
             className="w-full text-left px-3 py-1.5 text-[12px] text-[#cccccc] hover:bg-[#3c3c3c] flex items-center gap-2"
           >
             <span>✏️</span> Rename
           </button>
           <div className="h-px bg-[#3c3c3c] my-1" />
           <button
+            onClick={() => {
+              if (confirm(`Delete ${contextMenu.file}?`)) {
+                // Delete logic would go here
+                setContextMenu(null);
+              }
+            }}
             className="w-full text-left px-3 py-1.5 text-[12px] text-[#f85149] hover:bg-[#3c3c3c] flex items-center gap-2"
           >
             <span>🗑️</span> Delete
@@ -1661,10 +1890,11 @@ function ExtensionsPanel() {
   );
 }
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; activeModel: string;
-  onNewAgent: () => void; onSend: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.RefObject<HTMLDivElement>;
+  onNewAgent: () => void; onSend: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.RefObject<HTMLDivElement | null>;
+  hasPendingDiff?: boolean; onRejectDiff?: () => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
   return (
@@ -1699,7 +1929,34 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
         <div ref={chatEndRef} />
       </div>
       <div className="border-t border-[#3c3c3c] shrink-0">
-        {currentSession.changedFiles.length > 0 && (
+        {/* Pending Diff Banner */}
+        {hasPendingDiff && (
+          <div className="bg-gradient-to-r from-[#3fb950]/20 to-[#f85149]/20 border-b border-[#3c3c3c] px-3 py-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-[#3fb950] rounded-full animate-pulse" />
+                <span className="text-[12px] text-[#e0e0e0] font-medium">Diff Preview Active</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={onRejectDiff}
+                  className="h-[24px] px-3 bg-[#f85149] hover:bg-[#da3633] text-white text-[11px] font-medium rounded"
+                >
+                  Reject
+                </button>
+                <button 
+                  onClick={onApply}
+                  className="h-[24px] px-3 bg-[#3fb950] hover:bg-[#2ea043] text-white text-[11px] font-medium rounded"
+                >
+                  Accept
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-[#808080] mt-1">Green lines = additions. Click Accept to apply changes.</p>
+          </div>
+        )}
+        
+        {currentSession.changedFiles.length > 0 && !hasPendingDiff && (
           <div className="border-b border-[#3c3c3c]">
             <button onClick={() => setShowFiles(!showFiles)} className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-[#808080] hover:text-[#cccccc]">
               <div className="flex items-center gap-1.5"><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${showFiles ? 'rotate-90' : ''}`}><path d="M6 4l4 4-4 4z"/></svg><span>{currentSession.changedFiles.length} Files</span></div>

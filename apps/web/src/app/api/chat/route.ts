@@ -29,9 +29,10 @@ export interface ChatResponse {
   };
   suggestedEdits?: Array<{
     file: string;
-    range: { startLine: number; endLine: number };
-    oldContent: string;
-    newContent: string;
+    content: string;  // Full new file content for diff preview
+    range?: { startLine: number; endLine: number };
+    oldContent?: string;
+    newContent?: string;
   }>;
 }
 
@@ -110,22 +111,32 @@ async function simulateAIResponse(
   } else if (lowerMessage.includes('refactor') || lowerMessage.includes('improve')) {
     content = `I've analyzed the code and found several areas for improvement:
 
-1. **Type Safety**: Consider adding explicit type annotations
-2. **Error Handling**: Add try-catch blocks for async operations
-3. **Performance**: Consider memoization for expensive computations
+1. **Type Safety**: Adding explicit type annotations
+2. **Error Handling**: Added try-catch blocks for async operations
+3. **Performance**: Added memoization for expensive computations
 
-Would you like me to apply these changes?`;
+**The diff is now visible in the editor.** Click **Apply** to accept the changes.`;
 
-    if (codeContext?.selection) {
+    if (codeContext?.content) {
+      // Generate improved version of the code
+      const improvedCode = codeContext.content
+        .replace(/function (\w+)\(/g, 'function $1<T>(')
+        .replace(/const (\w+) = async/g, 'const $1 = async /* @memoized */')
+        .replace(/return /g, '// Improved: Added type checking\n  return ');
+      
       suggestedEdits = [{
         file: codeContext.file,
-        range: { startLine: 1, endLine: 10 },
-        oldContent: codeContext.selection,
-        newContent: `// Refactored version with improvements\n${codeContext.selection}`,
+        content: `// Refactored with improvements\n// - Added type annotations\n// - Added memoization hints\n// - Added error handling comments\n\n${improvedCode}`,
+        range: { startLine: 1, endLine: codeContext.content.split('\n').length },
+        oldContent: codeContext.content,
+        newContent: improvedCode,
       }];
     }
   } else if (lowerMessage.includes('test')) {
-    const testCode = `describe('Component', () => {
+    const testCode = `import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+
+describe('Component', () => {
   it('should render correctly', () => {
     const result = render(<Component />);
     expect(result).toBeDefined();
@@ -136,52 +147,117 @@ Would you like me to apply these changes?`;
     fireEvent.click(getByRole('button'));
     expect(screen.getByText('clicked')).toBeInTheDocument();
   });
+
+  it('should handle edge cases', () => {
+    const mockFn = vi.fn();
+    render(<Component onAction={mockFn} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(mockFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('should display error state', () => {
+    render(<Component error="Test error" />);
+    expect(screen.getByText('Test error')).toBeInTheDocument();
+  });
 });`;
 
-    content = `I'll generate comprehensive unit tests:\n\n\`\`\`typescript\n${testCode}\n\`\`\`\n\nShall I create a test file with these tests?`;
+    content = `I've generated comprehensive unit tests. **The test code is shown as a diff.**
+
+Tests include:
+- Basic rendering tests
+- User interaction tests
+- Edge case handling
+- Error state validation
+
+Click **Apply** to add these tests.`;
+
+    if (codeContext?.file) {
+      const testFileName = codeContext.file.replace(/\.(tsx?|jsx?)$/, '.test$&');
+      suggestedEdits = [{
+        file: testFileName,
+        content: testCode,
+      }];
+    }
   } else if (lowerMessage.includes('bug') || lowerMessage.includes('fix') || lowerMessage.includes('error')) {
-    content = `I've scanned the code for potential issues:
+    content = `I've scanned the code and applied fixes:
 
-**Found 1 potential bug:**
-- Possible null reference when array is empty
+**Fixed issues:**
+1. Added null-safe optional chaining (?.)
+2. Added nullish coalescing for defaults (??)
+3. Added input validation
 
-**Suggested fix:**
-\`\`\`typescript
-// Before
-return items[0].value;
+**The diff is now visible in the editor.** Click **Apply** to accept the changes.`;
 
-// After  
-return items[0]?.value ?? defaultValue;
-\`\`\`
-
-Would you like me to apply this fix?`;
+    if (codeContext?.content) {
+      // Apply common fixes to the code
+      const fixedCode = codeContext.content
+        .replace(/(\w+)\[0\]\.(\w+)/g, '$1[0]?.$2 ?? null')
+        .replace(/\.filter\((\w+) =>/g, '.filter(($1): $1 is NonNullable<typeof $1> =>')
+        .replace(/JSON\.parse\((\w+)\)/g, 'JSON.parse($1 || "{}")')
+        .replace(/(\w+)\.length/g, '($1?.length ?? 0)');
+      
+      suggestedEdits = [{
+        file: codeContext.file,
+        content: `// Bug fixes applied\n// - Added null safety checks\n// - Added default values\n\n${fixedCode}`,
+        range: { startLine: 1, endLine: codeContext.content.split('\n').length },
+      }];
+    }
   } else if (lowerMessage.includes('add') || lowerMessage.includes('create') || lowerMessage.includes('implement')) {
-    content = `I'll implement that feature. Here's my plan:
-
-1. Create the necessary types/interfaces
-2. Implement the core logic
-3. Add error handling
-4. Write tests
-
-Let me generate the code:
-
-\`\`\`typescript
-// New implementation
-export function newFeature(input: string): Result {
-  // Validate input
-  if (!input) {
-    throw new Error('Input is required');
-  }
-  
-  // Process and return result
-  return {
-    success: true,
-    data: processInput(input),
-  };
+    const newFeatureCode = `
+// ═══ NEW FEATURE IMPLEMENTATION ═══
+interface FeatureResult {
+  success: boolean;
+  data: unknown;
+  error?: string;
 }
-\`\`\`
 
-Should I apply these changes to your codebase?`;
+export async function newFeature(input: string): Promise<FeatureResult> {
+  try {
+    // Validate input
+    if (!input || typeof input !== 'string') {
+      throw new Error('Input is required and must be a string');
+    }
+
+    // Process the input
+    const processedData = await processInput(input);
+    
+    // Return success result
+    return {
+      success: true,
+      data: processedData,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+async function processInput(input: string): Promise<string> {
+  // Simulated processing
+  return input.toUpperCase();
+}
+`;
+
+    content = `I've implemented the feature. **The diff is now visible in the editor.**
+
+The implementation includes:
+1. TypeScript types/interfaces
+2. Async error handling
+3. Input validation
+4. Clean return types
+
+Click **Apply** to accept the changes.`;
+
+    if (codeContext?.content) {
+      suggestedEdits = [{
+        file: codeContext.file,
+        content: codeContext.content + '\n' + newFeatureCode,
+        range: { startLine: codeContext.content.split('\n').length, endLine: codeContext.content.split('\n').length + 30 },
+      }];
+    }
   } else {
     content = `I'll help you with that. ${
       codeContext ? `I can see you're working on \`${codeContext.file}\`.` : ''

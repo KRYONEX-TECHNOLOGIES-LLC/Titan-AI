@@ -7,6 +7,8 @@ import { QueueList } from './QueueList';
 interface FactoryViewProps {
   isOpen: boolean;
   onClose: () => void;
+  onStop?: () => void;
+  trustLevel?: 1 | 2 | 3;
 }
 
 interface TerminalLine {
@@ -27,7 +29,7 @@ interface Project {
  * Factory View Dashboard
  * Full-screen overlay showing Actor and Sentinel streams
  */
-export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
+export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: FactoryViewProps) {
   const [actorLines, setActorLines] = useState<TerminalLine[]>([]);
   const [sentinelLines, setSentinelLines] = useState<TerminalLine[]>([]);
   const [confidenceScore, setConfidenceScore] = useState(100);
@@ -35,6 +37,11 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
   const [currentProject, setCurrentProject] = useState<string>('Example Project');
   const [currentTask, setCurrentTask] = useState<string>('Building components...');
   const [progress, setProgress] = useState(35);
+  const [isRunning, setIsRunning] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
+  const [tasksCompleted, setTasksCompleted] = useState(0);
+  const [totalTasks, setTotalTasks] = useState(8);
+  const [uptime, setUptime] = useState(0);
   const [queuedProjects, setQueuedProjects] = useState<Project[]>([
     { id: '1', name: 'Titan AI Core', status: 'building', priority: 1, progress: 35 },
     { id: '2', name: 'Dashboard UI', status: 'queued', priority: 2 },
@@ -43,6 +50,75 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
 
   const actorRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Uptime counter
+  useEffect(() => {
+    if (!isOpen || !isRunning) return;
+    const interval = setInterval(() => {
+      setUptime(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isOpen, isRunning]);
+
+  // Format uptime
+  const formatUptime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+  };
+
+  // Handle pause/resume
+  const handlePauseResume = async () => {
+    try {
+      const action = isPaused ? 'resume' : 'pause';
+      const res = await fetch('/api/midnight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsPaused(!isPaused);
+        const logLine: TerminalLine = {
+          type: 'info',
+          content: isPaused ? '▶ Execution resumed' : '⏸ Execution paused',
+          timestamp: new Date(),
+        };
+        setActorLines(prev => [...prev, logLine]);
+      }
+    } catch (error) {
+      setIsPaused(!isPaused);
+    }
+  };
+
+  // Handle stop
+  const handleStop = async () => {
+    try {
+      const res = await fetch('/api/midnight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsRunning(false);
+        const logLine: TerminalLine = {
+          type: 'error',
+          content: '⏹ Project Midnight stopped',
+          timestamp: new Date(),
+        };
+        setActorLines(prev => [...prev, logLine]);
+        setSentinelLines(prev => [...prev, { ...logLine, content: '⏹ Sentinel monitoring stopped' }]);
+        onStop?.();
+      }
+    } catch (error) {
+      setIsRunning(false);
+      onStop?.();
+    }
+  };
 
   // Fetch real logs from API
   useEffect(() => {
@@ -68,6 +144,9 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
         
         setConfidenceScore(status.confidenceScore || 100);
         setConfidenceStatus(status.confidenceStatus || 'healthy');
+        setIsRunning(status.running);
+        setTasksCompleted(status.tasksCompleted || 0);
+        setTotalTasks(status.tasksCompleted + status.queueLength + 1 || 8);
         setProgress(status.tasksCompleted > 0 ? (status.tasksCompleted / (status.tasksCompleted + status.queueLength + 1)) * 100 : 35);
         
         if (status.currentProject) {
@@ -155,7 +234,8 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
     }
   };
 
-  const handleReorder = (projectId: string, newIndex: number) => {
+  const handleReorder = async (projectId: string, newIndex: number) => {
+    // Optimistically update the UI
     setQueuedProjects(prev => {
       const project = prev.find(p => p.id === projectId);
       if (!project) return prev;
@@ -163,10 +243,56 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
       filtered.splice(newIndex, 0, project);
       return filtered;
     });
+
+    // Call API to persist
+    try {
+      await fetch('/api/midnight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reorderQueue', projectId, newIndex }),
+      });
+    } catch (error) {
+      console.error('Failed to reorder queue:', error);
+    }
   };
 
-  const handleRemove = (projectId: string) => {
+  const handleRemove = async (projectId: string) => {
+    // Optimistically update the UI
     setQueuedProjects(prev => prev.filter(p => p.id !== projectId));
+
+    // Call API to persist
+    try {
+      await fetch('/api/midnight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'removeFromQueue', projectId }),
+      });
+    } catch (error) {
+      console.error('Failed to remove from queue:', error);
+    }
+  };
+
+  // Add project to queue
+  const handleAddProject = async () => {
+    const name = prompt('Enter project name:');
+    const path = prompt('Enter project path:');
+    
+    if (name && path) {
+      try {
+        const res = await fetch('/api/midnight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'addToQueue', name, path }),
+        });
+        const data = await res.json();
+        
+        if (data.success && data.project) {
+          setQueuedProjects(prev => [...prev, data.project]);
+        }
+      } catch (error) {
+        console.error('Failed to add to queue:', error);
+      }
+    }
   };
 
   if (!isOpen) return null;
@@ -209,14 +335,37 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {/* Confidence meter */}
           <ConfidenceMeter score={confidenceScore} status={confidenceStatus} />
 
-          {/* Close button */}
+          {/* Pause/Resume button */}
+          <button
+            onClick={handlePauseResume}
+            className={`px-3 py-1 rounded text-[11px] font-medium transition-colors ${
+              isPaused 
+                ? 'bg-green-600 hover:bg-green-500 text-white' 
+                : 'bg-yellow-600 hover:bg-yellow-500 text-white'
+            }`}
+            title={isPaused ? 'Resume' : 'Pause'}
+          >
+            {isPaused ? '▶ Resume' : '⏸ Pause'}
+          </button>
+
+          {/* Stop button */}
+          <button
+            onClick={handleStop}
+            className="px-3 py-1 bg-red-600 hover:bg-red-500 rounded text-[11px] font-medium text-white transition-colors"
+            title="Stop Project Midnight"
+          >
+            ⏹ Stop
+          </button>
+
+          {/* Close button (minimize) */}
           <button
             onClick={onClose}
             className="text-[#808080] hover:text-white transition-colors"
+            title="Minimize (Midnight continues running)"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 18L18 6M6 6l12 12" />
@@ -277,12 +426,20 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
 
         {/* Queue sidebar */}
         <div className="w-64 bg-[#1e1e1e] border-l border-[#3c3c3c] flex flex-col">
+          <div className="p-2 border-b border-[#3c3c3c]">
+            <button
+              onClick={handleAddProject}
+              className="w-full px-3 py-1.5 bg-[#007acc] hover:bg-[#0098ff] text-white text-[11px] font-medium rounded flex items-center justify-center gap-1"
+            >
+              <span>+</span> Add Project to Queue
+            </button>
+          </div>
           <div className="flex-1 overflow-y-auto py-2">
             <QueueList
               projects={queuedProjects}
               onReorder={handleReorder}
               onRemove={handleRemove}
-              currentProjectId="1"
+              currentProjectId={queuedProjects.find(p => p.status === 'building')?.id || '1'}
             />
           </div>
 
@@ -295,17 +452,33 @@ export function FactoryView({ isOpen, onClose }: FactoryViewProps) {
       </div>
 
       {/* Status bar */}
-      <div className="h-6 bg-purple-600 flex items-center justify-between px-3 text-[11px] text-white shrink-0">
+      <div className={`h-6 ${isRunning ? (isPaused ? 'bg-yellow-600' : 'bg-purple-600') : 'bg-gray-600'} flex items-center justify-between px-3 text-[11px] text-white shrink-0`}>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-            Project Midnight Active
+            {isRunning ? (
+              isPaused ? (
+                <>
+                  <span className="w-1.5 h-1.5 bg-yellow-300 rounded-full" />
+                  Project Midnight Paused
+                </>
+              ) : (
+                <>
+                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                  Project Midnight Active
+                </>
+              )
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full" />
+                Project Midnight Stopped
+              </>
+            )}
           </span>
-          <span>Trust Level: 3 (Full Autonomy)</span>
+          <span>Trust Level: {trustLevel} ({trustLevel === 3 ? 'Full Autonomy' : trustLevel === 2 ? 'Supervised' : 'Manual Approve'})</span>
         </div>
         <div className="flex items-center gap-3">
-          <span>Tasks: 3/8 completed</span>
-          <span>Uptime: 2h 34m</span>
+          <span>Tasks: {tasksCompleted}/{totalTasks} completed</span>
+          <span>Uptime: {formatUptime(uptime)}</span>
         </div>
       </div>
     </div>

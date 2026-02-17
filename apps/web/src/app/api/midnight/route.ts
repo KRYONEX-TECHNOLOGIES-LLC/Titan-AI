@@ -6,10 +6,22 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+// Queue item type
+interface QueueProject {
+  id: string;
+  name: string;
+  path: string;
+  status: 'queued' | 'building' | 'completed' | 'failed';
+  priority: number;
+  progress?: number;
+  addedAt: number;
+}
+
 // Runtime state - persisted per-process (in production, use IPC to daemon)
 const midnightState = {
   running: false,
   currentProject: null as { id: string; name: string; path: string; currentTask?: string } | null,
+  queue: [] as QueueProject[],
   queueLength: 0,
   confidenceScore: 100,
   confidenceStatus: 'healthy' as 'healthy' | 'warning' | 'error',
@@ -216,6 +228,94 @@ export async function POST(request: NextRequest) {
         actorLogs: midnightState.actorLogs.slice(-50),
         sentinelLogs: midnightState.sentinelLogs.slice(-50),
         lastVerdict: midnightState.lastVerdict,
+      });
+
+    case 'addToQueue': {
+      const { name, path } = body;
+      if (!name || !path) {
+        return NextResponse.json(
+          { error: 'Project name and path are required' },
+          { status: 400 }
+        );
+      }
+      
+      const newProject: QueueProject = {
+        id: `project-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        path,
+        status: 'queued',
+        priority: midnightState.queue.length + 1,
+        addedAt: Date.now(),
+      };
+      
+      midnightState.queue.push(newProject);
+      midnightState.queueLength = midnightState.queue.length;
+      
+      midnightState.actorLogs.push(
+        `[${new Date().toISOString()}] Actor: Project "${name}" added to queue (position ${midnightState.queue.length})`
+      );
+      
+      return NextResponse.json({
+        success: true,
+        message: `Project added to queue`,
+        project: newProject,
+        queue: midnightState.queue,
+      });
+    }
+
+    case 'removeFromQueue': {
+      const { projectId } = body;
+      const index = midnightState.queue.findIndex(p => p.id === projectId);
+      
+      if (index === -1) {
+        return NextResponse.json(
+          { error: 'Project not found in queue' },
+          { status: 404 }
+        );
+      }
+      
+      const removed = midnightState.queue.splice(index, 1)[0];
+      midnightState.queueLength = midnightState.queue.length;
+      
+      // Re-assign priorities
+      midnightState.queue.forEach((p, i) => { p.priority = i + 1; });
+      
+      return NextResponse.json({
+        success: true,
+        message: `Project "${removed.name}" removed from queue`,
+        queue: midnightState.queue,
+      });
+    }
+
+    case 'reorderQueue': {
+      const { projectId, newIndex } = body;
+      const oldIndex = midnightState.queue.findIndex(p => p.id === projectId);
+      
+      if (oldIndex === -1) {
+        return NextResponse.json(
+          { error: 'Project not found in queue' },
+          { status: 404 }
+        );
+      }
+      
+      const [project] = midnightState.queue.splice(oldIndex, 1);
+      midnightState.queue.splice(newIndex, 0, project);
+      
+      // Re-assign priorities
+      midnightState.queue.forEach((p, i) => { p.priority = i + 1; });
+      
+      return NextResponse.json({
+        success: true,
+        message: `Queue reordered`,
+        queue: midnightState.queue,
+      });
+    }
+
+    case 'getQueue':
+      return NextResponse.json({
+        queue: midnightState.queue,
+        queueLength: midnightState.queue.length,
+        currentProject: midnightState.currentProject,
       });
 
     default:
