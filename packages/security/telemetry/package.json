@@ -1,0 +1,21 @@
+{
+  "name": "@titan/security-telemetry",
+  "version": "0.1.0",
+  "description": "Zero-telemetry enforcer and opt-in analytics for privacy-first operation",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "@titan/security": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}
