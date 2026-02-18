@@ -1,25 +1,18 @@
-/**
- * Project Midnight Queue API
- * /api/midnight/queue - Queue management
- */
-
 import { NextRequest, NextResponse } from 'next/server';
-
-// Mock queue data
-const mockQueue = [
-  { id: '1', name: 'Titan AI Core', status: 'building', priority: 1, progress: 35 },
-  { id: '2', name: 'Dashboard UI', status: 'queued', priority: 2 },
-  { id: '3', name: 'API Gateway', status: 'queued', priority: 3 },
-];
+import { callMidnightAction, jsonProxyResult } from '../_lib/proxy';
 
 /**
  * GET /api/midnight/queue - List queued projects
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const result = await callMidnightAction(request, { action: 'getQueue' });
+  if (!result.ok) return jsonProxyResult(result);
+
+  const queue = ((result.body as { queue?: unknown[] }).queue || []) as unknown[];
   return NextResponse.json({
-    projects: mockQueue,
-    total: mockQueue.length,
-    currentProject: mockQueue.find(p => p.status === 'building') || null,
+    projects: queue,
+    total: queue.length,
+    currentProject: (queue as Array<{ status?: string }>).find(p => p.status === 'building') || null,
   });
 }
 
@@ -28,7 +21,7 @@ export async function GET() {
  */
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { projectPath, priority = 0 } = body;
+  const { projectPath } = body;
 
   if (!projectPath) {
     return NextResponse.json(
@@ -37,24 +30,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Extract project name from path
-  const name = projectPath.split(/[/\\]/).pop() || 'Unknown';
-
-  const newProject = {
-    id: `proj-${Date.now()}`,
-    name,
-    status: 'queued',
-    priority,
-    path: projectPath,
-  };
-
-  // In production, this would add to the actual queue
-  mockQueue.push(newProject);
-
-  return NextResponse.json({
-    success: true,
-    project: newProject,
-  });
+  const result = await callMidnightAction(request, { action: 'addToQueue', path: projectPath });
+  return jsonProxyResult(result);
 }
 
 /**
@@ -71,20 +48,8 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  const index = mockQueue.findIndex(p => p.id === projectId);
-  if (index === -1) {
-    return NextResponse.json(
-      { error: 'Project not found' },
-      { status: 404 }
-    );
-  }
-
-  mockQueue.splice(index, 1);
-
-  return NextResponse.json({
-    success: true,
-    message: `Project ${projectId} removed from queue`,
-  });
+  const result = await callMidnightAction(request, { action: 'removeFromQueue', projectId });
+  return jsonProxyResult(result);
 }
 
 /**
@@ -101,22 +66,10 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  const project = mockQueue.find(p => p.id === projectId);
-  if (!project) {
-    return NextResponse.json(
-      { error: 'Project not found' },
-      { status: 404 }
-    );
-  }
-
-  project.priority = newPriority;
-
-  // Re-sort by priority
-  mockQueue.sort((a, b) => b.priority - a.priority);
-
-  return NextResponse.json({
-    success: true,
-    project,
-    queue: mockQueue,
+  const result = await callMidnightAction(request, {
+    action: 'reorderQueue',
+    projectId,
+    newIndex: newPriority,
   });
+  return jsonProxyResult(result);
 }

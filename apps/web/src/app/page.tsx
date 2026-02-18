@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import type * as Monaco from 'monaco-editor';
 
@@ -195,9 +195,13 @@ interface ChangedFile {
 }
 
 interface ChatMessage {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   time?: string;
+  streaming?: boolean;
+  streamingModel?: string;
+  streamingProvider?: string;
 }
 
 interface SearchResult {
@@ -255,7 +259,7 @@ export default function TitanIDE() {
   const [activeSessionId, setActiveSessionId] = useState('1');
 
   // Model state
-  const [activeModel, setActiveModel] = useState('Opus 4.5');
+  const [activeModel, setActiveModel] = useState('claude-4.6-opus');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
 
   // Menu state
@@ -294,11 +298,13 @@ export default function TitanIDE() {
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const terminalInputRef = useRef<HTMLInputElement>(null);
+  const modelSearchInputRef = useRef<HTMLInputElement>(null);
   
   // Full model registry (30+ models)
   const [modelRegistry, setModelRegistry] = useState<ModelInfo[]>([]);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
-  const models = ['Opus 4.5', 'Sonnet 3.5', 'GPT-4o', 'Gemini Pro', 'Claude 3']; // Fallback
+  const [highlightedModelIndex, setHighlightedModelIndex] = useState(0);
+  const models = ['claude-4.6-opus', 'claude-4.6-sonnet', 'gpt-5.3', 'gpt-4o', 'gemini-2.0-pro']; // Fallback IDs
 
 interface ModelInfo {
   id: string;
@@ -312,6 +318,23 @@ interface ModelInfo {
   costPer1MOutput: number;
 }
 
+  const cappedModelRegistry = useMemo(() => modelRegistry.slice(0, 32), [modelRegistry]);
+  const activeModelInfo = useMemo(() => {
+    return cappedModelRegistry.find(m => m.id === activeModel || m.name === activeModel) || null;
+  }, [cappedModelRegistry, activeModel]);
+  const activeModelLabel = activeModelInfo?.name || activeModel;
+  const filteredModels = useMemo(
+    () =>
+      cappedModelRegistry.filter(
+        m =>
+          modelSearchQuery.trim() === '' ||
+          m.name.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
+          m.provider.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
+          m.id.toLowerCase().includes(modelSearchQuery.toLowerCase())
+      ),
+    [cappedModelRegistry, modelSearchQuery]
+  );
+
   // Get current session
   const currentSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
 
@@ -319,17 +342,35 @@ interface ModelInfo {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [currentSession?.messages]);
 
+  // Keep chat pinned while the assistant is actively thinking/streaming
+  useEffect(() => {
+    if (!isThinking) return;
+    const timer = window.setInterval(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }, 180);
+    return () => window.clearInterval(timer);
+  }, [isThinking]);
+
   // Fetch model registry on mount
   useEffect(() => {
     fetch('/api/models')
       .then(res => res.json())
       .then(data => {
         if (data.models) {
-          setModelRegistry(data.models);
+          const incoming = (data.models as ModelInfo[]).slice(0, 32);
+          setModelRegistry(incoming);
         }
       })
       .catch(console.error);
   }, []);
+
+  useEffect(() => {
+    if (cappedModelRegistry.length === 0) return;
+    const exists = cappedModelRegistry.some(m => m.id === activeModel || m.name === activeModel);
+    if (!exists) {
+      setActiveModel(cappedModelRegistry[0].id);
+    }
+  }, [activeModel, cappedModelRegistry]);
 
   // ═══ PERSISTENCE: Save state to localStorage ═══
   useEffect(() => {
@@ -472,7 +513,7 @@ interface ModelInfo {
 
   /* ═══ EDITOR COMMANDS ═══ */
 
-  const executeCommand = useCallback((command: string) => {
+  function executeCommand(command: string) {
     if (!editorInstance || !monacoInstance) return;
 
     switch (command) {
@@ -569,7 +610,7 @@ interface ModelInfo {
         setTerminalOutput(prev => [...prev, '$ Debugger disconnected']);
         break;
     }
-  }, [editorInstance, monacoInstance, activeTab]);
+  }
 
   /* ═══ HANDLERS ═══ */
 
@@ -578,6 +619,8 @@ interface ModelInfo {
     if (!chatInput.trim()) return;
     const msg = chatInput.trim();
     setChatInput('');
+    const sessionId = activeSessionId;
+    const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Get code context from Monaco (LIVE VISION)
     const currentCode = editorInstance?.getValue() || fileContents[activeTab] || '';
@@ -591,23 +634,93 @@ interface ModelInfo {
       content: selectedText ? `[Selected Code]\n\`\`\`${currentLanguage}\n${selectedText}\n\`\`\`\n\n${msg}` : msg,
       time: 'just now',
     };
+    const placeholderAssistantMessage: ChatMessage = {
+      id: streamMessageId,
+      role: 'assistant',
+      content: '',
+      time: 'just now',
+      streaming: true,
+      streamingModel: activeModel,
+    };
 
     setSessions(prev => prev.map(s =>
-      s.id === activeSessionId
-        ? { ...s, messages: [...s.messages, userMessage] }
+      s.id === sessionId
+        ? { ...s, messages: [...s.messages, userMessage, placeholderAssistantMessage] }
         : s
     ));
     setIsThinking(true);
 
+    const updateStreamingAssistant = (
+      content: string,
+      done = false,
+      metadata?: { model?: string; provider?: string }
+    ) => {
+      setSessions(prev =>
+        prev.map(s => {
+          if (s.id !== sessionId) return s;
+          return {
+            ...s,
+            messages: s.messages.map(m =>
+              m.id === streamMessageId
+                ? {
+                    ...m,
+                    content,
+                    streaming: !done,
+                    time: 'just now',
+                    streamingModel: metadata?.model ?? m.streamingModel,
+                    streamingProvider: metadata?.provider ?? m.streamingProvider,
+                  }
+                : m
+            ),
+          };
+        })
+      );
+    };
+
+    const handleSuggestedEdits = (data: { content?: string; suggestedEdits?: Array<{ file: string; content?: string }> }) => {
+      const newChangedFiles = data.suggestedEdits?.map((edit: { file: string; content?: string }) => {
+        const info = getFileInfo(edit.file);
+        return { name: edit.file, additions: 15, deletions: 3, icon: info.icon, color: info.color };
+      }) || [];
+
+      if (data.suggestedEdits && data.suggestedEdits.length > 0) {
+        const edit = data.suggestedEdits[0];
+        if (edit.content && edit.file === activeTab) {
+          applyDiffDecorations(currentCode, edit.content);
+        }
+      } else if (data.content?.includes('```')) {
+        const codeMatch = data.content.match(/```(?:\w+)?\n([\s\S]*?)```/);
+        if (codeMatch && codeMatch[1]) {
+          const suggestedCode = codeMatch[1].trim();
+          if (suggestedCode.length > 50) {
+            applyDiffDecorations(currentCode, suggestedCode);
+          }
+        }
+      }
+
+      setSessions(prev => prev.map(s =>
+        s.id === sessionId
+          ? {
+            ...s,
+            changedFiles: newChangedFiles.length > 0
+              ? newChangedFiles
+              : (s.changedFiles.length === 0 && data.content?.includes('```')
+                ? [{ name: activeTab, additions: 15, deletions: 3, ...getFileInfo(activeTab) }]
+                : s.changedFiles),
+          }
+          : s
+      ));
+    };
+
     try {
-      // Call the chat API with code context
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionId: activeSessionId,
+          sessionId,
           message: msg,
           model: activeModel,
+          stream: true,
           codeContext: {
             file: activeTab,
             content: currentCode,
@@ -617,52 +730,81 @@ interface ModelInfo {
         }),
       });
 
-      const data = await response.json();
-      
-      setIsThinking(false);
-      
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: data.content || 'I apologize, but I encountered an error processing your request.',
-        time: 'just now',
-      };
-
-      // Check for suggested edits and apply as DIFFS
-      const newChangedFiles = data.suggestedEdits?.map((edit: { file: string; content?: string }) => {
-        const info = getFileInfo(edit.file);
-        return { name: edit.file, additions: 15, deletions: 3, icon: info.icon, color: info.color };
-      }) || [];
-
-      // If there are code suggestions, apply them as diff decorations
-      if (data.suggestedEdits && data.suggestedEdits.length > 0) {
-        const edit = data.suggestedEdits[0];
-        if (edit.content && edit.file === activeTab) {
-          // Apply diff decorations showing red/green
-          applyDiffDecorations(currentCode, edit.content);
-        }
-      } else if (data.content?.includes('```')) {
-        // Extract code from markdown code blocks
-        const codeMatch = data.content.match(/```(?:\w+)?\n([\s\S]*?)```/);
-        if (codeMatch && codeMatch[1]) {
-          const suggestedCode = codeMatch[1].trim();
-          // If the code looks like a full replacement, apply as diff
-          if (suggestedCode.length > 50) {
-            applyDiffDecorations(currentCode, suggestedCode);
-          }
-        }
+      if (!response.ok) {
+        throw new Error(`Chat request failed (${response.status})`);
       }
 
-      setSessions(prev => prev.map(s =>
-        s.id === activeSessionId
-          ? {
-            ...s,
-            messages: [...s.messages, assistantMessage],
-            changedFiles: newChangedFiles.length > 0 ? newChangedFiles : 
-              (s.changedFiles.length === 0 && data.content?.includes('```') ? 
-                [{ name: activeTab, additions: 15, deletions: 3, ...getFileInfo(activeTab) }] : s.changedFiles),
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/event-stream') && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamed = '';
+        let finalPayload: { content?: string; suggestedEdits?: Array<{ file: string; content?: string }> } | null = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+
+          for (const evt of events) {
+            const lines = evt.split('\n');
+            let eventType = 'message';
+            let data = '';
+
+            for (const line of lines) {
+              if (line.startsWith('event:')) eventType = line.slice(6).trim();
+              if (line.startsWith('data:')) data += line.slice(5).trim();
+            }
+
+            if (!data) continue;
+            const payload = JSON.parse(data) as {
+              content?: string;
+              suggestedEdits?: Array<{ file: string; content?: string }>;
+              message?: string;
+              model?: string;
+              provider?: string;
+            };
+
+            if (eventType === 'token' && payload.content) {
+              streamed += payload.content;
+              updateStreamingAssistant(streamed, false);
+            } else if (eventType === 'start') {
+              updateStreamingAssistant(streamed, false, {
+                model: payload.model,
+                provider: payload.provider,
+              });
+            } else if (eventType === 'done') {
+              finalPayload = payload;
+              if (payload.content !== undefined) {
+                streamed = payload.content;
+              }
+              updateStreamingAssistant(streamed || 'Done.', true, {
+                model: payload.model,
+                provider: payload.provider,
+              });
+            } else if (eventType === 'error') {
+              throw new Error(payload.message || 'Streaming error');
+            }
           }
-          : s
-      ));
+        }
+
+        setIsThinking(false);
+        const normalized = finalPayload || { content: streamed };
+        updateStreamingAssistant(normalized.content || 'I apologize, but I encountered an error processing your request.', true);
+        handleSuggestedEdits(normalized);
+      } else {
+        const data = await response.json();
+        setIsThinking(false);
+        updateStreamingAssistant(
+          data.content || 'I apologize, but I encountered an error processing your request.',
+          true
+        );
+        handleSuggestedEdits(data);
+      }
     } catch (error) {
       console.error('Chat error:', error);
       setIsThinking(false);
@@ -670,10 +812,10 @@ interface ModelInfo {
       // Fallback to local response
       const response = generateAIResponse(msg, activeTab, selectedText || '');
       setSessions(prev => prev.map(s =>
-        s.id === activeSessionId
+        s.id === sessionId
           ? {
             ...s,
-            messages: [...s.messages, { role: 'assistant', content: response, time: 'just now' }],
+            messages: s.messages.map(m => m.id === streamMessageId ? { ...m, content: response, streaming: false, time: 'just now' } : m),
             changedFiles: s.changedFiles.length === 0 ? [{ name: activeTab, additions: 15, deletions: 3, ...getFileInfo(activeTab) }] : s.changedFiles,
           }
           : s
@@ -748,6 +890,60 @@ interface ModelInfo {
       setActiveSessionId(newId);
     }
   }, [activeModel]);
+
+  // Keep Midnight worker model synchronized with global active model
+  useEffect(() => {
+    if (!mounted) return;
+    fetch('/api/midnight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'setModel', model: activeModel }),
+    }).catch(() => {
+      // Best effort sync for local dev mode
+    });
+  }, [activeModel, mounted]);
+
+  useEffect(() => {
+    if (!showModelDropdown) return;
+    setHighlightedModelIndex(0);
+    // Focus after paint so keyboard navigation works immediately
+    requestAnimationFrame(() => {
+      modelSearchInputRef.current?.focus();
+      modelSearchInputRef.current?.select();
+    });
+  }, [showModelDropdown]);
+
+  function selectActiveModel(modelId: string) {
+    setActiveModel(modelId);
+    setShowModelDropdown(false);
+    setModelSearchQuery('');
+    setHighlightedModelIndex(0);
+  }
+
+  function handleModelSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedModelIndex(prev => Math.min(prev + 1, Math.max(filteredModels.length - 1, 0)));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedModelIndex(prev => Math.max(prev - 1, 0));
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const target = filteredModels[highlightedModelIndex];
+      if (target) {
+        selectActiveModel(target.id);
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowModelDropdown(false);
+    }
+  }
 
   // Handle file click in explorer
   const handleFileClick = useCallback((fileName: string) => {
@@ -908,7 +1104,7 @@ interface ModelInfo {
   }, [currentSession, activeSessionId, pendingDiff, editorInstance, monacoInstance]);
 
   // Apply diff decorations to Monaco (red/green highlighting)
-  const applyDiffDecorations = useCallback((oldContent: string, newContent: string) => {
+  function applyDiffDecorations(oldContent: string, newContent: string) {
     if (!editorInstance || !monacoInstance) return;
     
     const model = editorInstance.getModel();
@@ -931,8 +1127,24 @@ interface ModelInfo {
       const newLine = newLines[i];
       
       if (oldLine !== newLine) {
-        if (newLine !== undefined && i < newLines.length) {
-          // Line was added or modified - show green
+        if (oldLine !== undefined) {
+          // Existing line changed/removed - mark red
+          decorations.push({
+            range: new monacoInstance.Range(i + 1, 1, i + 1, 1),
+            options: {
+              isWholeLine: true,
+              className: 'diff-line-removed',
+              glyphMarginClassName: 'diff-glyph-removed',
+              linesDecorationsClassName: 'diff-line-decoration-removed',
+              overviewRuler: {
+                color: '#f85149',
+                position: monacoInstance.editor.OverviewRulerLane.Full,
+              },
+            },
+          });
+        }
+        if (newLine !== undefined) {
+          // New/updated line - mark green
           decorations.push({
             range: new monacoInstance.Range(i + 1, 1, i + 1, 1),
             options: {
@@ -961,9 +1173,8 @@ interface ModelInfo {
       decorationIds,
     });
 
-    // Show the new content with decorations
-    model.setValue(newContent);
-  }, [editorInstance, monacoInstance, pendingDiff, activeTab]);
+    // Keep current editor content intact until user clicks Accept
+  }
 
   // Handle editor content change
   const handleEditorChange = useCallback((value: string | undefined) => {
@@ -1175,7 +1386,7 @@ interface ModelInfo {
             className="flex items-center gap-1.5 px-2.5 py-1 bg-[#2d2d2d] hover:bg-[#3c3c3c] rounded-full text-[12px] text-[#cccccc] transition-colors mr-2"
           >
             <span className="w-2 h-2 bg-[#3fb950] rounded-full"></span>
-            {activeModel}
+            {activeModelLabel}
             <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4z"/></svg>
           </button>
           {showModelDropdown && (
@@ -1183,24 +1394,30 @@ interface ModelInfo {
               {/* Search */}
               <div className="p-2 border-b border-[#3c3c3c]">
                 <input
+                  ref={modelSearchInputRef}
                   type="text"
                   placeholder="Search models..."
                   value={modelSearchQuery}
-                  onChange={(e) => setModelSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setModelSearchQuery(e.target.value);
+                    setHighlightedModelIndex(0);
+                  }}
+                  onKeyDown={handleModelSearchKeyDown}
                   onClick={(e) => e.stopPropagation()}
                   className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[12px] text-[#cccccc] placeholder-[#666] focus:outline-none focus:border-[#007acc]"
                 />
               </div>
               {/* Model List */}
               <div className="max-h-[400px] overflow-y-auto">
-                {modelRegistry.length > 0 ? (
+                {cappedModelRegistry.length > 0 ? (
                   <>
                     {['frontier', 'standard', 'economy', 'local'].map(tier => {
-                      const tierModels = modelRegistry.filter(m => 
+                      const tierModels = cappedModelRegistry.filter(m => 
                         m.tier === tier && 
                         (modelSearchQuery === '' || 
                          m.name.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
-                         m.provider.toLowerCase().includes(modelSearchQuery.toLowerCase()))
+                         m.provider.toLowerCase().includes(modelSearchQuery.toLowerCase()) ||
+                         m.id.toLowerCase().includes(modelSearchQuery.toLowerCase()))
                       );
                       if (tierModels.length === 0) return null;
                       return (
@@ -1211,11 +1428,11 @@ interface ModelInfo {
                           {tierModels.map(model => (
                             <button
                               key={model.id}
-                              onClick={() => { setActiveModel(model.name); setShowModelDropdown(false); setModelSearchQuery(''); }}
-                              className={`w-full text-left px-3 py-2 hover:bg-[#3c3c3c] transition-colors border-b border-[#333] ${activeModel === model.name ? 'bg-[#37373d]' : ''}`}
+                              onClick={() => selectActiveModel(model.id)}
+                              className={`w-full text-left px-3 py-2 hover:bg-[#3c3c3c] transition-colors border-b border-[#333] ${activeModel === model.id ? 'bg-[#37373d]' : ''} ${filteredModels[highlightedModelIndex]?.id === model.id ? 'ring-1 ring-inset ring-[#007acc]' : ''}`}
                             >
                               <div className="flex items-center justify-between">
-                                <span className={`text-[12px] ${activeModel === model.name ? 'text-[#007acc]' : 'text-[#cccccc]'}`}>{model.name}</span>
+                                <span className={`text-[12px] ${activeModel === model.id ? 'text-[#007acc]' : 'text-[#cccccc]'}`}>{model.name}</span>
                                 <span className="text-[10px] text-[#666]">{model.provider}</span>
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -1239,7 +1456,7 @@ interface ModelInfo {
                   models.map(model => (
                     <button
                       key={model}
-                      onClick={() => { setActiveModel(model); setShowModelDropdown(false); }}
+                      onClick={() => selectActiveModel(model)}
                       className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#3c3c3c] transition-colors ${activeModel === model ? 'text-[#007acc]' : 'text-[#cccccc]'}`}
                     >
                       {model}
@@ -1339,7 +1556,7 @@ interface ModelInfo {
                 chatInput={chatInput}
                 setChatInput={setChatInput}
                 isThinking={isThinking}
-                activeModel={activeModel}
+                activeModel={activeModelLabel}
                 onNewAgent={handleNewAgent}
                 onSend={handleSend}
                 onKeyDown={handleKeyDown}
@@ -1578,7 +1795,7 @@ interface ModelInfo {
                   const res = await fetch('/api/midnight', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'start', trustLevel }),
+                    body: JSON.stringify({ action: 'start', trustLevel, model: activeModel }),
                   });
                   const data = await res.json();
                   if (data.success) {
@@ -1609,7 +1826,7 @@ interface ModelInfo {
           <span>Ln {cursorPosition.line}, Col {cursorPosition.column}</span>
           <span className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 bg-[#3fb950] rounded-full"></span>
-            {activeModel}
+            {activeModelLabel}
           </span>
         </div>
       </div>
@@ -2002,7 +2219,7 @@ function ExtensionsPanel() {
 function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; activeModel: string;
-  onNewAgent: () => void; onSend: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.RefObject<HTMLDivElement | null>;
+  onNewAgent: () => void; onSend: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
   hasPendingDiff?: boolean; onRejectDiff?: () => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
@@ -2031,11 +2248,22 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
             <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-[#3c3c3c]' : 'bg-[#007acc]'}`}>
               {msg.role === 'user' ? <AccountIcon size={14} /> : <TitanAgentIcon size={14} />}
             </div>
-            <div className="text-[13px] text-[#cccccc] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+            <div className="text-[13px] text-[#cccccc] leading-relaxed whitespace-pre-wrap">
+              <div>
+                {msg.content}
+                {msg.streaming && <span className="inline-block ml-1 w-1.5 h-4 bg-[#808080] animate-pulse align-[-2px]" />}
+              </div>
+              {msg.streaming && (
+                <div className="mt-1 text-[11px] text-[#808080] font-mono">
+                  Streaming from {msg.streamingModel || activeModel}
+                  {msg.streamingProvider ? ` via ${msg.streamingProvider}` : ''}
+                </div>
+              )}
+            </div>
           </div>
         ))}
         {isThinking && <div className="flex gap-2 mb-4"><div className="w-6 h-6 rounded-full bg-[#007acc] flex items-center justify-center"><TitanAgentIcon size={14} /></div><div className="text-[13px] text-[#808080] animate-pulse">Thinking...</div></div>}
-        <div ref={chatEndRef} />
+        <div ref={(node) => { chatEndRef.current = node; }} />
       </div>
       <div className="border-t border-[#3c3c3c] shrink-0">
         {/* Pending Diff Banner */}
@@ -2074,10 +2302,10 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
             {showFiles && <div className="px-3 pb-2">{currentSession.changedFiles.map((f, i) => (<div key={i} className="flex items-center gap-2 py-0.5 text-[12px]"><span style={{ color: f.color }}>{f.icon}</span><span className="text-[#cccccc]">{f.name}</span><span className="text-[#3fb950] ml-auto">+{f.additions}</span><span className="text-[#f85149]">-{f.deletions}</span></div>))}</div>}
           </div>
         )}
-        <div className="p-3">
-          <textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} placeholder="Ask anything..." rows={2}
-            className="w-full bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none focus:border-[#007acc] resize-none" />
-          <div className="flex items-center justify-between mt-2">
+        <div className="p-2.5">
+          <textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} placeholder="Message Titan Agent..." rows={1}
+            className="w-full max-h-[96px] bg-[#252526] border border-[#3c3c3c] rounded-md px-2.5 py-2 text-[12px] text-[#e0e0e0] placeholder-[#666] focus:outline-none focus:border-[#007acc] resize-none leading-5" />
+          <div className="flex items-center justify-between mt-1.5">
             <span className="text-[12px] text-[#808080] flex items-center gap-1"><span className="w-1.5 h-1.5 bg-[#3fb950] rounded-full"></span>{activeModel}</span>
             <button onClick={onSend} disabled={!chatInput.trim()} className={`w-[28px] h-[28px] flex items-center justify-center rounded-full ${chatInput.trim() ? 'bg-[#007acc] hover:bg-[#0098ff] text-white' : 'bg-[#3c3c3c] text-[#555]'}`}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>

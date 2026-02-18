@@ -1,370 +1,589 @@
 /**
- * Project Midnight API Routes
- * /api/midnight - Main status and control endpoint
- * Connects to the @titan/midnight backend service
+ * Project Midnight API Route (Sidecar Proxy)
+ * Spawns and proxies requests to the standalone Midnight sidecar over IPC.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import { existsSync } from 'fs';
+import { createConnection, type Socket } from 'net';
+import { join, resolve } from 'path';
 
-// Queue item type
-interface QueueProject {
+export const dynamic = 'force-dynamic';
+
+type QueueProject = {
   id: string;
   name: string;
   path: string;
-  status: 'queued' | 'building' | 'completed' | 'failed';
+  status: 'queued' | 'loading' | 'planning' | 'building' | 'verifying' | 'completed' | 'failed' | 'paused' | 'cooldown';
   priority: number;
-  progress?: number;
   addedAt: number;
-}
-
-// Runtime state - persisted per-process (in production, use IPC to daemon)
-const midnightState = {
-  running: false,
-  currentProject: null as { id: string; name: string; path: string; currentTask?: string } | null,
-  queue: [] as QueueProject[],
-  queueLength: 0,
-  confidenceScore: 100,
-  confidenceStatus: 'healthy' as 'healthy' | 'warning' | 'error',
-  uptime: 0,
-  tasksCompleted: 0,
-  tasksFailed: 0,
-  tasksInProgress: 0,
-  trustLevel: 1 as 1 | 2 | 3,
-  startTime: 0,
-  actorLogs: [] as string[],
-  sentinelLogs: [] as string[],
-  lastVerdict: null as { qualityScore: number; passed: boolean; message: string } | null,
-  lastError: null as string | null,
 };
 
-// Simulated execution loop
-let executionInterval: ReturnType<typeof setInterval> | null = null;
+type RuntimeCache = {
+  running: boolean;
+  trustLevel: 1 | 2 | 3;
+  workerModel: string;
+  actorLogs: string[];
+  sentinelLogs: string[];
+  lastVerdict: { qualityScore: number; passed: boolean; message: string } | null;
+  sandboxStatus: 'kata' | 'docker' | 'native' | 'unknown';
+  subscribed: boolean;
+};
 
-function startExecution() {
-  if (executionInterval) return;
-  
-  executionInterval = setInterval(() => {
-    if (!midnightState.running) return;
-    
-    // Simulate Actor activity
-    midnightState.actorLogs.push(`[${new Date().toISOString()}] Actor: Analyzing codebase...`);
-    if (midnightState.actorLogs.length > 100) midnightState.actorLogs.shift();
-    
-    // Simulate confidence fluctuation
-    const delta = Math.random() > 0.7 ? -2 : 1;
-    midnightState.confidenceScore = Math.max(60, Math.min(100, midnightState.confidenceScore + delta));
-    
-    if (midnightState.confidenceScore >= 85) {
-      midnightState.confidenceStatus = 'healthy';
-    } else if (midnightState.confidenceScore >= 70) {
-      midnightState.confidenceStatus = 'warning';
-    } else {
-      midnightState.confidenceStatus = 'error';
-    }
-    
-    // Simulate Sentinel verification periodically
-    if (Math.random() > 0.8) {
-      const passed = Math.random() > 0.3;
-      const qualityScore = passed ? 85 + Math.floor(Math.random() * 15) : 60 + Math.floor(Math.random() * 20);
-      
-      midnightState.lastVerdict = {
-        qualityScore,
-        passed,
-        message: passed 
-          ? 'Implementation meets quality standards' 
-          : 'Quality score below threshold. Reverting and re-attempting.',
+type IPCRequest = Record<string, unknown> & { type: string };
+type IPCResponse = Record<string, unknown> & { type?: string; message?: string };
+type MidnightEvent = {
+  type: string;
+  project?: { name?: string };
+  task?: { description?: string };
+  verdict?: { qualityScore: number; passed: boolean; correctionDirective?: string | null };
+  reason?: string;
+  toHash?: string;
+  snapshot?: { id?: string };
+};
+
+class IPCClient {
+  private socketPath: string;
+  private socket: Socket | null = null;
+  private buffer = '';
+  private pending: Array<{ resolve: (value: IPCResponse) => void; reject: (reason: Error) => void }> = [];
+  private eventCallback: ((event: IPCResponse) => void) | null = null;
+
+  constructor(socketPath: string) {
+    this.socketPath = normalizeSocketPath(socketPath);
+  }
+
+  async connect(): Promise<void> {
+    if (this.socket) return;
+
+    this.socket = createConnection(this.socketPath);
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      const onConnect = () => {
+        this.socket?.off('error', onError);
+        this.setupDataHandler();
+        resolvePromise();
       };
-      
-      midnightState.sentinelLogs.push(
-        `[${new Date().toISOString()}] Sentinel: Verdict - ${passed ? 'PASSED' : 'FAILED'} (${qualityScore}/100)`
-      );
-      if (midnightState.sentinelLogs.length > 100) midnightState.sentinelLogs.shift();
-      
-      if (passed) {
-        midnightState.tasksCompleted++;
-        
-        // AUTO-HANDOFF: When project passes, close it and start next in queue
-        if (midnightState.currentProject) {
-          midnightState.actorLogs.push(
-            `[${new Date().toISOString()}] Actor: ✓ Project "${midnightState.currentProject.name}" COMPLETED - Closing worktree`
-          );
-          midnightState.sentinelLogs.push(
-            `[${new Date().toISOString()}] Sentinel: ✓ APPROVED - Moving to next project in queue`
-          );
-          
-          // Close current project and initialize next
-          if (midnightState.queue.length > 0) {
-            // Mark current project as completed
-            const currentIdx = midnightState.queue.findIndex(p => p.id === midnightState.currentProject?.id);
-            if (currentIdx >= 0) {
-              midnightState.queue[currentIdx].status = 'completed';
-            }
-            
-            // Find next queued project
-            const nextProject = midnightState.queue.find(p => p.status === 'queued');
-            if (nextProject) {
-              nextProject.status = 'building';
-              midnightState.currentProject = {
-                id: nextProject.id,
-                name: nextProject.name,
-                path: nextProject.path,
-                currentTask: 'Initializing...',
-              };
-              midnightState.actorLogs.push(
-                `[${new Date().toISOString()}] Actor: 🚀 AUTO-HANDOFF - Starting project "${nextProject.name}"`
-              );
-            } else {
-              // No more projects in queue
-              midnightState.actorLogs.push(
-                `[${new Date().toISOString()}] Actor: 🎉 ALL PROJECTS COMPLETED - Queue empty`
-              );
-              midnightState.currentProject = null;
-            }
-          }
-        }
-      } else {
-        midnightState.tasksFailed++;
-        midnightState.sentinelLogs.push(
-          `[${new Date().toISOString()}] Sentinel: REVERTING worktree to last verified hash`
-        );
-        midnightState.actorLogs.push(
-          `[${new Date().toISOString()}] Actor: 🔄 REDLINE PROTOCOL - Reverting and re-attempting task`
-        );
-      }
-    }
-  }, 2000);
-}
+      const onError = (error: Error) => {
+        this.socket?.off('connect', onConnect);
+        this.socket = null;
+        rejectPromise(error);
+      };
+      this.socket?.once('connect', onConnect);
+      this.socket?.once('error', onError);
+    });
+  }
 
-function stopExecution() {
-  if (executionInterval) {
-    clearInterval(executionInterval);
-    executionInterval = null;
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.destroy();
+      this.socket = null;
+    }
+    this.pending = [];
+    this.buffer = '';
+  }
+
+  async request(payload: IPCRequest): Promise<IPCResponse> {
+    if (!this.socket) {
+      throw new Error('IPC client is not connected');
+    }
+
+    return new Promise<IPCResponse>((resolvePromise, rejectPromise) => {
+      this.pending.push({ resolve: resolvePromise, reject: rejectPromise });
+      this.socket?.write(`${JSON.stringify(payload)}\n`, error => {
+        if (error) {
+          const pending = this.pending.shift();
+          pending?.reject(error);
+        }
+      });
+    });
+  }
+
+  async subscribe(callback: (event: IPCResponse) => void): Promise<void> {
+    this.eventCallback = callback;
+    await this.request({ type: 'subscribe_events' });
+  }
+
+  private setupDataHandler(): void {
+    if (!this.socket) return;
+
+    this.socket.on('data', chunk => {
+      this.buffer += chunk.toString();
+      const lines = this.buffer.split('\n');
+      this.buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const parsed = JSON.parse(line) as IPCResponse;
+          if (parsed.type === 'event' && this.eventCallback) {
+            this.eventCallback(parsed);
+          } else {
+            const pending = this.pending.shift();
+            pending?.resolve(parsed);
+          }
+        } catch {
+          // Ignore malformed IPC payloads.
+        }
+      }
+    });
+
+    this.socket.on('error', error => {
+      while (this.pending.length > 0) {
+        const pending = this.pending.shift();
+        pending?.reject(error);
+      }
+    });
   }
 }
 
-/**
- * GET /api/midnight - Get current status
- */
-export async function GET() {
-  const uptime = midnightState.running 
-    ? Date.now() - midnightState.startTime 
-    : 0;
-
-  return NextResponse.json({
-    ...midnightState,
-    uptime,
-  });
+function normalizeSocketPath(value: string): string {
+  if (process.platform === 'win32') {
+    return `\\\\.\\pipe\\${value.replace(/[/\\:]/g, '_')}`;
+  }
+  return value;
 }
 
-/**
- * POST /api/midnight - Control commands (start, stop, pause, resume)
- */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolvePromise => setTimeout(resolvePromise, ms));
+}
+
+function resolveAppRoot(): string {
+  const cwd = process.cwd();
+  const isAppRoot = existsSync(resolve(cwd, 'src', 'app'));
+  if (isAppRoot) return cwd;
+  return resolve(cwd, 'apps', 'web');
+}
+
+function resolveWorkspaceRoot(appRoot: string): string {
+  const candidate = resolve(appRoot, '..', '..');
+  return existsSync(resolve(candidate, 'packages')) ? candidate : process.cwd();
+}
+
+function resolveSidecarEntry(appRoot: string, workspaceRoot: string): string {
+  const candidates = [
+    resolve(workspaceRoot, 'packages', 'midnight', 'src', 'service', 'sidecar-entry.ts'),
+    resolve(appRoot, '..', '..', 'packages', 'midnight', 'src', 'service', 'sidecar-entry.ts'),
+    resolve(process.cwd(), '..', '..', 'packages', 'midnight', 'src', 'service', 'sidecar-entry.ts'),
+  ];
+  const found = candidates.find(p => existsSync(p));
+  if (!found) {
+    throw new Error('Could not resolve Midnight sidecar entry script');
+  }
+  return found;
+}
+
+const appRoot = resolveAppRoot();
+const workspaceRoot = resolveWorkspaceRoot(appRoot);
+const titanDir = resolve(workspaceRoot, '.titan');
+const socketPath = process.env.MIDNIGHT_SOCKET_PATH || join(titanDir, 'midnight.sock');
+const dbPath = process.env.MIDNIGHT_DB_PATH || join(titanDir, 'midnight.db');
+
+let sidecarProcess: ChildProcessWithoutNullStreams | null = null;
+let ipcClient: IPCClient | null = null;
+let connectingPromise: Promise<IPCClient> | null = null;
+let spawnPromise: Promise<void> | null = null;
+
+const runtimeCache: RuntimeCache = {
+  running: false,
+  trustLevel: 1,
+  workerModel: 'openai/gpt-5.3',
+  actorLogs: [],
+  sentinelLogs: [],
+  lastVerdict: null,
+  sandboxStatus: 'unknown',
+  subscribed: false,
+};
+
+function appendLog(kind: 'actor' | 'sentinel', line: string): void {
+  const bucket = kind === 'actor' ? runtimeCache.actorLogs : runtimeCache.sentinelLogs;
+  bucket.push(`[${new Date().toISOString()}] ${line}`);
+  if (bucket.length > 500) bucket.splice(0, bucket.length - 500);
+}
+
+function handleEvent(eventResponse: IPCResponse): void {
+  const event = eventResponse.event as MidnightEvent | undefined;
+  if (!event) return;
+
+  const stamp = new Date().toISOString();
+  switch (event.type) {
+    case 'project_started':
+      appendLog('actor', `Actor: Started ${event.project?.name || 'project'}`);
+      break;
+    case 'project_completed':
+      appendLog('actor', `Actor: Completed ${event.project?.name || 'project'}`);
+      break;
+    case 'project_failed':
+      appendLog('actor', `Actor: Failed ${event.project?.name || 'project'} (${event.reason || 'unknown'})`);
+      break;
+    case 'task_started':
+      appendLog('actor', `Actor: Task started "${event.task?.description || 'task'}"`);
+      break;
+    case 'task_completed':
+      appendLog('actor', `Actor: Task completed "${event.task?.description || 'task'}"`);
+      break;
+    case 'sentinel_verdict':
+      if (event.verdict) {
+        runtimeCache.lastVerdict = {
+          qualityScore: event.verdict.qualityScore,
+          passed: event.verdict.passed,
+          message:
+            event.verdict.correctionDirective ||
+            (event.verdict.passed ? 'Sentinel approved change' : 'Sentinel rejected change'),
+        };
+        runtimeCache.sentinelLogs.push(
+          `[${stamp}] Sentinel: ${event.verdict.passed ? 'PASSED' : 'FAILED'} (${event.verdict.qualityScore}/100)`
+        );
+      }
+      break;
+    case 'sentinel_veto':
+      appendLog('sentinel', `Sentinel: VETO ${event.reason || ''}`.trim());
+      break;
+    case 'worktree_reverted':
+      appendLog('sentinel', `Sentinel: Reverted worktree ${event.toHash || ''}`.trim());
+      break;
+    case 'snapshot_created':
+      appendLog('actor', `State: Snapshot created ${event.snapshot?.id || ''}`.trim());
+      break;
+  }
+
+  runtimeCache.actorLogs = runtimeCache.actorLogs.slice(-500);
+  runtimeCache.sentinelLogs = runtimeCache.sentinelLogs.slice(-500);
+}
+
+async function ensureSidecarSpawned(): Promise<void> {
+  if (sidecarProcess && !sidecarProcess.killed) {
+    return;
+  }
+  if (spawnPromise) {
+    return spawnPromise;
+  }
+
+  spawnPromise = (async () => {
+    // Reuse an already-running sidecar if the socket is live.
+    try {
+      const existing = new IPCClient(socketPath);
+      await existing.connect();
+      await existing.request({ type: 'status' });
+      ipcClient = existing;
+      return;
+    } catch {
+      // No existing sidecar reachable, spawn a new one.
+      ipcClient?.disconnect();
+      ipcClient = null;
+    }
+
+    const sidecarEntry = resolveSidecarEntry(appRoot, workspaceRoot);
+    const env = {
+      ...process.env,
+      MIDNIGHT_WORKSPACE_ROOT: workspaceRoot,
+      MIDNIGHT_SOCKET_PATH: socketPath,
+      MIDNIGHT_DB_PATH: dbPath,
+      MIDNIGHT_NODE_MODULES: resolve(appRoot, 'node_modules'),
+    };
+
+    sidecarProcess = spawn(process.execPath, ['--import', 'tsx', sidecarEntry], {
+      cwd: appRoot,
+      env,
+      stdio: 'pipe',
+    });
+
+    sidecarProcess.stdout.on('data', data => {
+      appendLog('actor', `Sidecar: ${String(data).trim()}`);
+    });
+
+    sidecarProcess.stderr.on('data', data => {
+      appendLog('actor', `Sidecar stderr: ${String(data).trim()}`);
+    });
+
+    sidecarProcess.on('exit', (code, signal) => {
+      appendLog('actor', `Sidecar exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
+      sidecarProcess = null;
+      runtimeCache.running = false;
+      runtimeCache.subscribed = false;
+      ipcClient?.disconnect();
+      ipcClient = null;
+      connectingPromise = null;
+    });
+  })().finally(() => {
+    spawnPromise = null;
+  });
+
+  return spawnPromise;
+}
+
+async function getClient(): Promise<IPCClient> {
+  if (ipcClient) return ipcClient;
+  if (connectingPromise) return connectingPromise;
+
+  connectingPromise = (async () => {
+    const client = new IPCClient(socketPath);
+    await client.connect();
+    ipcClient = client;
+    connectingPromise = null;
+    return client;
+  })().catch(error => {
+    connectingPromise = null;
+    throw error;
+  });
+
+  return connectingPromise;
+}
+
+async function ensureSubscribed(): Promise<void> {
+  if (runtimeCache.subscribed) return;
+  const client = await getClient();
+  await client.subscribe(handleEvent);
+  runtimeCache.subscribed = true;
+}
+
+async function waitUntilSidecarReady(timeoutMs = 20000): Promise<void> {
+  const start = Date.now();
+  let lastError: unknown = null;
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const client = await getClient();
+      await client.request({ type: 'status' });
+      await ensureSubscribed();
+      return;
+    } catch (error) {
+      lastError = error;
+      ipcClient?.disconnect();
+      ipcClient = null;
+      await sleep(300);
+    }
+  }
+
+  throw new Error(`Timed out waiting for sidecar readiness: ${String(lastError)}`);
+}
+
+async function requestSidecar(payload: IPCRequest): Promise<IPCResponse> {
+  await ensureSidecarSpawned();
+  await waitUntilSidecarReady();
+  const client = await getClient();
+  return client.request(payload);
+}
+
+function toUIQueue(projects: any[]): QueueProject[] {
+  return [...projects]
+    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+    .map((p, idx) => ({
+      id: String(p.id),
+      name: String(p.name || p.id || 'project'),
+      path: String(p.localPath || p.path || ''),
+      status: (p.status || 'queued') as QueueProject['status'],
+      priority: idx + 1,
+      addedAt: Number(p.createdAt || Date.now()),
+    }));
+}
+
+function fallbackStatusPayload() {
+  return {
+    running: runtimeCache.running,
+    trustLevel: runtimeCache.trustLevel,
+    workerModel: runtimeCache.workerModel,
+    actorLogs: runtimeCache.actorLogs.slice(-50),
+    sentinelLogs: runtimeCache.sentinelLogs.slice(-50),
+    lastVerdict: runtimeCache.lastVerdict,
+    queue: [],
+    sandboxStatus: runtimeCache.sandboxStatus,
+    confidenceScore: 100,
+    confidenceStatus: 'healthy',
+    uptime: 0,
+    tasksCompleted: 0,
+    tasksFailed: 0,
+    queueLength: 0,
+    currentProject: null,
+  };
+}
+
+export async function GET() {
+  try {
+    if (!sidecarProcess && !ipcClient) {
+      return NextResponse.json(fallbackStatusPayload());
+    }
+
+    const response = await requestSidecar({ type: 'status' });
+    const data = (response.data as Record<string, unknown>) || {};
+    runtimeCache.running = Boolean(data.running);
+    runtimeCache.trustLevel = Number(data.trustLevel || runtimeCache.trustLevel) as 1 | 2 | 3;
+    runtimeCache.workerModel = String(data.workerModel || runtimeCache.workerModel);
+    runtimeCache.sandboxStatus = (data.sandboxStatus as RuntimeCache['sandboxStatus']) || runtimeCache.sandboxStatus;
+
+    const rawQueue = Array.isArray(data.queue) ? (data.queue as any[]) : [];
+    return NextResponse.json({
+      ...data,
+      queue: toUIQueue(rawQueue),
+      actorLogs: Array.isArray(data.actorLogs) ? data.actorLogs : runtimeCache.actorLogs.slice(-50),
+      sentinelLogs: Array.isArray(data.sentinelLogs) ? data.sentinelLogs : runtimeCache.sentinelLogs.slice(-50),
+      lastVerdict: data.lastVerdict || runtimeCache.lastVerdict,
+    });
+  } catch (error) {
+    appendLog('actor', `Proxy GET failure: ${String(error)}`);
+    return NextResponse.json(fallbackStatusPayload());
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { action, trustLevel, projectPath } = body;
+  const action = body.action as string | undefined;
+  const trustLevel = Number(body.trustLevel ?? body.trust);
+  const model = typeof body.model === 'string' ? body.model : '';
+  const projectPath = (typeof body.path === 'string' ? body.path : body.projectPath) as string | undefined;
+  const projectId = body.projectId as string | undefined;
+  const newIndex = body.newIndex as number | undefined;
 
-  switch (action) {
-    case 'start':
-      if (midnightState.running) {
-        return NextResponse.json(
-          { error: 'Project Midnight is already running' },
-          { status: 400 }
-        );
+  try {
+    switch (action) {
+      case 'setModel': {
+        if (!model) return NextResponse.json({ error: 'Model is required' }, { status: 400 });
+        runtimeCache.workerModel = model;
+        await requestSidecar({ type: 'set_model', model });
+        return NextResponse.json({ success: true, model: runtimeCache.workerModel });
       }
-      midnightState.running = true;
-      midnightState.startTime = Date.now();
-      midnightState.trustLevel = trustLevel || midnightState.trustLevel;
-      midnightState.currentProject = projectPath ? {
-        id: `project-${Date.now()}`,
-        name: projectPath.split('/').pop() || 'Unknown Project',
-        path: projectPath,
-      } : null;
-      midnightState.actorLogs = [`[${new Date().toISOString()}] Actor: Project Midnight ACTIVATED`];
-      midnightState.sentinelLogs = [`[${new Date().toISOString()}] Sentinel: Surveillance mode ENGAGED`];
-      midnightState.lastError = null;
-      startExecution();
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Project Midnight started',
-        status: midnightState,
-      });
-
-    case 'stop':
-      stopExecution();
-      
-      if (!midnightState.running) {
-        return NextResponse.json(
-          { error: 'Project Midnight is not running' },
-          { status: 400 }
-        );
+      case 'setTrustLevel': {
+        if (trustLevel !== 1 && trustLevel !== 2 && trustLevel !== 3) {
+          return NextResponse.json({ error: 'Trust level must be 1, 2, or 3' }, { status: 400 });
+        }
+        runtimeCache.trustLevel = trustLevel;
+        await requestSidecar({ type: 'set_trust', trustLevel });
+        return NextResponse.json({ success: true, message: `Trust level set to ${trustLevel}` });
       }
-      
-      midnightState.running = false;
-      midnightState.currentProject = null;
-      midnightState.actorLogs.push(`[${new Date().toISOString()}] Actor: SHUTDOWN complete`);
-      midnightState.sentinelLogs.push(`[${new Date().toISOString()}] Sentinel: Surveillance TERMINATED`);
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Project Midnight stopped',
-        finalStats: {
-          tasksCompleted: midnightState.tasksCompleted,
-          tasksFailed: midnightState.tasksFailed,
-          uptime: Date.now() - midnightState.startTime,
-        },
-      });
-
-    case 'pause':
-      if (!midnightState.running) {
-        return NextResponse.json(
-          { error: 'Project Midnight is not running' },
-          { status: 400 }
-        );
+      case 'start': {
+        const response = await requestSidecar({
+          type: 'start',
+          trustLevel: trustLevel === 1 || trustLevel === 2 || trustLevel === 3 ? trustLevel : runtimeCache.trustLevel,
+          model: model || runtimeCache.workerModel,
+          projectPath,
+        });
+        runtimeCache.running = true;
+        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight started' });
       }
-      stopExecution();
-      midnightState.actorLogs.push(`[${new Date().toISOString()}] Actor: PAUSED`);
-      midnightState.sentinelLogs.push(`[${new Date().toISOString()}] Sentinel: PAUSED`);
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Project Midnight paused',
-      });
-
-    case 'resume':
-      if (!midnightState.running) {
-        return NextResponse.json(
-          { error: 'Project Midnight is not running' },
-          { status: 400 }
-        );
+      case 'stop': {
+        const response = await requestSidecar({ type: 'stop', graceful: true });
+        runtimeCache.running = false;
+        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight stopped' });
       }
-      startExecution();
-      midnightState.actorLogs.push(`[${new Date().toISOString()}] Actor: RESUMED`);
-      midnightState.sentinelLogs.push(`[${new Date().toISOString()}] Sentinel: RESUMED`);
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Project Midnight resumed',
-      });
-
-    case 'setTrustLevel':
-      if (trustLevel < 1 || trustLevel > 3) {
-        return NextResponse.json(
-          { error: 'Trust level must be 1, 2, or 3' },
-          { status: 400 }
-        );
+      case 'pause': {
+        const response = await requestSidecar({ type: 'pause' });
+        runtimeCache.running = false;
+        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight paused' });
       }
-      midnightState.trustLevel = trustLevel;
-      midnightState.sentinelLogs.push(
-        `[${new Date().toISOString()}] Sentinel: Trust level changed to ${
-          trustLevel === 1 ? 'SUPERVISED' : trustLevel === 2 ? 'ASSISTANT' : 'PROJECT MIDNIGHT'
-        }`
-      );
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: `Trust level set to ${trustLevel}`,
-      });
-
-    case 'getLogs':
-      return NextResponse.json({
-        actorLogs: midnightState.actorLogs.slice(-50),
-        sentinelLogs: midnightState.sentinelLogs.slice(-50),
-        lastVerdict: midnightState.lastVerdict,
-      });
-
-    case 'addToQueue': {
-      const { name, path } = body;
-      if (!name || !path) {
-        return NextResponse.json(
-          { error: 'Project name and path are required' },
-          { status: 400 }
-        );
+      case 'resume': {
+        const response = await requestSidecar({ type: 'resume' });
+        runtimeCache.running = true;
+        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight resumed' });
       }
-      
-      const newProject: QueueProject = {
-        id: `project-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name,
-        path,
-        status: 'queued',
-        priority: midnightState.queue.length + 1,
-        addedAt: Date.now(),
-      };
-      
-      midnightState.queue.push(newProject);
-      midnightState.queueLength = midnightState.queue.length;
-      
-      midnightState.actorLogs.push(
-        `[${new Date().toISOString()}] Actor: Project "${name}" added to queue (position ${midnightState.queue.length})`
-      );
-      
-      return NextResponse.json({
-        success: true,
-        message: `Project added to queue`,
-        project: newProject,
-        queue: midnightState.queue,
-      });
+      case 'addToQueue': {
+        if (!projectPath) return NextResponse.json({ error: 'Project path is required' }, { status: 400 });
+        const response = await requestSidecar({ type: 'queue_add', projectPath });
+        const payload = (response.data as Record<string, unknown>) || {};
+        const queue = Array.isArray(payload.queue) ? (payload.queue as any[]) : [];
+        const project = payload.project || null;
+        return NextResponse.json({
+          success: response.type !== 'error',
+          message: response.message || 'Project added to queue',
+          project,
+          queue: toUIQueue(queue),
+        });
+      }
+      case 'removeFromQueue': {
+        if (!projectId) return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+        const response = await requestSidecar({ type: 'queue_remove', projectId });
+        const payload = (response.data as Record<string, unknown>) || {};
+        const removed = Boolean(payload.removed);
+        if (!removed) return NextResponse.json({ error: 'Project not found in queue' }, { status: 404 });
+        const queue = Array.isArray(payload.queue) ? (payload.queue as any[]) : [];
+        return NextResponse.json({
+          success: true,
+          message: 'Project removed from queue',
+          queue: toUIQueue(queue),
+        });
+      }
+      case 'reorderQueue': {
+        if (!projectId || typeof newIndex !== 'number') {
+          return NextResponse.json({ error: 'projectId and numeric newIndex are required' }, { status: 400 });
+        }
+        const response = await requestSidecar({ type: 'queue_reorder', projectId, newIndex });
+        const payload = (response.data as Record<string, unknown>) || {};
+        const queue = Array.isArray(payload.queue) ? (payload.queue as any[]) : [];
+        return NextResponse.json({
+          success: response.type !== 'error',
+          message: response.message || 'Queue reordered',
+          queue: toUIQueue(queue),
+        });
+      }
+      case 'getQueue': {
+        const response = await requestSidecar({ type: 'queue_list' });
+        const queue = Array.isArray(response.data) ? (response.data as any[]) : [];
+        return NextResponse.json({ queue: toUIQueue(queue) });
+      }
+      case 'getLogs': {
+        const response = await requestSidecar({ type: 'logs' });
+        const logs = (response.data as Record<string, unknown>) || {};
+        return NextResponse.json({
+          actorLogs: (logs.actorLogs as string[]) || runtimeCache.actorLogs.slice(-50),
+          sentinelLogs: (logs.sentinelLogs as string[]) || runtimeCache.sentinelLogs.slice(-50),
+          lastVerdict: logs.lastVerdict || runtimeCache.lastVerdict,
+        });
+      }
+      case 'health': {
+        const response = await requestSidecar({ type: 'health' });
+        const health = (response.data as Record<string, unknown>) || {};
+        return NextResponse.json({
+          healthy: response.type !== 'error',
+          ...(response.type === 'error' ? { message: response.message || 'Healthcheck failed' } : {}),
+          ...health,
+          sidecarManagedByApi: true,
+        });
+      }
+      case 'getSnapshots': {
+        const response = await requestSidecar({
+          type: 'snapshot_list',
+          ...(body.projectId ? { projectId: body.projectId } : {}),
+        });
+        const payload = (response.data as Record<string, unknown>) || {};
+        return NextResponse.json({
+          snapshots: (payload.snapshots as unknown[]) || [],
+          total: Number(payload.total ?? 0),
+        });
+      }
+      case 'createSnapshot': {
+        const projectId = body.projectId as string | undefined;
+        if (!projectId) return NextResponse.json({ error: 'projectId is required' }, { status: 400 });
+        const response = await requestSidecar({
+          type: 'snapshot_create',
+          projectId,
+          label: (body.label as string | undefined) || 'manual',
+        });
+        if (response.type === 'error') {
+          return NextResponse.json({ error: response.message || 'Snapshot creation failed' }, { status: 500 });
+        }
+        return NextResponse.json({
+          success: true,
+          snapshot: response.data || null,
+          message: response.message || 'Snapshot created',
+        });
+      }
+      case 'recoverSnapshot': {
+        const snapshotId = body.snapshotId as string | undefined;
+        if (!snapshotId) return NextResponse.json({ error: 'snapshotId is required' }, { status: 400 });
+        const response = await requestSidecar({ type: 'snapshot_recover', snapshotId });
+        if (response.type === 'error') {
+          return NextResponse.json({ error: response.message || 'Recovery failed', recovery: response.data || null }, { status: 500 });
+        }
+        return NextResponse.json({
+          success: true,
+          message: response.message || 'Recovery initiated',
+          recovery: response.data || null,
+        });
+      }
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
-
-    case 'removeFromQueue': {
-      const { projectId } = body;
-      const index = midnightState.queue.findIndex(p => p.id === projectId);
-      
-      if (index === -1) {
-        return NextResponse.json(
-          { error: 'Project not found in queue' },
-          { status: 404 }
-        );
-      }
-      
-      const removed = midnightState.queue.splice(index, 1)[0];
-      midnightState.queueLength = midnightState.queue.length;
-      
-      // Re-assign priorities
-      midnightState.queue.forEach((p, i) => { p.priority = i + 1; });
-      
-      return NextResponse.json({
-        success: true,
-        message: `Project "${removed.name}" removed from queue`,
-        queue: midnightState.queue,
-      });
-    }
-
-    case 'reorderQueue': {
-      const { projectId, newIndex } = body;
-      const oldIndex = midnightState.queue.findIndex(p => p.id === projectId);
-      
-      if (oldIndex === -1) {
-        return NextResponse.json(
-          { error: 'Project not found in queue' },
-          { status: 404 }
-        );
-      }
-      
-      const [project] = midnightState.queue.splice(oldIndex, 1);
-      midnightState.queue.splice(newIndex, 0, project);
-      
-      // Re-assign priorities
-      midnightState.queue.forEach((p, i) => { p.priority = i + 1; });
-      
-      return NextResponse.json({
-        success: true,
-        message: `Queue reordered`,
-        queue: midnightState.queue,
-      });
-    }
-
-    case 'getQueue':
-      return NextResponse.json({
-        queue: midnightState.queue,
-        queueLength: midnightState.queue.length,
-        currentProject: midnightState.currentProject,
-      });
-
-    default:
-      return NextResponse.json(
-        { error: `Unknown action: ${action}` },
-        { status: 400 }
-      );
+  } catch (error) {
+    appendLog('actor', `Proxy POST failure (${action || 'unknown'}): ${String(error)}`);
+    return NextResponse.json({ error: `Midnight sidecar error: ${String(error)}` }, { status: 500 });
   }
 }

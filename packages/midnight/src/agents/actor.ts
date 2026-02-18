@@ -11,7 +11,7 @@ import type {
   TaskMetrics,
   AgentMessage,
 } from '../types.js';
-import { ACTOR_SYSTEM_PROMPT, generateActorTaskPrompt } from './prompts.js';
+import { ACTOR_SYSTEM_PROMPT, generateActorTaskPrompt } from './prompts';
 
 export interface ActorConfig {
   model: string;

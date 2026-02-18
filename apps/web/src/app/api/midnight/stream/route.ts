@@ -1,68 +1,113 @@
-/**
- * Project Midnight SSE Stream
- * /api/midnight/stream - Real-time event streaming
- */
-
 import { NextRequest } from 'next/server';
 
-// Event generator for SSE
-function* generateEvents() {
-  let counter = 0;
-  const events = [
-    { type: 'actor_log', data: { message: 'Picking task: Build authentication module' } },
-    { type: 'actor_log', data: { message: 'Reading requirements from definition_of_done.md...' } },
-    { type: 'actor_log', data: { message: 'Writing src/auth/login.ts...' } },
-    { type: 'sentinel_log', data: { message: 'Analyzing git diff...' } },
-    { type: 'sentinel_log', data: { message: 'Running Slop Penalty Matrix...' } },
-    { type: 'verdict', data: { score: 92, passed: true } },
-    { type: 'confidence_update', data: { score: 95, status: 'healthy' } },
-    { type: 'task_completed', data: { taskId: 'task-1', message: 'Authentication module complete' } },
-  ];
+type MidnightStatus = {
+  running?: boolean;
+  confidenceScore?: number;
+  confidenceStatus?: string;
+};
 
-  while (true) {
-    yield events[counter % events.length];
-    counter++;
-  }
+type MidnightLogs = {
+  actorLogs?: string[];
+  sentinelLogs?: string[];
+  lastVerdict?: { qualityScore: number; passed: boolean; message?: string } | null;
+};
+
+function getBaseUrl(request: NextRequest): string {
+  const url = new URL(request.url);
+  return `${url.protocol}//${url.host}`;
 }
-
-const eventGen = generateEvents();
 
 /**
  * GET /api/midnight/stream - SSE stream of events
  */
 export async function GET(request: NextRequest) {
   const encoder = new TextEncoder();
+  const baseUrl = getBaseUrl(request);
   
   const stream = new ReadableStream({
     start(controller) {
-      // Initial connection event
-      controller.enqueue(
-        encoder.encode(`event: connected\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`)
-      );
+      let stopped = false;
+      const seenActor = new Set<string>();
+      const seenSentinel = new Set<string>();
+      let lastVerdictKey = '';
 
-      // Send heartbeat and events
-      const heartbeatInterval = setInterval(() => {
+      const emit = (event: string, data: unknown) => {
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      };
+
+      emit('connected', { timestamp: Date.now() });
+
+      const tick = async () => {
+        if (stopped) return;
         try {
-          // Send heartbeat
-          controller.enqueue(
-            encoder.encode(`: heartbeat ${Date.now()}\n\n`)
-          );
-          
-          // Send a mock event
-          const event = eventGen.next().value;
-          if (event) {
-            controller.enqueue(
-              encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`)
-            );
+          const [statusRes, logsRes] = await Promise.all([
+            fetch(`${baseUrl}/api/midnight`, { cache: 'no-store' }),
+            fetch(`${baseUrl}/api/midnight`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'getLogs' }),
+              cache: 'no-store',
+            }),
+          ]);
+
+          if (statusRes.ok) {
+            const status = (await statusRes.json()) as MidnightStatus;
+            emit('confidence_update', {
+              score: status.confidenceScore ?? 100,
+              status: status.confidenceStatus ?? 'healthy',
+              running: Boolean(status.running),
+            });
+          }
+
+          if (logsRes.ok) {
+            const logs = (await logsRes.json()) as MidnightLogs;
+
+            for (const line of logs.actorLogs || []) {
+              if (!seenActor.has(line)) {
+                seenActor.add(line);
+                emit('actor_log', { message: line });
+              }
+            }
+
+            for (const line of logs.sentinelLogs || []) {
+              if (!seenSentinel.has(line)) {
+                seenSentinel.add(line);
+                emit('sentinel_log', { message: line });
+              }
+            }
+
+            if (logs.lastVerdict) {
+              const verdictKey = `${logs.lastVerdict.qualityScore}:${logs.lastVerdict.passed}:${logs.lastVerdict.message || ''}`;
+              if (verdictKey !== lastVerdictKey) {
+                lastVerdictKey = verdictKey;
+                emit('verdict', {
+                  score: logs.lastVerdict.qualityScore,
+                  passed: logs.lastVerdict.passed,
+                  message: logs.lastVerdict.message || '',
+                });
+              }
+            }
           }
         } catch {
-          clearInterval(heartbeatInterval);
-          controller.close();
+          emit('error', { message: 'stream polling failed' });
         }
+      };
+
+      const loopInterval = setInterval(() => {
+        void tick();
       }, 2000);
 
-      // Handle client disconnect
+      const heartbeatInterval = setInterval(() => {
+        if (!stopped) {
+          controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
+        }
+      }, 5000);
+
+      void tick();
+
       request.signal.addEventListener('abort', () => {
+        stopped = true;
+        clearInterval(loopInterval);
         clearInterval(heartbeatInterval);
         controller.close();
       });

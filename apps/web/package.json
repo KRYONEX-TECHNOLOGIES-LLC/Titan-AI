@@ -6,18 +6,25 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "midnight:supervisor": "node ./scripts/midnight-supervisor.mjs",
+    "midnight:pm2:start": "pm2 start ./ecosystem.midnight.cjs",
+    "midnight:pm2:restart": "pm2 restart titan-midnight-supervisor",
+    "midnight:pm2:stop": "pm2 stop titan-midnight-supervisor && pm2 delete titan-midnight-supervisor"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "@webcontainer/api": "^1.3.0",
+    "better-sqlite3": "^12.6.2",
+    "clsx": "^2.0.0",
+    "monaco-editor": "^0.50.0",
     "next": "15.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@webcontainer/api": "^1.3.0",
-    "monaco-editor": "^0.50.0",
-    "@monaco-editor/react": "^4.6.0",
-    "zustand": "^4.5.0",
-    "clsx": "^2.0.0",
-    "tailwind-merge": "^2.0.0"
+    "simple-git": "^3.31.1",
+    "tailwind-merge": "^2.0.0",
+    "tsx": "^4.21.0",
+    "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

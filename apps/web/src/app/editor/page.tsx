@@ -4,11 +4,13 @@
 'use client';
 
 import { Suspense } from 'react';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import { EditorLoading } from '@/components/editor-loading';
 
+export const dynamic = 'force-dynamic';
+
 // Dynamically import the editor to avoid SSR issues with Monaco
-const EditorWorkspace = dynamic(
+const EditorWorkspace = nextDynamic(
   () => import('@/components/editor-workspace').then((mod) => mod.EditorWorkspace),
   {
     ssr: false,

@@ -105,7 +105,12 @@ export function ThemeProvider({
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+    // Fallback keeps editor/runtime usable even if provider is intentionally disabled.
+    return {
+      theme: 'titan-dark' as Theme,
+      setTheme: () => {},
+      resolvedTheme: 'dark' as const,
+    };
   }
   return context;
 }

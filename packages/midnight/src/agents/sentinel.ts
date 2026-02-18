@@ -13,8 +13,8 @@ import {
   SENTINEL_ELITE_SYSTEM_PROMPT,
   generateSentinelVerificationPrompt,
   parseSentinelVerdict,
-} from './prompts.js';
-import CryptoJS from 'crypto-js';
+} from './prompts';
+import { createHash } from 'crypto';
 
 export interface SentinelConfig {
   model: string;
@@ -200,8 +200,7 @@ If they ignored your correction directive, add -30 for "Ignoring Feedback" and V
    * Compute Merkle hash for verification
    */
   private computeMerkleHash(gitDiff: string): string {
-    const hash = CryptoJS.SHA256(gitDiff);
-    return hash.toString(CryptoJS.enc.Hex).slice(0, 16);
+    return createHash('sha256').update(gitDiff).digest('hex').slice(0, 16);
   }
 
   /**

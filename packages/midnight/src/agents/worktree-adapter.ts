@@ -4,6 +4,7 @@
  */
 
 import type { WorktreeManager } from './agent-loop.js';
+import { execFile } from 'child_process';
 
 /**
  * WorkspaceBrancher interface from @titan/shadow
@@ -118,13 +119,10 @@ export class WorktreeAdapter implements WorktreeManager {
    * Get git diff for a worktree
    */
   async getGitDiff(worktreePath: string): Promise<string> {
-    const { simpleGit } = await import('simple-git');
-    const git = simpleGit(worktreePath);
-
     try {
       // Get both staged and unstaged diff
-      const staged = await git.diff(['--staged']);
-      const unstaged = await git.diff();
+      const staged = await this.runGit(worktreePath, ['diff', '--staged']);
+      const unstaged = await this.runGit(worktreePath, ['diff']);
       
       return `${staged}\n${unstaged}`.trim() || '(no changes)';
     } catch (error) {
@@ -136,14 +134,11 @@ export class WorktreeAdapter implements WorktreeManager {
    * Revert worktree to a specific hash
    */
   async revert(worktreePath: string, toHash: string): Promise<void> {
-    const { simpleGit } = await import('simple-git');
-    const git = simpleGit(worktreePath);
-
     try {
       // Hard reset to the specified hash
-      await git.reset(['--hard', toHash]);
+      await this.runGit(worktreePath, ['reset', '--hard', toHash]);
       // Clean untracked files
-      await git.clean('fd');
+      await this.runGit(worktreePath, ['clean', '-fd']);
     } catch (error) {
       console.error('Failed to revert worktree:', error);
       throw error;
@@ -178,19 +173,15 @@ export class WorktreeAdapter implements WorktreeManager {
    * Manual merge fallback
    */
   private async manualMerge(worktreePath: string, targetBranch: string): Promise<void> {
-    const { simpleGit } = await import('simple-git');
-    const git = simpleGit(worktreePath);
-
-    const status = await git.status();
-    const currentBranch = status.current;
+    const currentBranch = (await this.runGit(worktreePath, ['branch', '--show-current'])).trim();
 
     if (!currentBranch) {
       throw new Error('Cannot determine current branch');
     }
 
     // Switch to target and merge
-    await git.checkout(targetBranch);
-    await git.merge([currentBranch]);
+    await this.runGit(worktreePath, ['checkout', targetBranch]);
+    await this.runGit(worktreePath, ['merge', currentBranch]);
   }
 
   /**
@@ -218,11 +209,8 @@ export class WorktreeAdapter implements WorktreeManager {
    * Manual worktree deletion fallback
    */
   private async manualDeleteWorktree(worktreePath: string): Promise<void> {
-    const { simpleGit } = await import('simple-git');
-    const git = simpleGit(this.basePath);
-
     try {
-      await git.raw(['worktree', 'remove', worktreePath, '--force']);
+      await this.runGit(this.basePath, ['worktree', 'remove', worktreePath, '--force']);
     } catch (error) {
       console.warn('Manual worktree deletion failed:', error);
     }
@@ -234,15 +222,23 @@ export class WorktreeAdapter implements WorktreeManager {
    * Get current git hash
    */
   private async getCurrentHash(worktreePath: string): Promise<string> {
-    const { simpleGit } = await import('simple-git');
-    const git = simpleGit(worktreePath);
-
     try {
-      const log = await git.log({ maxCount: 1 });
-      return log.latest?.hash || 'HEAD';
+      return (await this.runGit(worktreePath, ['rev-parse', 'HEAD'])).trim() || 'HEAD';
     } catch {
       return 'HEAD';
     }
+  }
+
+  private async runGit(cwd: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile('git', args, { cwd }, (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(stderr || error.message));
+          return;
+        }
+        resolve((stdout || '').toString());
+      });
+    });
   }
 
   /**

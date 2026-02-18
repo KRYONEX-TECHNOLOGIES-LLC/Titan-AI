@@ -4,8 +4,9 @@
 
 import type Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import type {
   QueuedProject,
   ProjectDNA,
@@ -16,6 +17,23 @@ import type {
 import type { QueueOperations, QueueStats } from './queue-types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const requireNative = createRequire(import.meta.url);
+
+function loadBetterSqlite3() {
+  try {
+    return requireNative('better-sqlite3');
+  } catch {
+    // Sidecar can run from app workspace where node_modules is not an ancestor of packages/midnight.
+    const envNodeModules = process.env.MIDNIGHT_NODE_MODULES;
+    if (envNodeModules) {
+      const envRequire = createRequire(resolve(envNodeModules, 'package.json'));
+      return envRequire('better-sqlite3');
+    }
+
+    const cwdRequire = createRequire(resolve(process.cwd(), 'package.json'));
+    return cwdRequire('better-sqlite3');
+  }
+}
 
 export class ProjectQueue implements QueueOperations {
   private db: Database.Database;
@@ -23,9 +41,12 @@ export class ProjectQueue implements QueueOperations {
 
   constructor(dbPath: string) {
     // Dynamic import for better-sqlite3 (native module)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const BetterSqlite3 = require('better-sqlite3');
-    this.db = new BetterSqlite3(dbPath);
+    const BetterSqlite3 = loadBetterSqlite3();
+    const normalizedPath = typeof dbPath === 'string' ? dbPath : String(dbPath ?? '');
+    if (!normalizedPath) {
+      throw new Error('ProjectQueue requires a valid dbPath');
+    }
+    this.db = new BetterSqlite3(normalizedPath);
     this.db.pragma('journal_mode = WAL');
   }
 
