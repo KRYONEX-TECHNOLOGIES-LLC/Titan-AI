@@ -67,9 +67,11 @@ export const authConfig: NextAuthConfig = {
     session({ session, token }) {
       if (token) {
         session.user.id = token.sub ?? '';
-        (session.user as Record<string, unknown>).username = token.username ?? '';
-        (session.user as Record<string, unknown>).githubToken = token.githubToken ?? '';
-        (session.user as Record<string, unknown>).avatarUrl = token.avatarUrl ?? session.user.image ?? '';
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const user = session.user as any;
+        user.username = token.username ?? '';
+        user.githubToken = token.githubToken ?? '';
+        user.avatarUrl = token.avatarUrl ?? session.user.image ?? '';
       }
       return session;
     },
