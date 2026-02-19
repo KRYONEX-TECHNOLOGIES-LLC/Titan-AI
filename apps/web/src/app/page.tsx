@@ -459,62 +459,117 @@ interface ModelInfo {
     }
   };
 
+  /* ═══ LOADING STATE FOR FILE OPS ═══ */
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+
   /* ═══ OPEN FOLDER — File System Access API ═══ */
   const openFolder = useCallback(async () => {
-    try {
-      if (!('showDirectoryPicker' in window)) {
-        alert('Your browser does not support opening folders. Use Chrome or Edge.');
-        return;
-      }
-      const dirHandle = await (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
-      const newFiles: Record<string, string> = {};
-      const newTabs: FileTab[] = [];
+    // Check browser support
+    if (!('showDirectoryPicker' in window)) {
+      alert('Your browser does not support opening folders.\n\nPlease use Chrome, Edge, or another Chromium-based browser.');
+      return;
+    }
 
-      async function readDir(handle: FileSystemDirectoryHandle, prefix = '') {
-        for await (const [name, entry] of (handle as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
-          if (name.startsWith('.') || name === 'node_modules' || name === '__pycache__' || name === '.git') continue;
-          const path = prefix ? `${prefix}/${name}` : name;
-          if (entry.kind === 'file') {
-            try {
-              const file = await (entry as FileSystemFileHandle).getFile();
-              if (file.size > 500_000) continue;
-              const text = await file.text();
-              newFiles[path] = text;
-            } catch { /* skip unreadable */ }
-          } else if (entry.kind === 'directory') {
-            await readDir(entry as FileSystemDirectoryHandle, path);
+    try {
+      // Show folder picker dialog
+      const dirHandle = await (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
+      
+      setIsLoadingFiles(true);
+      setLoadingMessage('Reading folder contents...');
+      
+      const newFiles: Record<string, string> = {};
+      let fileCount = 0;
+      const MAX_FILES = 500;
+      const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.next', 'dist', 'build', '.cache', 'coverage', '.vscode', '.idea']);
+      const SKIP_EXTENSIONS = new Set(['exe', 'dll', 'so', 'dylib', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'wav', 'avi', 'mov', 'pdf', 'zip', 'tar', 'gz', 'rar', '7z']);
+
+      async function readDir(handle: FileSystemDirectoryHandle, prefix = ''): Promise<void> {
+        if (fileCount >= MAX_FILES) return;
+        
+        try {
+          for await (const [name, entry] of (handle as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
+            if (fileCount >= MAX_FILES) break;
+            if (name.startsWith('.') && name !== '.env' && name !== '.gitignore') continue;
+            if (SKIP_DIRS.has(name)) continue;
+            
+            const path = prefix ? `${prefix}/${name}` : name;
+            
+            if (entry.kind === 'file') {
+              const ext = name.split('.').pop()?.toLowerCase() || '';
+              if (SKIP_EXTENSIONS.has(ext)) continue;
+              
+              try {
+                const file = await (entry as FileSystemFileHandle).getFile();
+                if (file.size > 500_000) continue;
+                const text = await file.text();
+                newFiles[path] = text;
+                fileCount++;
+                if (fileCount % 20 === 0) {
+                  setLoadingMessage(`Reading files... (${fileCount} files)`);
+                }
+              } catch { /* skip unreadable */ }
+            } else if (entry.kind === 'directory') {
+              await readDir(entry as FileSystemDirectoryHandle, path);
+            }
           }
+        } catch (err) {
+          console.warn(`Could not read directory ${prefix}:`, err);
         }
       }
 
       await readDir(dirHandle);
+      
+      if (Object.keys(newFiles).length === 0) {
+        setIsLoadingFiles(false);
+        setLoadingMessage('');
+        alert('No readable files found in this folder.');
+        return;
+      }
+      
+      setLoadingMessage('Loading editor...');
       setFileContents(newFiles);
-      const sortedFiles = Object.keys(newFiles).sort();
+      
+      const sortedFiles = Object.keys(newFiles).sort((a, b) => {
+        const aDepth = a.split('/').length;
+        const bDepth = b.split('/').length;
+        if (aDepth !== bDepth) return aDepth - bDepth;
+        return a.localeCompare(b);
+      });
+      
       const firstFile = sortedFiles[0] || '';
       if (firstFile) {
         const info = getFileInfo(firstFile);
-        newTabs.push({ name: firstFile, icon: info.icon, color: info.color });
+        setTabs([{ name: firstFile, icon: info.icon, color: info.color }]);
+        setActiveTab(firstFile);
       }
-      setTabs(newTabs);
-      setActiveTab(firstFile);
+      
+      setIsLoadingFiles(false);
+      setLoadingMessage('');
+      
     } catch (e: unknown) {
+      setIsLoadingFiles(false);
+      setLoadingMessage('');
       if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Open folder failed:', e);
+      alert(`Failed to open folder: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ═══ OPEN FILE — File System Access API ═══ */
   const openFile = useCallback(async () => {
+    if (!('showOpenFilePicker' in window)) {
+      alert('Your browser does not support opening files.\n\nPlease use Chrome, Edge, or another Chromium-based browser.');
+      return;
+    }
+
     try {
-      if (!('showOpenFilePicker' in window)) {
-        alert('Your browser does not support opening files. Use Chrome or Edge.');
-        return;
-      }
       const [fileHandle] = await (window as unknown as { showOpenFilePicker: () => Promise<FileSystemFileHandle[]> }).showOpenFilePicker();
       const file = await fileHandle.getFile();
       const text = await file.text();
       const fileName = file.name;
+      
       setFileContents(prev => ({ ...prev, [fileName]: text }));
       const info = getFileInfo(fileName);
       setTabs(prev => {
@@ -525,6 +580,7 @@ interface ModelInfo {
     } catch (e: unknown) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
       console.error('Open file failed:', e);
+      alert(`Failed to open file: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1711,26 +1767,41 @@ interface ModelInfo {
           <div className="flex-1 min-h-0">
             {tabs.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-[#666] bg-[#1e1e1e]">
-                <div className="text-6xl mb-4 opacity-20">📂</div>
-                <div className="text-xl mb-2">No Files Open</div>
-                <div className="text-sm text-[#555] mb-6">Open a folder or create a new file to get started</div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => executeCommand('file.openFolder')}
-                    className="px-4 py-2 bg-[#007acc] hover:bg-[#005a99] text-white rounded text-sm transition-colors"
-                  >
-                    Open Folder
-                  </button>
-                  <button
-                    onClick={() => executeCommand('newFile')}
-                    className="px-4 py-2 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm transition-colors"
-                  >
-                    New File
-                  </button>
-                </div>
-                <div className="mt-8 text-xs text-[#444]">
-                  <span className="text-[#555]">Ctrl+O</span> Open Folder • <span className="text-[#555]">Ctrl+N</span> New File
-                </div>
+                {isLoadingFiles ? (
+                  <>
+                    <div className="w-8 h-8 border-2 border-[#007acc] border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <div className="text-sm text-[#808080]">{loadingMessage || 'Loading...'}</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-6xl mb-4 opacity-20">📂</div>
+                    <div className="text-xl mb-2 text-[#cccccc]">No Files Open</div>
+                    <div className="text-sm text-[#555] mb-6">Open a folder or create a new file to get started</div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={openFolder}
+                        className="px-5 py-2.5 bg-[#007acc] hover:bg-[#005a99] text-white rounded text-sm font-medium transition-colors flex items-center gap-2"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H7.707l-1-1A1.5 1.5 0 0 0 5.586 3H1.5z"/>
+                        </svg>
+                        Open Folder
+                      </button>
+                      <button
+                        onClick={() => executeCommand('newFile')}
+                        className="px-5 py-2.5 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm font-medium transition-colors flex items-center gap-2"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M8 1v6H2v2h6v6h2V9h6V7H10V1z"/>
+                        </svg>
+                        New File
+                      </button>
+                    </div>
+                    <div className="mt-8 text-xs text-[#444]">
+                      <span className="text-[#555]">Ctrl+O</span> Open Folder • <span className="text-[#555]">Ctrl+N</span> New File
+                    </div>
+                  </>
+                )}
               </div>
             ) : (
             <MonacoEditor
