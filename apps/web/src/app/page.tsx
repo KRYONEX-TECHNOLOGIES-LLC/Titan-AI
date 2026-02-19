@@ -202,6 +202,8 @@ interface ChatMessage {
   streaming?: boolean;
   streamingModel?: string;
   streamingProvider?: string;
+  thinking?: string;
+  thinkingTime?: number;
 }
 
 interface SearchResult {
@@ -209,6 +211,50 @@ interface SearchResult {
   line: number;
   content: string;
   match: string;
+}
+
+/* ═══ UTILITY FUNCTIONS ═══ */
+
+interface ParsedResponse {
+  thinking: string;
+  content: string;
+}
+
+function parseThinkingTags(rawContent: string): ParsedResponse {
+  const thinkingRegex = /<thinking>([\s\S]*?)<\/thinking>/gi;
+  let thinking = '';
+  let content = rawContent;
+  
+  const matches = rawContent.matchAll(thinkingRegex);
+  for (const match of matches) {
+    thinking += (thinking ? '\n' : '') + match[1].trim();
+  }
+  
+  content = rawContent.replace(thinkingRegex, '').trim();
+  
+  return { thinking, content };
+}
+
+function extractFileBlocks(content: string): Array<{ filename: string; content: string; language: string }> {
+  const fileBlockRegex = /```(\w+)?(?::([^\n]+))?\n([\s\S]*?)```/g;
+  const blocks: Array<{ filename: string; content: string; language: string }> = [];
+  
+  let match;
+  while ((match = fileBlockRegex.exec(content)) !== null) {
+    const language = match[1] || 'text';
+    const filename = match[2] || '';
+    const code = match[3] || '';
+    
+    if (code.split('\n').length > 15 || filename) {
+      blocks.push({
+        filename: filename || `untitled.${language}`,
+        content: code,
+        language,
+      });
+    }
+  }
+  
+  return blocks;
 }
 
 /* ═══ MAIN IDE COMPONENT ═══ */
@@ -245,6 +291,8 @@ export default function TitanIDE() {
   // AI Chat state
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const thinkingStartRef = useRef<number>(0);
 
   // Session state
   const [sessions, setSessions] = useState<Session[]>([
@@ -344,12 +392,12 @@ interface ModelInfo {
 
   // Keep chat pinned while the assistant is actively thinking/streaming
   useEffect(() => {
-    if (!isThinking) return;
+    if (!isThinking && !isStreaming) return;
     const timer = window.setInterval(() => {
       chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
-    }, 180);
+    }, 100);
     return () => window.clearInterval(timer);
-  }, [isThinking]);
+  }, [isThinking, isStreaming]);
 
   // Fetch model registry on mount
   useEffect(() => {
@@ -649,12 +697,18 @@ interface ModelInfo {
         : s
     ));
     setIsThinking(true);
+    thinkingStartRef.current = Date.now();
 
     const updateStreamingAssistant = (
-      content: string,
+      rawContent: string,
       done = false,
       metadata?: { model?: string; provider?: string }
     ) => {
+      const { thinking, content } = parseThinkingTags(rawContent);
+      const thinkingTime = thinkingStartRef.current > 0 
+        ? Math.round((Date.now() - thinkingStartRef.current) / 1000) 
+        : 0;
+      
       setSessions(prev =>
         prev.map(s => {
           if (s.id !== sessionId) return s;
@@ -664,7 +718,9 @@ interface ModelInfo {
               m.id === streamMessageId
                 ? {
                     ...m,
-                    content,
+                    content: content || rawContent,
+                    thinking: thinking || undefined,
+                    thinkingTime: thinking ? thinkingTime : undefined,
                     streaming: !done,
                     time: 'just now',
                     streamingModel: metadata?.model ?? m.streamingModel,
@@ -678,13 +734,27 @@ interface ModelInfo {
     };
 
     const handleSuggestedEdits = (data: { content?: string; suggestedEdits?: Array<{ file: string; content?: string }> }) => {
-      const newChangedFiles = data.suggestedEdits?.map((edit: { file: string; content?: string }) => {
+      let suggestedEdits = data.suggestedEdits || [];
+      
+      // Extract file blocks from content if no explicit suggested edits
+      if (suggestedEdits.length === 0 && data.content) {
+        const extractedBlocks = extractFileBlocks(data.content);
+        if (extractedBlocks.length > 0) {
+          suggestedEdits = extractedBlocks.map(block => ({
+            file: block.filename,
+            content: block.content,
+          }));
+        }
+      }
+      
+      const newChangedFiles = suggestedEdits.map((edit: { file: string; content?: string }) => {
         const info = getFileInfo(edit.file);
-        return { name: edit.file, additions: 15, deletions: 3, icon: info.icon, color: info.color };
-      }) || [];
+        const lines = (edit.content || '').split('\n').length;
+        return { name: edit.file, additions: lines, deletions: 0, icon: info.icon, color: info.color };
+      });
 
-      if (data.suggestedEdits && data.suggestedEdits.length > 0) {
-        const edit = data.suggestedEdits[0];
+      if (suggestedEdits.length > 0) {
+        const edit = suggestedEdits[0];
         if (edit.content && edit.file === activeTab) {
           applyDiffDecorations(currentCode, edit.content);
         }
@@ -781,8 +851,11 @@ interface ModelInfo {
 
             if (eventType === 'token' && payload.content) {
               streamed += payload.content;
+              setIsStreaming(true);
               updateStreamingAssistant(streamed, false);
             } else if (eventType === 'start') {
+              setIsStreaming(true);
+              setIsThinking(false);
               updateStreamingAssistant(streamed, false, {
                 model: payload.model,
                 provider: payload.provider,
@@ -792,23 +865,27 @@ interface ModelInfo {
               if (payload.content !== undefined) {
                 streamed = payload.content;
               }
+              setIsStreaming(false);
               updateStreamingAssistant(streamed || 'Done.', true, {
                 model: payload.model,
                 provider: payload.provider,
               });
             } else if (eventType === 'error') {
+              setIsStreaming(false);
               throw new Error(payload.message || 'Streaming error');
             }
           }
         }
 
         setIsThinking(false);
+        setIsStreaming(false);
         const normalized = finalPayload || { content: streamed };
         updateStreamingAssistant(normalized.content || 'I apologize, but I encountered an error processing your request.', true);
         handleSuggestedEdits(normalized);
       } else {
         const data = await response.json();
         setIsThinking(false);
+        setIsStreaming(false);
         updateStreamingAssistant(
           data.content || 'I apologize, but I encountered an error processing your request.',
           true
@@ -818,6 +895,7 @@ interface ModelInfo {
     } catch (error) {
       console.error('Chat error:', error);
       setIsThinking(false);
+      setIsStreaming(false);
       
       // Fallback to local response
       const response = generateAIResponse(msg, activeTab, selectedText || '');
@@ -2300,25 +2378,61 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-3 min-h-0">
         {currentSession.messages.map((msg, i) => (
-          <div key={i} className="mb-4 flex gap-2">
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-[#3c3c3c]' : 'bg-[#007acc]'}`}>
-              {msg.role === 'user' ? <AccountIcon size={14} /> : <TitanAgentIcon size={14} />}
-            </div>
-            <div className="text-[13px] text-[#cccccc] leading-relaxed whitespace-pre-wrap">
-              <div>
-                {msg.content}
-                {msg.streaming && <span className="inline-block ml-1 w-1.5 h-4 bg-[#808080] animate-pulse align-[-2px]" />}
-              </div>
-              {msg.streaming && (
-                <div className="mt-1 text-[11px] text-[#808080] font-mono">
-                  Streaming from {msg.streamingModel || activeModel}
-                  {msg.streamingProvider ? ` via ${msg.streamingProvider}` : ''}
+          <div key={i} className="mb-4">
+            {/* Collapsible thinking section */}
+            {msg.thinking && (
+              <details className="mb-2 bg-[#1a1a1a] rounded-lg border border-[#3c3c3c] overflow-hidden group">
+                <summary className="px-3 py-2 text-[12px] text-[#808080] cursor-pointer hover:bg-[#252526] flex items-center gap-2 select-none list-none [&::-webkit-details-marker]:hidden">
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="transition-transform group-open:rotate-90">
+                    <path d="M6 4l4 4-4 4z"/>
+                  </svg>
+                  <span className="text-[#569cd6]">Thinking</span>
+                  {msg.thinkingTime !== undefined && (
+                    <span className="text-[#6a9955]">({msg.thinkingTime}s)</span>
+                  )}
+                </summary>
+                <div className="px-3 pb-3 pt-1 text-[11px] text-[#808080] whitespace-pre-wrap font-mono leading-relaxed max-h-[300px] overflow-y-auto border-t border-[#3c3c3c]">
+                  {msg.thinking}
                 </div>
-              )}
+              </details>
+            )}
+            {/* Main message content */}
+            <div className="flex gap-2">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-[#3c3c3c]' : 'bg-[#007acc]'}`}>
+                {msg.role === 'user' ? <AccountIcon size={14} /> : <TitanAgentIcon size={14} />}
+              </div>
+              <div className="flex-1 text-[13px] text-[#cccccc] leading-relaxed whitespace-pre-wrap">
+                <div>
+                  {msg.content}
+                  {msg.streaming && <span className="inline-block ml-1 w-1.5 h-4 bg-[#808080] animate-pulse align-[-2px]" />}
+                </div>
+                {msg.streaming && (
+                  <div className="mt-1 text-[11px] text-[#808080] font-mono">
+                    Streaming from {msg.streamingModel || activeModel}
+                    {msg.streamingProvider ? ` via ${msg.streamingProvider}` : ''}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         ))}
-        {isThinking && <div className="flex gap-2 mb-4"><div className="w-6 h-6 rounded-full bg-[#007acc] flex items-center justify-center"><TitanAgentIcon size={14} /></div><div className="text-[13px] text-[#808080] animate-pulse">Thinking...</div></div>}
+        {isThinking && (
+          <div className="mb-4 bg-[#1a1a1a] rounded-lg border border-[#3c3c3c] px-3 py-2">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-[#007acc] flex items-center justify-center">
+                <TitanAgentIcon size={14} />
+              </div>
+              <div className="flex items-center gap-2 text-[13px] text-[#808080]">
+                <span className="animate-pulse">Thinking</span>
+                <span className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-[#569cd6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-[#569cd6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-[#569cd6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         <div ref={(node) => { chatEndRef.current = node; }} />
       </div>
       <div className="border-t border-[#3c3c3c] shrink-0">
