@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { ModelInfo, MODEL_REGISTRY } from '../models/route';
 
 export interface ChatRequest {
   sessionId: string;
@@ -158,7 +159,7 @@ You can reference these past sessions if the user asks about previous work, but 
 `;
   }
 
-  const apiModel = normalizeRequestedModel(model);
+  const { providerModelId: apiModel, displayName: modelDisplayName } = lookupProviderModelId(model);
   const provider = resolveProvider(apiModel);
   const providerEnv = resolveProviderEnv();
   const litellmValidation = validateProviderConfig('litellm', providerEnv);
@@ -194,7 +195,7 @@ You can reference these past sessions if the user asks about previous work, but 
   ];
 
   if (stream) {
-    return streamChatResponse(messages, apiModel, provider, codeContext);
+    return streamChatResponse(messages, apiModel, modelDisplayName, provider, codeContext);
   }
 
   try {
@@ -204,7 +205,8 @@ You can reference these past sessions if the user asks about previous work, but 
     return NextResponse.json({
       id: response.id,
       content: response.content,
-      model: response.model,
+      model: modelDisplayName,
+      providerModel: response.model,
       usage: response.usage,
       suggestedEdits,
     });
@@ -521,16 +523,37 @@ function extractSuggestedEdits(
   ];
 }
 
-function normalizeRequestedModel(model: string): string {
-  if (!model?.trim()) return 'openai/gpt-5.3';
-  const lower = model.toLowerCase();
-  if (lower.includes('claude') && !model.includes('/')) {
-    return `anthropic/${model}`;
+function lookupProviderModelId(displayModelId: string): { providerModelId: string; displayName: string } {
+  if (!displayModelId?.trim()) {
+    const defaultModel = MODEL_REGISTRY[0];
+    return {
+      providerModelId: defaultModel?.providerModelId || 'anthropic/claude-sonnet-4-20250514',
+      displayName: defaultModel?.name || 'Claude Sonnet 4',
+    };
   }
-  if ((lower.includes('gpt') || lower.includes('o1') || lower.includes('o3')) && !model.includes('/')) {
-    return `openai/${model}`;
+  
+  const model = MODEL_REGISTRY.find(m => m.id === displayModelId);
+  if (model) {
+    return {
+      providerModelId: model.providerModelId,
+      displayName: model.name,
+    };
   }
-  return model;
+  
+  // If not found in registry but has a provider prefix, use as-is
+  if (displayModelId.includes('/')) {
+    return {
+      providerModelId: displayModelId,
+      displayName: displayModelId.split('/').pop() || displayModelId,
+    };
+  }
+  
+  // Fallback to first model in registry
+  const fallback = MODEL_REGISTRY[0];
+  return {
+    providerModelId: fallback?.providerModelId || displayModelId,
+    displayName: fallback?.name || displayModelId,
+  };
 }
 
 function resolveProvider(model: string): Provider {
@@ -685,7 +708,8 @@ interface StreamResult {
 
 async function streamChatResponse(
   messages: Array<{ role: string; content: string }>,
-  model: string,
+  providerModelId: string,
+  displayModelName: string,
   provider: Provider,
   codeContext?: ChatRequest['codeContext']
 ): Promise<Response> {
@@ -704,7 +728,7 @@ async function streamChatResponse(
       try {
         const streamId = `chat-${Date.now()}`;
         const env = resolveProviderEnv();
-        const plan = await providerPlan(model, provider, env);
+        const plan = await providerPlan(providerModelId, provider, env);
         if (plan.length === 0) {
           throw new Error('No configured chat providers are currently available for streaming.');
         }
@@ -720,14 +744,15 @@ async function streamChatResponse(
             fullContent = '';
             emit('start', {
               id: streamId,
-              model,
+              model: displayModelName,
+              providerModel: providerModelId,
               provider: activeProvider,
               retry: attemptCounter > 1,
               attempt: attemptCounter,
             });
 
             try {
-              finalResult = await streamProvider(messages, model, activeProvider, token => {
+              finalResult = await streamProvider(messages, providerModelId, activeProvider, token => {
                 fullContent += token;
                 emit('token', { content: token });
               });
@@ -757,7 +782,8 @@ async function streamChatResponse(
 
         emit('done', {
           id: finalResult.id || `chat-${Date.now()}`,
-          model: finalResult.model || model,
+          model: displayModelName,
+          providerModel: finalResult.model || providerModelId,
           provider: activeProvider ?? provider,
           content: fullContent,
           usage,

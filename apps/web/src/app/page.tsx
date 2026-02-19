@@ -201,6 +201,7 @@ interface ChatMessage {
   time?: string;
   streaming?: boolean;
   streamingModel?: string;
+  streamingProviderModel?: string;
   streamingProvider?: string;
   thinking?: string;
   thinkingTime?: number;
@@ -702,7 +703,7 @@ interface ModelInfo {
     const updateStreamingAssistant = (
       rawContent: string,
       done = false,
-      metadata?: { model?: string; provider?: string }
+      metadata?: { model?: string; providerModel?: string; provider?: string }
     ) => {
       const { thinking, content } = parseThinkingTags(rawContent);
       const thinkingTime = thinkingStartRef.current > 0 
@@ -724,6 +725,7 @@ interface ModelInfo {
                     streaming: !done,
                     time: 'just now',
                     streamingModel: metadata?.model ?? m.streamingModel,
+                    streamingProviderModel: metadata?.providerModel ?? m.streamingProviderModel,
                     streamingProvider: metadata?.provider ?? m.streamingProvider,
                   }
                 : m
@@ -846,6 +848,7 @@ interface ModelInfo {
               suggestedEdits?: Array<{ file: string; content?: string }>;
               message?: string;
               model?: string;
+              providerModel?: string;
               provider?: string;
             };
 
@@ -858,6 +861,7 @@ interface ModelInfo {
               setIsThinking(false);
               updateStreamingAssistant(streamed, false, {
                 model: payload.model,
+                providerModel: payload.providerModel,
                 provider: payload.provider,
               });
             } else if (eventType === 'done') {
@@ -868,6 +872,7 @@ interface ModelInfo {
               setIsStreaming(false);
               updateStreamingAssistant(streamed || 'Done.', true, {
                 model: payload.model,
+                providerModel: payload.providerModel,
                 provider: payload.provider,
               });
             } else if (eventType === 'error') {
@@ -2408,8 +2413,11 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                 </div>
                 {msg.streaming && (
                   <div className="mt-1 text-[11px] text-[#808080] font-mono">
-                    Streaming from {msg.streamingModel || activeModel}
-                    {msg.streamingProvider ? ` via ${msg.streamingProvider}` : ''}
+                    Using {msg.streamingModel || activeModel}
+                    {msg.streamingProviderModel && msg.streamingProviderModel !== msg.streamingModel && (
+                      <span className="text-[#569cd6]"> ({msg.streamingProviderModel})</span>
+                    )}
+                    {msg.streamingProvider && <span> via {msg.streamingProvider}</span>}
                   </div>
                 )}
               </div>
