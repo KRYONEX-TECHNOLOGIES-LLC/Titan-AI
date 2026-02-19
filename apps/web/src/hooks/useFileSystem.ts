@@ -2,8 +2,9 @@
 
 import { useState, useCallback } from 'react';
 import { useFileStore } from '@/stores/file-store';
-import { getFileInfo } from '@/utils/file-helpers';
+import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
 import type { FileTab } from '@/types/ide';
+import { workerManager } from '@/lib/worker-manager';
 
 const MAX_FILES = 500;
 const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.next', 'dist', 'build', '.cache', 'coverage', '.vscode', '.idea']);
@@ -80,6 +81,17 @@ export function useFileSystem(
         setLoadingMessage('');
         return;
       }
+
+      // Index files in background via web worker
+      setLoadingMessage('Indexing files...');
+      const filesToIndex = Object.entries(newFiles).map(([path, content]) => ({
+        path,
+        content,
+        language: getLanguageFromFilename(path),
+      }));
+      workerManager.indexFiles(filesToIndex).catch(err =>
+        console.warn('[useFileSystem] Background indexing failed:', err)
+      );
 
       setLoadingMessage('Loading editor...');
       setFileContents(newFiles);
