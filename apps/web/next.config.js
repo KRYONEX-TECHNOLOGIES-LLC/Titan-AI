@@ -15,15 +15,29 @@ const nextConfig = {
     '@titan/ui-themes',
   ],
   webpack: (config, { isServer }) => {
-    // Handle Monaco Editor
+    // Handle Monaco Editor + WASM (Tree-sitter)
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         path: false,
         crypto: false,
+        buffer: false,
       };
     }
+
+    // Enable WASM support for web-tree-sitter
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+      layers: true,
+    };
+
+    // Allow .wasm files
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: 'asset/resource',
+    });
 
     return config;
   },

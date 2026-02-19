@@ -18,6 +18,23 @@ const ConfidenceIndicator = dynamic(
   { ssr: false }
 );
 
+// ── New IDE components (all dynamically imported to avoid SSR issues) ──────────
+const IDEMenuBar = dynamic(() => import('@/components/ide/MenuBar'), { ssr: false });
+const IDECommandPalette = dynamic(() => import('@/components/ide/CommandPalette'), { ssr: false });
+const IDEKeybindingService = dynamic(() => import('@/components/ide/KeybindingService'), { ssr: false });
+const IDETerminal = dynamic(() => import('@/components/ide/IDETerminal'), { ssr: false });
+const IDEFileExplorer = dynamic(() => import('@/components/ide/FileExplorer'), { ssr: false });
+const IDESemanticSearch = dynamic(() => import('@/components/ide/SemanticSearch'), { ssr: false });
+const IDEDebugPanel = dynamic(() => import('@/components/ide/DebugPanel'), { ssr: false });
+
+// ── Zustand stores ─────────────────────────────────────────────────────────────
+import { useLayoutStore } from '@/stores/layout-store';
+import { useEditorStore } from '@/stores/editor-store';
+import { useFileStore } from '@/stores/file-store';
+import { useTerminalStore } from '@/stores/terminal-store';
+import { useDebugStore } from '@/stores/debug-store';
+import { initCommandRegistry } from '@/lib/ide/command-registry';
+
 /* ═══ FILE CONTENTS DATABASE ═══ */
 const FILE_CONTENTS: Record<string, { content: string; language: string }> = {
   'orchestrator.ts': {
@@ -265,6 +282,48 @@ export default function TitanIDE() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // ── Zustand stores (read-only getters for command registry init) ────────────
+  const layoutStoreState = useLayoutStore();
+  const editorStoreState = useEditorStore();
+  const fileStoreState = useFileStore();
+  const terminalStoreState = useTerminalStore();
+  const debugStoreState = useDebugStore();
+
+  // ── Init command registry once on mount ────────────────────────────────────
+  useEffect(() => {
+    initCommandRegistry({
+      layout: useLayoutStore.getState,
+      editor: useEditorStore.getState,
+      file: useFileStore.getState,
+      terminal: useTerminalStore.getState,
+      debug: useDebugStore.getState,
+    });
+  }, []);
+
+  // ── Sync Zustand layout store → local state for legacy compat ──────────────
+  useEffect(() => {
+    if (!mounted) return;
+    const unsub = useLayoutStore.subscribe((state) => {
+      setActiveView(state.sidebarView || '');
+      setShowTerminal(state.panelVisible && state.panelView === 'terminal');
+      setShowRightPanel(state.rightPanelVisible);
+      setFontSize(state.minimapEnabled ? fontSize : fontSize); // no-op, keeps editor in sync
+    });
+    return unsub;
+  }, [mounted]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Mirror local state → Zustand on changes (bridge) ─────────────────────
+  useEffect(() => {
+    if (!mounted) return;
+    useLayoutStore.setState({ sidebarView: activeView as import('@/stores/layout-store').SidebarView, sidebarVisible: !!activeView });
+  }, [activeView, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (showTerminal) useLayoutStore.setState({ panelVisible: true, panelView: 'terminal' });
+    else useLayoutStore.setState({ panelVisible: false });
+  }, [showTerminal, mounted]);
 
   // Panel visibility
   const [activeView, setActiveView] = useState<string>('titan-agent');
@@ -1296,7 +1355,12 @@ interface ModelInfo {
       className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden select-none"
       style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
 
-      {/* ═══ TITLE BAR ═══ */}
+      {/* ═══ NEW MENU BAR (replaces old title bar menus) ═══ */}
+      {mounted && <IDEMenuBar />}
+      {mounted && <IDECommandPalette />}
+      {mounted && <IDEKeybindingService />}
+
+      {/* ═══ TITLE BAR (logo + model selector, kept for branding) ═══ */}
       <div className="h-[35px] bg-[#2b2b2b] flex items-center text-[13px] border-b border-[#3c3c3c] shrink-0">
         {/* Hamburger */}
         <button
@@ -1312,8 +1376,8 @@ interface ModelInfo {
         {/* Logo */}
         <span className="text-[#e0e0e0] font-semibold text-[13px] mr-2 tracking-wide">Titan AI</span>
 
-        {/* Menu Items */}
-        <div className="flex items-center text-[#b0b0b0] text-[13px]">
+        {/* Menu Items (old inline menus kept as fallback, hidden visually) */}
+        <div className="flex items-center text-[#b0b0b0] text-[13px]" style={{ display: 'none' }}>
           <MenuDropdown
             label="File"
             isOpen={openMenu === 'file'}
@@ -1583,37 +1647,12 @@ interface ModelInfo {
           <div className="w-[320px] bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
             {/* EXPLORER */}
             {activeView === 'explorer' && (
-              <ExplorerPanel 
-                activeTab={activeTab} 
-                onFileClick={handleFileClick} 
-                fileContents={fileContents}
-                openTabs={tabs}
-                onCloseTab={(name) => {
-                  const newTabs = tabs.filter(t => t.name !== name);
-                  setTabs(newTabs);
-                  if (activeTab === name && newTabs.length > 0) {
-                    setActiveTab(newTabs[newTabs.length - 1].name);
-                  }
-                }}
-              />
+              <IDEFileExplorer />
             )}
 
             {/* SEARCH */}
             {activeView === 'search' && (
-              <SearchPanel
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                replaceQuery={replaceQuery}
-                setReplaceQuery={setReplaceQuery}
-                searchResults={searchResults}
-                onSearch={handleSearch}
-                onReplace={handleReplace}
-                onReplaceAll={handleReplaceAll}
-                onResultClick={(file, line) => {
-                  handleFileClick(file);
-                  setTimeout(() => editorInstance?.revealLineInCenter(line), 100);
-                }}
-              />
+              <IDESemanticSearch />
             )}
 
             {/* GIT */}
@@ -1633,7 +1672,7 @@ interface ModelInfo {
 
             {/* DEBUG */}
             {activeView === 'debug' && (
-              <DebugPanel onStart={() => executeCommand('startDebug')} onStop={() => executeCommand('stopDebug')} />
+              <IDEDebugPanel />
             )}
 
             {/* EXTENSIONS */}
@@ -1831,29 +1870,19 @@ interface ModelInfo {
             />
           </div>
 
-          {/* Terminal */}
+          {/* Terminal — real xterm.js */}
           {showTerminal && (
-            <div className="h-[200px] bg-[#1e1e1e] border-t border-[#3c3c3c] flex flex-col shrink-0">
-              <div className="h-[28px] flex items-center justify-between px-3 bg-[#2b2b2b] border-b border-[#3c3c3c]">
-                <span className="text-[11px] text-[#cccccc]">Terminal</span>
-                <button onClick={() => setShowTerminal(false)} className="text-[#808080] hover:text-white">×</button>
+            <div style={{ height: 240, borderTop: '1px solid #313244', flexShrink: 0, position: 'relative' }}>
+              <div style={{ position: 'absolute', top: 0, right: 0, zIndex: 10 }}>
+                <button
+                  onClick={() => setShowTerminal(false)}
+                  style={{ background: 'transparent', border: 'none', color: '#6c7086', cursor: 'pointer', padding: '4px 8px', fontSize: 14 }}
+                  title="Close Panel"
+                >
+                  ×
+                </button>
               </div>
-              <div className="flex-1 overflow-y-auto p-2 font-mono text-[12px] text-[#cccccc]">
-                {terminalOutput.map((line, i) => (
-                  <div key={i} className={line.startsWith('$') ? 'text-[#3fb950]' : ''}>{line}</div>
-                ))}
-              </div>
-              <div className="flex items-center px-2 pb-2">
-                <span className="text-[#3fb950] mr-1">$</span>
-                <input
-                  ref={terminalInputRef}
-                  value={terminalInput}
-                  onChange={(e) => setTerminalInput(e.target.value)}
-                  onKeyDown={handleTerminalCommand}
-                  className="flex-1 bg-transparent text-[12px] text-[#cccccc] focus:outline-none font-mono"
-                  placeholder="Type command..."
-                />
-              </div>
+              <IDETerminal />
             </div>
           )}
         </div>
