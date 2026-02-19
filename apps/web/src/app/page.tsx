@@ -35,157 +35,21 @@ import { useTerminalStore } from '@/stores/terminal-store';
 import { useDebugStore } from '@/stores/debug-store';
 import { initCommandRegistry } from '@/lib/ide/command-registry';
 
-/* ═══ FILE CONTENTS DATABASE ═══ */
-const FILE_CONTENTS: Record<string, { content: string; language: string }> = {
-  'orchestrator.ts': {
-    language: 'typescript',
-    content: `import { TitanAI } from '@titan/core';
-
-export class AgentOrchestrator {
-  private agents: Map<string, Agent> = new Map();
-  private coordinator: CoordinatorAgent;
-
-  constructor(private config: OrchestratorConfig) {
-    this.coordinator = new CoordinatorAgent(config);
-  }
-
-  async dispatch(task: Task): Promise<TaskResult> {
-    const plan = await this.coordinator.plan(task);
-    const agents = this.selectAgents(plan);
-
-    const results = await Promise.all(
-      agents.map(agent => agent.execute(plan.subtasks.get(agent.id)!))
-    );
-
-    return this.coordinator.merge(results);
-  }
-
-  private selectAgents(plan: ExecutionPlan): Agent[] {
-    return plan.requiredCapabilities.map(cap =>
-      this.findBestAgent(cap)
-    );
-  }
-
-  private findBestAgent(capability: string): Agent {
-    const candidates = [...this.agents.values()]
-      .filter(a => a.capabilities.includes(capability))
-      .sort((a, b) => b.score - a.score);
-    return candidates[0];
-  }
+/* ═══ LANGUAGE DETECTION ═══ */
+function getLanguageFromFilename(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const langMap: Record<string, string> = {
+    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+    py: 'python', rs: 'rust', go: 'go', java: 'java', c: 'c', cpp: 'cpp', h: 'c',
+    cs: 'csharp', rb: 'ruby', php: 'php', swift: 'swift', kt: 'kotlin',
+    json: 'json', yaml: 'yaml', yml: 'yaml', toml: 'toml', xml: 'xml',
+    html: 'html', css: 'css', scss: 'scss', less: 'less', 
+    md: 'markdown', sql: 'sql', sh: 'shell', bash: 'shell', zsh: 'shell',
+    dockerfile: 'dockerfile', makefile: 'makefile', graphql: 'graphql',
+    env: 'plaintext', txt: 'plaintext', log: 'plaintext',
+  };
+  return langMap[ext] || 'plaintext';
 }
-`,
-  },
-  'page.tsx': {
-    language: 'typescript',
-    content: `'use client';
-
-import { useState } from 'react';
-
-export default function HomePage() {
-  const [count, setCount] = useState(0);
-
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <button onClick={() => setCount(c => c + 1)}>
-        Count: {count}
-      </button>
-    </div>
-  );
-}
-`,
-  },
-  'layout.tsx': {
-    language: 'typescript',
-    content: `import type { Metadata } from 'next';
-import './globals.css';
-
-export const metadata: Metadata = {
-  title: 'Titan AI',
-  description: 'AI-Native IDE',
-};
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en">
-      <body>{children}</body>
-    </html>
-  );
-}
-`,
-  },
-  'globals.css': {
-    language: 'css',
-    content: `@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --bg-primary: #1e1e1e;
-  --text-primary: #cccccc;
-}
-
-body {
-  background: var(--bg-primary);
-  color: var(--text-primary);
-}
-`,
-  },
-  'package.json': {
-    language: 'json',
-    content: `{
-  "name": "@titan/web",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
-  "dependencies": {
-    "next": "^15.1.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@monaco-editor/react": "^4.6.0"
-  }
-}
-`,
-  },
-  'tsconfig.json': {
-    language: 'json',
-    content: `{
-  "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
-}
-`,
-  },
-  'untitled-1': {
-    language: 'typescript',
-    content: '// New file\n',
-  },
-};
 
 /* ═══ TYPES ═══ */
 interface Session {
@@ -336,17 +200,9 @@ export default function TitanIDE() {
   // Editor state
   const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const [monacoInstance, setMonacoInstance] = useState<typeof Monaco | null>(null);
-  const [tabs, setTabs] = useState<FileTab[]>([
-    { name: 'orchestrator.ts', icon: 'TS', color: '#3178c6' },
-  ]);
-  const [activeTab, setActiveTab] = useState('orchestrator.ts');
-  const [fileContents, setFileContents] = useState<Record<string, string>>(() => {
-    const initial: Record<string, string> = {};
-    Object.entries(FILE_CONTENTS).forEach(([name, data]) => {
-      initial[name] = data.content;
-    });
-    return initial;
-  });
+  const [tabs, setTabs] = useState<FileTab[]>([]);
+  const [activeTab, setActiveTab] = useState('');
+  const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
 
   // AI Chat state
@@ -482,9 +338,11 @@ interface ModelInfo {
   }, [activeModel, cappedModelRegistry]);
 
   // ═══ PERSISTENCE: Save state to localStorage ═══
+  const STORAGE_VERSION = 2; // Bump this to reset state for all users
   useEffect(() => {
     if (!mounted) return;
     const state = {
+      version: STORAGE_VERSION,
       tabs: tabs.map(t => ({ name: t.name, icon: t.icon, color: t.color, modified: t.modified })),
       activeTab,
       sessions: sessions.map(s => ({
@@ -514,6 +372,11 @@ interface ModelInfo {
       const saved = localStorage.getItem('titan-ai-state');
       if (saved) {
         const state = JSON.parse(saved);
+        // Skip old state versions (clears mock data)
+        if (!state.version || state.version < STORAGE_VERSION) {
+          localStorage.removeItem('titan-ai-state');
+          return;
+        }
         // Restore tabs
         if (state.tabs && Array.isArray(state.tabs) && state.tabs.length > 0) {
           setTabs(state.tabs);
@@ -735,7 +598,7 @@ interface ModelInfo {
     const currentCode = editorInstance?.getValue() || fileContents[activeTab] || '';
     const selection = editorInstance?.getSelection();
     const selectedText = selection ? editorInstance?.getModel()?.getValueInRange(selection) : '';
-    const currentLanguage = FILE_CONTENTS[activeTab]?.language || 'typescript';
+    const currentLanguage = getLanguageFromFilename(activeTab);
 
     // Add user message with context indicator
     const userMessage: ChatMessage = {
@@ -1199,7 +1062,7 @@ interface ModelInfo {
         } else if (cmd === 'npm run build') {
           setTerminalOutput(prev => [...prev, '> next build', '', 'Creating optimized production build...', '✓ Compiled successfully', '✓ Build completed in 12.3s']);
         } else if (cmd === 'npm test') {
-          setTerminalOutput(prev => [...prev, 'Running tests...', '', 'PASS src/tests/orchestrator.test.ts', '  ✓ should dispatch tasks (45ms)', '  ✓ should select agents (12ms)', '', 'Tests: 2 passed, 2 total']);
+          setTerminalOutput(prev => [...prev, 'Running tests...', '', 'No test files found.', 'Open a folder to run tests.']);
         } else if (cmd === 'git status') {
           setTerminalOutput(prev => [...prev, `On branch ${gitBranch}`, '', 'Changes not staged for commit:', ...tabs.filter(t => t.modified).map(t => `  modified: ${t.name}`)]);
         } else if (cmd === 'clear' || cmd === 'cls') {
@@ -1333,7 +1196,7 @@ interface ModelInfo {
 
   // Get current file content and language
   const currentFileContent = fileContents[activeTab] || '';
-  const currentFileLanguage = FILE_CONTENTS[activeTab]?.language || 'typescript';
+  const currentFileLanguage = getLanguageFromFilename(activeTab);
 
   // HYDRATION FIX: Return loading state until client-side mount
   if (!mounted) {
@@ -1749,7 +1612,8 @@ interface ModelInfo {
 
         {/* CENTER: Editor + Terminal */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          {/* Breadcrumb */}
+          {/* Breadcrumb - only show when file is open */}
+          {activeTab && (
           <div className="h-[28px] bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center justify-between px-3 shrink-0">
             <div className="flex items-center gap-1 text-[12px] text-[#808080]">
               <span className="hover:text-[#cccccc] cursor-pointer">src</span>
@@ -1762,9 +1626,34 @@ interface ModelInfo {
               <span>UTF-8</span>
             </div>
           </div>
+          )}
 
           {/* Editor */}
           <div className="flex-1 min-h-0">
+            {tabs.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-[#666] bg-[#1e1e1e]">
+                <div className="text-6xl mb-4 opacity-20">📂</div>
+                <div className="text-xl mb-2">No Files Open</div>
+                <div className="text-sm text-[#555] mb-6">Open a folder or create a new file to get started</div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => executeCommand('file.openFolder')}
+                    className="px-4 py-2 bg-[#007acc] hover:bg-[#005a99] text-white rounded text-sm transition-colors"
+                  >
+                    Open Folder
+                  </button>
+                  <button
+                    onClick={() => executeCommand('newFile')}
+                    className="px-4 py-2 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm transition-colors"
+                  >
+                    New File
+                  </button>
+                </div>
+                <div className="mt-8 text-xs text-[#444]">
+                  <span className="text-[#555]">Ctrl+O</span> Open Folder • <span className="text-[#555]">Ctrl+N</span> New File
+                </div>
+              </div>
+            ) : (
             <MonacoEditor
               height="100%"
               language={currentFileLanguage}
@@ -1879,6 +1768,7 @@ interface ModelInfo {
                 document.head.appendChild(style);
               }}
             />
+            )}
           </div>
 
           {/* Terminal — real xterm.js */}
