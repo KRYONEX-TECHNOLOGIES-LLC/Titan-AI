@@ -368,7 +368,7 @@ export default function TitanIDE() {
   const [activeSessionId, setActiveSessionId] = useState('1');
 
   // Model state
-  const [activeModel, setActiveModel] = useState('claude-4.6-opus');
+  const [activeModel, setActiveModel] = useState('claude-sonnet-4.6');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
 
   // Menu state

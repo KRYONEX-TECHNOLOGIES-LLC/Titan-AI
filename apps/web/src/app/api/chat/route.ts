@@ -552,8 +552,8 @@ function lookupProviderModelId(displayModelId: string): { providerModelId: strin
   if (!displayModelId?.trim()) {
     const defaultModel = MODEL_REGISTRY[0];
     return {
-      providerModelId: defaultModel?.providerModelId || 'anthropic/claude-sonnet-4-20250514',
-      displayName: defaultModel?.name || 'Claude Sonnet 4',
+      providerModelId: defaultModel?.providerModelId || 'anthropic/claude-sonnet-4.6',
+      displayName: defaultModel?.name || 'Claude Sonnet 4.6',
     };
   }
   
