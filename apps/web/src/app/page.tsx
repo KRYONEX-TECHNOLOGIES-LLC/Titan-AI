@@ -1962,8 +1962,8 @@ interface ModelInfo {
           )}
         </div>
 
-        {/* RIGHT PANEL */}
-        {showRightPanel && activeView !== 'explorer' && (
+        {/* RIGHT PANEL - only show when files are open */}
+        {showRightPanel && activeView !== 'explorer' && Object.keys(fileContents).length > 0 && (
           <div className="w-[260px] bg-[#1e1e1e] border-l border-[#3c3c3c] flex flex-col shrink-0">
             <ExplorerPanel activeTab={activeTab} onFileClick={handleFileClick} fileContents={fileContents} isRight />
           </div>
@@ -2169,37 +2169,41 @@ function ExplorerPanel({ activeTab, onFileClick, fileContents, isRight, onAddToC
           </div>
         )}
 
-        {/* FOLDER TREE Section */}
-        <button 
-          onClick={() => setShowFolderTree(!showFolderTree)}
-          className="w-full px-2 py-1 text-[11px] uppercase text-[#e0e0e0] font-semibold flex items-center gap-1 hover:bg-[#2a2a2a] rounded"
-        >
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${showFolderTree ? 'rotate-90' : ''}`}>
-            <path d="M6 4l4 4-4 4z"/>
-          </svg>
-          TITAN AI
-        </button>
-        {showFolderTree && (
-          <div className="mt-0.5">
-            {files.map(file => {
-              const ext = file.split('.').pop();
-              const icon = ext === 'ts' || ext === 'tsx' ? 'TS' : ext === 'css' ? 'CSS' : ext === 'json' ? '{}' : 'TXT';
-              const color = ext === 'ts' || ext === 'tsx' ? '#3178c6' : ext === 'css' ? '#563d7c' : ext === 'json' ? '#f1e05a' : '#808080';
-              const isInContext = contextFiles.includes(file);
-              return (
-                <button
-                  key={file}
-                  onClick={() => onFileClick(file)}
-                  onContextMenu={(e) => handleContextMenu(e, file)}
-                  className={`w-full flex items-center gap-1.5 py-[2px] px-3 text-[13px] rounded transition-colors ${activeTab === file ? 'bg-[#37373d] text-white' : 'text-[#cccccc] hover:bg-[#2a2a2a]'}`}
-                >
-                  <span className="text-[9px] font-bold" style={{ color }}>{icon}</span>
-                  <span className="truncate flex-1 text-left">{file}</span>
-                  {isInContext && <span className="text-[10px] text-[#007acc]" title="In AI Context">⚡</span>}
-                </button>
-              );
-            })}
-          </div>
+        {/* FOLDER TREE Section - only show when files exist */}
+        {files.length > 0 && (
+          <>
+            <button 
+              onClick={() => setShowFolderTree(!showFolderTree)}
+              className="w-full px-2 py-1 text-[11px] uppercase text-[#e0e0e0] font-semibold flex items-center gap-1 hover:bg-[#2a2a2a] rounded"
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${showFolderTree ? 'rotate-90' : ''}`}>
+                <path d="M6 4l4 4-4 4z"/>
+              </svg>
+              OPEN FILES
+            </button>
+            {showFolderTree && (
+              <div className="mt-0.5">
+                {files.map(file => {
+                  const ext = file.split('.').pop();
+                  const icon = ext === 'ts' || ext === 'tsx' ? 'TS' : ext === 'css' ? 'CSS' : ext === 'json' ? '{}' : 'TXT';
+                  const color = ext === 'ts' || ext === 'tsx' ? '#3178c6' : ext === 'css' ? '#563d7c' : ext === 'json' ? '#f1e05a' : '#808080';
+                  const isInContext = contextFiles.includes(file);
+                  return (
+                    <button
+                      key={file}
+                      onClick={() => onFileClick(file)}
+                      onContextMenu={(e) => handleContextMenu(e, file)}
+                      className={`w-full flex items-center gap-1.5 py-[2px] px-3 text-[13px] rounded transition-colors ${activeTab === file ? 'bg-[#37373d] text-white' : 'text-[#cccccc] hover:bg-[#2a2a2a]'}`}
+                    >
+                      <span className="text-[9px] font-bold" style={{ color }}>{icon}</span>
+                      <span className="truncate flex-1 text-left">{file}</span>
+                      {isInContext && <span className="text-[10px] text-[#007acc]" title="In AI Context">⚡</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
 
         {/* AI Context Section */}
