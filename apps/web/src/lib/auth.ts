@@ -1,11 +1,12 @@
 /**
- * Titan AI - NextAuth v5 Configuration
+ * Titan AI - NextAuth v5 Configuration (Server-side)
  * GitHub OAuth with JWT sessions + SQLite persistence
+ * This file is for SERVER-SIDE use only (not Edge Runtime).
  */
 
 import NextAuth, { type DefaultSession } from 'next-auth';
-import GitHub from 'next-auth/providers/github';
-import { upsertUser, createSession, deleteSession, getSessionWithUser } from '@/lib/db/client';
+import { authConfig } from './auth.config';
+import { upsertUser } from '@/lib/db/client';
 
 // ── Type augmentation so TypeScript knows about our extra session fields ──
 declare module 'next-auth' {
@@ -20,33 +21,12 @@ declare module 'next-auth' {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [
-    GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          // Request all needed scopes up front
-          scope: 'read:user user:email repo workflow',
-        },
-      },
-    }),
-  ],
-
-  pages: {
-    signIn: '/auth/signin',
-    error: '/auth/signin',
-  },
-
-  session: {
-    strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-
+  ...authConfig,
   callbacks: {
+    ...authConfig.callbacks,
     /**
      * Called when a user signs in.
-     * Upserts the user in our database.
+     * Upserts the user in our database (server-side only).
      */
     async signIn({ user, account, profile }) {
       if (account?.provider !== 'github') return false;
@@ -76,41 +56,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         console.error('[Auth] signIn callback error:', err);
         return false;
       }
-    },
-
-    /**
-     * Called when creating/updating JWT.
-     * Stores GitHub access token inside the token.
-     */
-    async jwt({ token, account, profile }) {
-      // On initial sign-in, account and profile are present
-      if (account?.provider === 'github' && profile) {
-        const githubProfile = profile as unknown as {
-          id: number;
-          login: string;
-          avatar_url?: string;
-        };
-
-        token.githubToken = account.access_token;
-        token.githubId = githubProfile.id;
-        token.username = githubProfile.login;
-        token.avatarUrl = githubProfile.avatar_url ?? null;
-      }
-      return token;
-    },
-
-    /**
-     * Called whenever a session is checked.
-     * Exposes user data and GitHub token to the client.
-     */
-    async session({ session, token }) {
-      if (token) {
-        session.user.id = token.sub ?? '';
-        session.user.username = (token.username as string) ?? '';
-        session.user.githubToken = (token.githubToken as string) ?? '';
-        session.user.avatarUrl = (token.avatarUrl as string) ?? session.user.image ?? '';
-      }
-      return session;
     },
   },
 });
