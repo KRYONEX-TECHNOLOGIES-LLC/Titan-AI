@@ -5,7 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ModelInfo, MODEL_REGISTRY } from '@/lib/model-registry';
-import { scanForThreats, isHighSeverityThreat } from '@/lib/security';
+import { scanForThreats, isHighSeverityThreat, PathObfuscator } from '@/lib/security';
+
+const pathObfuscator = new PathObfuscator();
 
 export interface ChatRequest {
   sessionId: string;
@@ -20,6 +22,7 @@ export interface ChatRequest {
   };
   contextFiles?: string[];
   crossSessionMemory?: boolean;
+  repoMap?: string;
 }
 
 export interface ChatResponse {
@@ -144,6 +147,20 @@ npm install && npm run dev
 `;
 
 
+  // Tool descriptions for the agent
+  systemPrompt += `
+## Available Tools (the IDE will execute these when you reference them)
+- **read_file**: Read file contents with optional line range
+- **edit_file**: Replace specific text in a file (old_string -> new_string)
+- **create_file**: Create a new file with content
+- **list_directory**: List files and directories
+- **grep_search**: Search for text patterns across files
+- **run_command**: Execute shell commands (npm, git, etc.)
+
+When you want to use a tool, describe the action clearly. The IDE will detect and execute it.
+For file edits, always show the code in fenced blocks with the filename: \`\`\`language:path/to/file
+`;
+
   if (codeContext) {
     systemPrompt += `
 Current file: ${codeContext.file}
@@ -155,6 +172,14 @@ Full file context:
 \`\`\`${codeContext.language}
 ${codeContext.content}
 \`\`\`
+`;
+  }
+
+  // Include repo map context if available (generated on folder open)
+  if (body.repoMap) {
+    systemPrompt += `
+## Repository Map (condensed overview of the workspace)
+${typeof body.repoMap === 'string' ? body.repoMap.slice(0, 8000) : ''}
 `;
   }
 
@@ -536,13 +561,20 @@ function extractSuggestedEdits(
   const fencedBlocks = [...content.matchAll(/```(?:\w+)?\n([\s\S]*?)```/g)];
   if (fencedBlocks.length === 0) return [];
 
-  // Use the largest code block as the likely full-file replacement.
   const best = fencedBlocks
     .map(block => block[1]?.trim() || '')
     .sort((a, b) => b.length - a.length)[0];
 
   if (!best || best.length < 20) return [];
   if (best === codeContext.content.trim()) return [];
+
+  // Sentinel check: scan for critical issues before suggesting
+  const threats = scanForThreats(best);
+  const criticalThreats = threats.filter(t => t.severity === 'critical');
+  if (criticalThreats.length > 0) {
+    console.warn('[Sentinel] Blocked code suggestion with critical issues:', criticalThreats.map(t => t.description));
+    return [];
+  }
 
   return [
     {

@@ -93,6 +93,22 @@ export function useFileSystem(
         console.warn('[useFileSystem] Background indexing failed:', err)
       );
 
+      // Generate repo map for AI context
+      setLoadingMessage('Generating repo map...');
+      try {
+        const mapRes = await fetch('/api/workspace/repomap', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ maxFiles: 150 }),
+        });
+        if (mapRes.ok) {
+          const mapData = await mapRes.json();
+          if (mapData.map) (window as any).__titanRepoMap = mapData.map;
+        }
+      } catch (err) {
+        console.warn('[useFileSystem] Repo map generation failed:', err);
+      }
+
       setLoadingMessage('Loading editor...');
       setFileContents(newFiles);
 

@@ -19,6 +19,7 @@ import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
 
 // Components
 import ChatMessage from '@/components/ide/ChatMessage';
+import { ErrorBoundary } from '@/components/ide/ErrorBoundary';
 
 const FactoryView = dynamic(() => import('@/components/midnight/FactoryView'), { ssr: false });
 const TrustSlider = dynamic(() => import('@/components/midnight/TrustSlider'), { ssr: false });
@@ -304,6 +305,7 @@ export default function TitanIDE() {
   }
 
   return (
+    <ErrorBoundary>
     <div suppressHydrationWarning className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden select-none" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       {mounted && <IDEMenuBar />}
       {mounted && <IDECommandPalette />}
@@ -456,6 +458,7 @@ export default function TitanIDE() {
         trustLevel={midnight.trustLevel}
       />
     </div>
+    </ErrorBoundary>
   );
 }
 

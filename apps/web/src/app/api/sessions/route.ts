@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getDb } from '@/lib/db/client';
 
 export interface ChatMessage {
   id: string;
@@ -32,26 +33,111 @@ export interface Session {
   contextWindow: string[];
 }
 
-// In-memory store (in production, use SQLite)
-const sessions: Map<string, Session> = new Map();
+// SQLite-backed session storage with in-memory fallback
+const memoryFallback: Map<string, Session> = new Map();
 
-// Initialize with a default session
+function initSessionsTable() {
+  try {
+    const db = getDb();
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT 'claude-4.6-sonnet',
+        messages TEXT NOT NULL DEFAULT '[]',
+        changed_files TEXT NOT NULL DEFAULT '[]',
+        context_window TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getSessionFromDb(id: string): Session | null {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM chat_sessions WHERE id = ?').get(id) as any;
+    if (!row) return null;
+    return {
+      id: row.id, name: row.name, model: row.model,
+      createdAt: row.created_at, updatedAt: row.updated_at,
+      messages: JSON.parse(row.messages),
+      changedFiles: JSON.parse(row.changed_files),
+      contextWindow: JSON.parse(row.context_window),
+    };
+  } catch {
+    return memoryFallback.get(id) || null;
+  }
+}
+
+function saveSessionToDb(session: Session) {
+  try {
+    const db = getDb();
+    db.prepare(`
+      INSERT OR REPLACE INTO chat_sessions (id, name, model, messages, changed_files, context_window, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      session.id, session.name, session.model,
+      JSON.stringify(session.messages.slice(-100)),
+      JSON.stringify(session.changedFiles),
+      JSON.stringify(session.contextWindow),
+      session.createdAt, session.updatedAt
+    );
+  } catch {
+    memoryFallback.set(session.id, session);
+  }
+}
+
+function getAllSessionsFromDb(): Session[] {
+  try {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM chat_sessions ORDER BY updated_at DESC').all() as any[];
+    return rows.map(row => ({
+      id: row.id, name: row.name, model: row.model,
+      createdAt: row.created_at, updatedAt: row.updated_at,
+      messages: JSON.parse(row.messages),
+      changedFiles: JSON.parse(row.changed_files),
+      contextWindow: JSON.parse(row.context_window),
+    }));
+  } catch {
+    return Array.from(memoryFallback.values());
+  }
+}
+
+function deleteSessionFromDb(id: string) {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM chat_sessions WHERE id = ?').run(id);
+  } catch {
+    memoryFallback.delete(id);
+  }
+}
+
+// Initialize table on module load
+const dbReady = initSessionsTable();
+
 const defaultSessionId = 'default-session';
-sessions.set(defaultSessionId, {
-  id: defaultSessionId,
-  name: 'Titan AI Assistant',
-  createdAt: Date.now(),
-  updatedAt: Date.now(),
-  messages: [{
-    id: 'welcome-1',
-    role: 'assistant',
-    content: "Welcome to Titan AI. I'm ready to help you build, debug, and refactor your code. What would you like to work on?",
-    timestamp: Date.now(),
-  }],
-  model: 'claude-4.6-sonnet',
-  changedFiles: [],
-  contextWindow: [],
-});
+if (dbReady && !getSessionFromDb(defaultSessionId)) {
+  saveSessionToDb({
+    id: defaultSessionId,
+    name: 'Titan AI Assistant',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    messages: [{
+      id: 'welcome-1',
+      role: 'assistant',
+      content: "Welcome to Titan AI. I'm ready to help you build, debug, and refactor your code. What would you like to work on?",
+      timestamp: Date.now(),
+    }],
+    model: 'claude-4.6-sonnet',
+    changedFiles: [],
+    contextWindow: [],
+  });
+}
 
 /**
  * GET /api/sessions - List all sessions
@@ -61,30 +147,17 @@ export async function GET(request: NextRequest) {
   const sessionId = searchParams.get('id');
 
   if (sessionId) {
-    // Get specific session
-    const session = sessions.get(sessionId);
-    if (!session) {
-      return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-    }
+    const session = getSessionFromDb(sessionId);
+    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     return NextResponse.json({ session });
   }
 
-  // List all sessions
-  const allSessions = Array.from(sessions.values())
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .map(s => ({
-      id: s.id,
-      name: s.name,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      messageCount: s.messages.length,
-      model: s.model,
-    }));
+  const allSessions = getAllSessionsFromDb().map(s => ({
+    id: s.id, name: s.name, createdAt: s.createdAt, updatedAt: s.updatedAt,
+    messageCount: s.messages.length, model: s.model,
+  }));
 
-  return NextResponse.json({
-    sessions: allSessions,
-    total: allSessions.length,
-  });
+  return NextResponse.json({ sessions: allSessions, total: allSessions.length });
 }
 
 /**
@@ -112,12 +185,9 @@ export async function POST(request: NextRequest) {
     contextWindow: [],
   };
 
-  sessions.set(sessionId, session);
+  saveSessionToDb(session);
 
-  return NextResponse.json({
-    success: true,
-    session,
-  });
+  return NextResponse.json({ success: true, session });
 }
 
 /**
@@ -127,7 +197,7 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json();
   const { sessionId, action, data } = body;
 
-  const session = sessions.get(sessionId);
+  const session = getSessionFromDb(sessionId);
   if (!session) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   }
@@ -188,10 +258,8 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   }
 
-  return NextResponse.json({
-    success: true,
-    session,
-  });
+  saveSessionToDb(session);
+  return NextResponse.json({ success: true, session });
 }
 
 /**
@@ -209,10 +277,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Cannot delete default session' }, { status: 400 });
   }
 
-  sessions.delete(sessionId);
-
-  return NextResponse.json({
-    success: true,
-    message: `Session ${sessionId} deleted`,
-  });
+  deleteSessionFromDb(sessionId);
+  return NextResponse.json({ success: true, message: `Session ${sessionId} deleted` });
 }

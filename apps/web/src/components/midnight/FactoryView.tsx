@@ -212,7 +212,53 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
     fetchLogs();
     const interval = setInterval(fetchLogs, 2000);
 
-    return () => clearInterval(interval);
+    // SSE stream for real-time events
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/midnight/stream');
+      eventSource.addEventListener('actor', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setActorLines(prev => [...prev.slice(-49), {
+            type: data.type || 'output',
+            content: data.message || data.content || '',
+            timestamp: new Date(data.timestamp || Date.now()),
+          }]);
+        } catch { /* ignore */ }
+      });
+      eventSource.addEventListener('sentinel', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setSentinelLines(prev => [...prev.slice(-49), {
+            type: data.type || 'output',
+            content: data.message || data.content || '',
+            timestamp: new Date(data.timestamp || Date.now()),
+          }]);
+          if (data.confidence !== undefined) setConfidenceScore(data.confidence);
+          if (data.status) setConfidenceStatus(data.status);
+        } catch { /* ignore */ }
+      });
+      eventSource.addEventListener('progress', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.progress !== undefined) setProgress(data.progress);
+          if (data.task) setCurrentTask(data.task);
+          if (data.completed !== undefined) setTasksCompleted(data.completed);
+          if (data.total !== undefined) setTotalTasks(data.total);
+        } catch { /* ignore */ }
+      });
+      eventSource.onerror = () => {
+        eventSource?.close();
+        eventSource = null;
+      };
+    } catch {
+      // SSE not available, fall back to polling
+    }
+
+    return () => {
+      clearInterval(interval);
+      eventSource?.close();
+    };
   }, [isOpen]);
 
   // Auto-scroll terminals

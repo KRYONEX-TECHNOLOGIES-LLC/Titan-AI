@@ -1,240 +1,202 @@
 /**
- * Titan AI - SQLite Database Client
- * Uses better-sqlite3 for synchronous, fast local persistence.
- * Database stored at .titan/titan-web.db
+ * SQLite database client for persistent storage.
+ * Uses better-sqlite3 for server-side API routes.
+ * Falls back to in-memory mode if disk storage is unavailable.
  */
 
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
 
-// Resolve DB path — works on Railway and local
-const DB_DIR = process.env.TITAN_DIR
-  ? path.resolve(process.env.TITAN_DIR)
-  : path.resolve(process.cwd(), '.titan');
+let db: Database.Database | null = null;
 
-const DB_PATH = path.join(DB_DIR, 'titan-web.db');
+function getDbPath(): string {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || process.cwd();
+  const titanDir = path.join(homeDir, '.titan-ai');
 
-let _db: Database.Database | null = null;
+  try {
+    fs.mkdirSync(titanDir, { recursive: true });
+  } catch {
+    // Fallback to cwd
+    return path.join(process.cwd(), '.titan-ai', 'titan.db');
+  }
 
-function getDb(): Database.Database {
-  if (_db) return _db;
-
-  // Ensure directory exists
-  fs.mkdirSync(DB_DIR, { recursive: true });
-
-  _db = new Database(DB_PATH);
-  _db.pragma('journal_mode = WAL');
-  _db.pragma('foreign_keys = ON');
-  _db.pragma('synchronous = NORMAL');
-
-  initSchema(_db);
-  return _db;
+  return path.join(titanDir, 'titan.db');
 }
 
-function initSchema(db: Database.Database) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      github_id INTEGER UNIQUE NOT NULL,
-      username TEXT NOT NULL,
-      name TEXT,
-      email TEXT,
-      avatar_url TEXT,
-      profile_url TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+export function getDb(): Database.Database {
+  if (db) return db;
 
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      github_token TEXT NOT NULL,
-      expires_at DATETIME NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+  const dbPath = getDbPath();
 
-    CREATE TABLE IF NOT EXISTS workspaces (
+  try {
+    const dir = path.dirname(dbPath);
+    fs.mkdirSync(dir, { recursive: true });
+  } catch { /* ignore */ }
+
+  try {
+    db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000');
+    db.pragma('foreign_keys = ON');
+    initSchema(db);
+    return db;
+  } catch {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    initSchema(db);
+    return db;
+  }
+}
+
+function initSchema(database: Database.Database) {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS chat_sessions (
       id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
-      path TEXT,
-      repo_url TEXT,
-      repo_owner TEXT,
-      repo_name TEXT,
-      default_branch TEXT DEFAULT 'main',
-      last_opened DATETIME DEFAULT CURRENT_TIMESTAMP,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      model TEXT NOT NULL DEFAULT 'claude-4.6-sonnet',
+      messages TEXT NOT NULL DEFAULT '[]',
+      changed_files TEXT NOT NULL DEFAULT '[]',
+      context_window TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
-    CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_workspaces_user_id ON workspaces(user_id);
+    CREATE TABLE IF NOT EXISTS indexing_state (
+      file_path TEXT PRIMARY KEY,
+      hash TEXT NOT NULL,
+      symbols TEXT NOT NULL DEFAULT '[]',
+      chunks TEXT NOT NULL DEFAULT '[]',
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS midnight_state (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'idle',
+      queue TEXT NOT NULL DEFAULT '[]',
+      current_project TEXT,
+      progress TEXT NOT NULL DEFAULT '{}',
+      trust_level REAL NOT NULL DEFAULT 0.5,
+      confidence REAL NOT NULL DEFAULT 0.0,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS spec_contracts (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      contract TEXT NOT NULL DEFAULT '{}',
+      progress TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_updated ON chat_sessions(updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_indexing_hash ON indexing_state(hash);
   `);
 }
 
-/* ─── User Operations ─── */
+export function closeDb() {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
 
-export interface DbUser {
-  id: string;
-  github_id: number;
+// ── User management ──
+
+interface UpsertUserParams {
+  githubId: number;
   username: string;
   name: string | null;
   email: string | null;
-  avatar_url: string | null;
-  profile_url: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export function upsertUser(data: {
-  githubId: number;
-  username: string;
-  name?: string | null;
-  email?: string | null;
-  avatarUrl?: string | null;
+  avatarUrl: string | null;
   profileUrl?: string | null;
-}): DbUser {
-  const db = getDb();
-  const existing = db.prepare('SELECT * FROM users WHERE github_id = ?').get(data.githubId) as DbUser | undefined;
+}
 
-  if (existing) {
-    db.prepare(`
-      UPDATE users SET username=?, name=?, email=?, avatar_url=?, profile_url=?, updated_at=CURRENT_TIMESTAMP
-      WHERE github_id=?
-    `).run(data.username, data.name ?? null, data.email ?? null, data.avatarUrl ?? null, data.profileUrl ?? null, data.githubId);
-    return db.prepare('SELECT * FROM users WHERE github_id = ?').get(data.githubId) as DbUser;
+export function upsertUser(params: UpsertUserParams) {
+  try {
+    const database = getDb();
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        github_id INTEGER UNIQUE NOT NULL,
+        username TEXT NOT NULL,
+        name TEXT,
+        email TEXT,
+        avatar_url TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+    database.prepare(`
+      INSERT INTO users (github_id, username, name, email, avatar_url, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, unixepoch(), unixepoch())
+      ON CONFLICT(github_id) DO UPDATE SET
+        username = excluded.username,
+        name = excluded.name,
+        email = excluded.email,
+        avatar_url = excluded.avatar_url,
+        updated_at = unixepoch()
+    `).run(params.githubId, params.username, params.name, params.email, params.avatarUrl);
+  } catch (e) {
+    console.warn('[db] upsertUser failed (non-blocking):', (e as Error).message);
   }
-
-  const id = randomUUID();
-  db.prepare(`
-    INSERT INTO users (id, github_id, username, name, email, avatar_url, profile_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, data.githubId, data.username, data.name ?? null, data.email ?? null, data.avatarUrl ?? null, data.profileUrl ?? null);
-
-  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as DbUser;
 }
 
-export function getUserById(id: string): DbUser | null {
-  return (getDb().prepare('SELECT * FROM users WHERE id = ?').get(id) as DbUser) ?? null;
-}
+// ── Workspace management ──
 
-export function getUserByGithubId(githubId: number): DbUser | null {
-  return (getDb().prepare('SELECT * FROM users WHERE github_id = ?').get(githubId) as DbUser) ?? null;
-}
-
-/* ─── Session Operations ─── */
-
-export interface DbSession {
-  id: string;
-  user_id: string;
-  github_token: string;
-  expires_at: string;
-  created_at: string;
-}
-
-export function createSession(userId: string, githubToken: string, expiresAt: Date): DbSession {
-  const db = getDb();
-  const id = randomUUID();
-  db.prepare(`
-    INSERT INTO sessions (id, user_id, github_token, expires_at)
-    VALUES (?, ?, ?, ?)
-  `).run(id, userId, githubToken, expiresAt.toISOString());
-  return db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as DbSession;
-}
-
-export function getSession(id: string): DbSession | null {
-  return (getDb().prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > CURRENT_TIMESTAMP').get(id) as DbSession) ?? null;
-}
-
-export function deleteSession(id: string): void {
-  getDb().prepare('DELETE FROM sessions WHERE id = ?').run(id);
-}
-
-export function deleteExpiredSessions(): void {
-  getDb().prepare('DELETE FROM sessions WHERE expires_at <= CURRENT_TIMESTAMP').run();
-}
-
-export function getSessionWithUser(sessionId: string): (DbSession & { user: DbUser }) | null {
-  const row = getDb().prepare(`
-    SELECT s.*, u.id as u_id, u.github_id, u.username, u.name, u.email, u.avatar_url, u.profile_url, u.created_at as u_created
-    FROM sessions s JOIN users u ON s.user_id = u.id
-    WHERE s.id = ? AND s.expires_at > CURRENT_TIMESTAMP
-  `).get(sessionId) as Record<string, unknown> | undefined;
-
-  if (!row) return null;
-
-  return {
-    id: row.id as string,
-    user_id: row.user_id as string,
-    github_token: row.github_token as string,
-    expires_at: row.expires_at as string,
-    created_at: row.created_at as string,
-    user: {
-      id: row.u_id as string,
-      github_id: row.github_id as number,
-      username: row.username as string,
-      name: row.name as string | null,
-      email: row.email as string | null,
-      avatar_url: row.avatar_url as string | null,
-      profile_url: row.profile_url as string | null,
-      created_at: row.u_created as string,
-      updated_at: row.u_created as string,
-    },
-  };
-}
-
-/* ─── Workspace Operations ─── */
-
-export interface DbWorkspace {
-  id: string;
-  user_id: string;
-  name: string;
-  path: string | null;
-  repo_url: string | null;
-  repo_owner: string | null;
-  repo_name: string | null;
-  default_branch: string;
-  last_opened: string;
-  created_at: string;
-}
-
-export function upsertWorkspace(data: {
+interface UpsertWorkspaceParams {
+  id?: string;
   userId: string;
-  name: string;
-  path?: string;
-  repoUrl?: string;
-  repoOwner?: string;
+  name?: string;
   repoName?: string;
+  repoUrl?: string;
+  cloneUrl?: string;
+  path?: string;
+  localPath?: string;
+  branch?: string;
   defaultBranch?: string;
-}): DbWorkspace {
-  const db = getDb();
-  const existing = db.prepare(
-    'SELECT * FROM workspaces WHERE user_id = ? AND (path = ? OR repo_url = ?)'
-  ).get(data.userId, data.path ?? null, data.repoUrl ?? null) as DbWorkspace | undefined;
+  repoOwner?: string;
+}
 
-  if (existing) {
-    db.prepare(`
-      UPDATE workspaces SET name=?, path=?, repo_url=?, repo_owner=?, repo_name=?, default_branch=?, last_opened=CURRENT_TIMESTAMP
-      WHERE id=?
-    `).run(data.name, data.path ?? null, data.repoUrl ?? null, data.repoOwner ?? null, data.repoName ?? null, data.defaultBranch ?? 'main', existing.id);
-    return db.prepare('SELECT * FROM workspaces WHERE id = ?').get(existing.id) as DbWorkspace;
+export function upsertWorkspace(params: UpsertWorkspaceParams) {
+  const id = params.id || `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const repoName = params.repoName || params.name || 'unknown';
+  const cloneUrl = params.cloneUrl || params.repoUrl || '';
+  const localPath = params.localPath || params.path || '';
+  const branch = params.branch || params.defaultBranch || 'main';
+
+  try {
+    const database = getDb();
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        repo_name TEXT NOT NULL,
+        clone_url TEXT NOT NULL,
+        local_path TEXT NOT NULL,
+        branch TEXT DEFAULT 'main',
+        repo_owner TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+      )
+    `);
+    database.prepare(`
+      INSERT INTO workspaces (id, user_id, repo_name, clone_url, local_path, branch, repo_owner, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())
+      ON CONFLICT(id) DO UPDATE SET
+        repo_name = excluded.repo_name,
+        clone_url = excluded.clone_url,
+        local_path = excluded.local_path,
+        branch = excluded.branch,
+        repo_owner = excluded.repo_owner,
+        updated_at = unixepoch()
+    `).run(id, params.userId, repoName, cloneUrl, localPath, branch, params.repoOwner || null);
+
+    return { id, ...params };
+  } catch (e) {
+    console.warn('[db] upsertWorkspace failed:', (e as Error).message);
+    return { id, ...params };
   }
-
-  const id = randomUUID();
-  db.prepare(`
-    INSERT INTO workspaces (id, user_id, name, path, repo_url, repo_owner, repo_name, default_branch)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, data.userId, data.name, data.path ?? null, data.repoUrl ?? null, data.repoOwner ?? null, data.repoName ?? null, data.defaultBranch ?? 'main');
-
-  return db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id) as DbWorkspace;
-}
-
-export function getUserWorkspaces(userId: string): DbWorkspace[] {
-  return getDb().prepare('SELECT * FROM workspaces WHERE user_id = ? ORDER BY last_opened DESC').all(userId) as DbWorkspace[];
-}
-
-export function deleteWorkspace(id: string, userId: string): void {
-  getDb().prepare('DELETE FROM workspaces WHERE id = ? AND user_id = ?').run(id, userId);
 }

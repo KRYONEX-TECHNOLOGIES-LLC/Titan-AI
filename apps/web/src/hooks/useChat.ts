@@ -176,6 +176,7 @@ export function useChat({
             language: currentLanguage,
           },
           crossSessionMemory: crossSessionMemory || undefined,
+          repoMap: typeof window !== 'undefined' ? (window as any).__titanRepoMap : undefined,
         }),
       });
 
