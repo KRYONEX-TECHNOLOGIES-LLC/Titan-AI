@@ -346,7 +346,9 @@ interface ModelInfo {
   }, [activeModel, cappedModelRegistry]);
 
   // ═══ PERSISTENCE: Save state to localStorage ═══
-  const STORAGE_VERSION = 2; // Bump this to reset state for all users
+  const STORAGE_VERSION = 3; // Bump this to reset state for all users
+  const MAX_PERSISTED_MESSAGES = 50;
+  const MAX_MESSAGE_LENGTH = 2000;
   useEffect(() => {
     if (!mounted) return;
     const state = {
@@ -357,21 +359,39 @@ interface ModelInfo {
         id: s.id,
         name: s.name,
         time: s.time,
-        messages: s.messages,
-        changedFiles: s.changedFiles,
+        messages: s.messages.slice(-MAX_PERSISTED_MESSAGES).map(m => ({
+          ...m,
+          content: m.content.length > MAX_MESSAGE_LENGTH ? m.content.slice(0, MAX_MESSAGE_LENGTH) + '\n\n…(truncated)' : m.content,
+          thinking: undefined,
+          streaming: false,
+        })),
+        changedFiles: [],
       })),
       activeSessionId,
       activeModel,
       trustLevel,
       midnightActive,
-      fileContents,
       gitBranch,
       fontSize,
       tabSize,
       wordWrap,
     };
-    localStorage.setItem('titan-ai-state', JSON.stringify(state));
-  }, [mounted, tabs, activeTab, sessions, activeSessionId, activeModel, trustLevel, midnightActive, fileContents, gitBranch, fontSize, tabSize, wordWrap]);
+    try {
+      localStorage.setItem('titan-ai-state', JSON.stringify(state));
+    } catch {
+      // Quota exceeded — trim sessions and retry
+      try {
+        state.sessions = state.sessions.map(s => ({
+          ...s,
+          messages: s.messages.slice(-10),
+        }));
+        localStorage.setItem('titan-ai-state', JSON.stringify(state));
+      } catch {
+        // Still failing — clear and save minimal state
+        localStorage.removeItem('titan-ai-state');
+      }
+    }
+  }, [mounted, tabs, activeTab, sessions, activeSessionId, activeModel, trustLevel, midnightActive, gitBranch, fontSize, tabSize, wordWrap]);
 
   // ═══ PERSISTENCE: Restore state from localStorage (FULL) ═══
   useEffect(() => {
@@ -399,10 +419,6 @@ interface ModelInfo {
         if (state.activeModel) setActiveModel(state.activeModel);
         if (state.trustLevel) setTrustLevel(state.trustLevel);
         if (state.midnightActive !== undefined) setMidnightActive(state.midnightActive);
-        // Restore file contents
-        if (state.fileContents && Object.keys(state.fileContents).length > 0) {
-          setFileContents(prev => ({ ...prev, ...state.fileContents }));
-        }
         // Restore git branch
         if (state.gitBranch) setGitBranch(state.gitBranch);
         // Restore editor settings
