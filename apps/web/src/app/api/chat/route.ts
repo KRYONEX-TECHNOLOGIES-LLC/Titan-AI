@@ -92,7 +92,7 @@ function normalizeProviderError(error: unknown): {
  */
 export async function POST(request: NextRequest) {
   const body: ChatRequest = await request.json();
-  const { message, model, codeContext, stream } = body;
+  const { message, model, codeContext, stream, crossSessionMemory } = body;
 
   if (!message?.trim()) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -121,6 +121,15 @@ Full file context:
 \`\`\`${codeContext.language}
 ${codeContext.content}
 \`\`\`
+`;
+  }
+
+  if (crossSessionMemory) {
+    systemPrompt += `
+--- Previous Session Context (for reference only) ---
+${crossSessionMemory}
+--- End of Previous Session Context ---
+You can reference these past sessions if the user asks about previous work, but focus on the current session.
 `;
   }
 

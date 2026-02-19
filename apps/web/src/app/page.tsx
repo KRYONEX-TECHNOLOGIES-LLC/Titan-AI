@@ -712,6 +712,15 @@ interface ModelInfo {
       ));
     };
 
+    // Build cross-session memory context (last 2 messages from each other session)
+    const crossSessionMemory = sessions
+      .filter(s => s.id !== sessionId && s.messages.length > 1)
+      .map(s => {
+        const lastMsgs = s.messages.slice(-4).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 200)}`).join('\n');
+        return `[Session: ${s.name}]\n${lastMsgs}`;
+      })
+      .join('\n\n');
+
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -727,6 +736,7 @@ interface ModelInfo {
             selection: selectedText || undefined,
             language: currentLanguage,
           },
+          crossSessionMemory: crossSessionMemory || undefined,
         }),
       });
 
@@ -2230,16 +2240,62 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           <span>+</span> New Agent
         </button>
       </div>
-      <div className="px-2 shrink-0 max-h-[120px] overflow-y-auto">
+      <div className="px-2 shrink-0 max-h-[200px] overflow-y-auto">
         <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5">AGENTS</div>
-        {sessions.slice(0, 5).map(s => (
-          <button key={s.id} onClick={() => setActiveSessionId(s.id)}
-            className={`w-full text-left rounded-md px-2.5 py-2 mb-0.5 ${activeSessionId === s.id ? 'bg-[#2a2a2a]' : 'hover:bg-[#2a2a2a]'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${activeSessionId === s.id ? 'bg-[#007acc]' : 'bg-[#555]'}`}></span><span className="text-[13px] text-[#e0e0e0] truncate">{s.name}</span></div>
-              <span className="text-[11px] text-[#666]">{s.time}</span>
+        {sessions.map(s => (
+          <div key={s.id} className={`group relative w-full rounded-md mb-0.5 ${activeSessionId === s.id ? 'bg-[#2a2a2a]' : 'hover:bg-[#2a2a2a]'}`}>
+            <button onClick={() => setActiveSessionId(s.id)} className="w-full text-left px-2.5 py-2 pr-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${activeSessionId === s.id ? 'bg-[#007acc]' : 'bg-[#555]'}`}></span>
+                  <span className="text-[13px] text-[#e0e0e0] truncate">{s.name}</span>
+                </div>
+                <span className="text-[11px] text-[#666] shrink-0 ml-1">{s.time}</span>
+              </div>
+            </button>
+            <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const menu = document.getElementById(`session-menu-${s.id}`);
+                    if (menu) menu.classList.toggle('hidden');
+                  }}
+                  className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#3c3c3c] text-[#808080] hover:text-[#e0e0e0]"
+                >
+                  ···
+                </button>
+                <div id={`session-menu-${s.id}`} className="hidden absolute right-0 top-7 z-50 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg min-w-[140px]">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const newName = prompt('Rename session:', s.name);
+                      if (newName?.trim()) {
+                        setSessions(prev => prev.map(sess => sess.id === s.id ? { ...sess, name: newName.trim() } : sess));
+                      }
+                      document.getElementById(`session-menu-${s.id}`)?.classList.add('hidden');
+                    }}
+                    className="w-full text-left px-3 py-2 text-[13px] text-[#cccccc] hover:bg-[#2a2d2e]"
+                  >
+                    Rename
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      document.getElementById(`session-menu-${s.id}`)?.classList.add('hidden');
+                      if (sessions.length === 1) return;
+                      const remaining = sessions.filter(sess => sess.id !== s.id);
+                      setSessions(remaining);
+                      if (activeSessionId === s.id) setActiveSessionId(remaining[0].id);
+                    }}
+                    className="w-full text-left px-3 py-2 text-[13px] text-[#f48771] hover:bg-[#2a2d2e]"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
             </div>
-          </button>
+          </div>
         ))}
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-3 min-h-0">
