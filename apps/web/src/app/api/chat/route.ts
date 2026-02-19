@@ -312,6 +312,15 @@ function looksLikePlaceholder(value: string): boolean {
   );
 }
 
+function isRailwayInternalUrl(url: string): boolean {
+  if (!url) return false;
+  return url.includes('.railway.internal') || url.includes('railway.internal:');
+}
+
+function isRunningOnRailway(): boolean {
+  return !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID);
+}
+
 function resolveProviderEnv(): ResolvedProviderEnv {
   return {
     openRouterApiKey: envValue('OPENROUTER_API_KEY'),
@@ -353,6 +362,16 @@ function validateProviderConfig(provider: Provider, env: ResolvedProviderEnv): C
       requiredEnv: ['TITAN_LITELLM_BASE_URL or LITELLM_PROXY_URL'],
     };
   }
+  // Railway internal URLs are only valid when running on Railway
+  if (isRailwayInternalUrl(env.liteLlmBaseUrl) && !isRunningOnRailway()) {
+    return {
+      ok: false,
+      status: 400,
+      code: 'unreachable_provider',
+      message: 'LiteLLM URL is a Railway internal address but not running on Railway. Use OpenRouter instead.',
+      requiredEnv: ['OPENROUTER_API_KEY'],
+    };
+  }
   if (env.liteLlmApiKey && looksLikePlaceholder(env.liteLlmApiKey)) {
     return {
       ok: false,
@@ -367,10 +386,15 @@ function validateProviderConfig(provider: Provider, env: ResolvedProviderEnv): C
 
 function fallbackProvider(primary: Provider): Provider | null {
   const env = resolveProviderEnv();
-  if (primary === 'openrouter' && env.liteLlmBaseUrl) {
-    return 'litellm';
+  const onRailway = isRunningOnRailway();
+  
+  if (primary === 'openrouter') {
+    // Only fallback to LiteLLM if it's reachable
+    if (env.liteLlmBaseUrl && (!isRailwayInternalUrl(env.liteLlmBaseUrl) || onRailway)) {
+      return 'litellm';
+    }
   }
-  if (primary === 'litellm' && env.openRouterApiKey) {
+  if (primary === 'litellm' && env.openRouterApiKey && !looksLikePlaceholder(env.openRouterApiKey)) {
     return 'openrouter';
   }
   return null;
@@ -559,8 +583,21 @@ function lookupProviderModelId(displayModelId: string): { providerModelId: strin
 
 function resolveProvider(model: string): Provider {
   const env = resolveProviderEnv();
-  if (env.liteLlmBaseUrl && !looksLikePlaceholder(env.liteLlmBaseUrl)) return 'litellm';
-  if (env.openRouterApiKey && !looksLikePlaceholder(env.openRouterApiKey)) return 'openrouter';
+  
+  // Skip LiteLLM if it's a Railway internal URL and we're not running on Railway
+  const litellmIsRailwayInternal = isRailwayInternalUrl(env.liteLlmBaseUrl);
+  const onRailway = isRunningOnRailway();
+  const litellmAvailable = env.liteLlmBaseUrl && 
+    !looksLikePlaceholder(env.liteLlmBaseUrl) && 
+    (!litellmIsRailwayInternal || onRailway);
+  
+  // Prefer OpenRouter for cloud models when LiteLLM isn't available locally
+  const openRouterAvailable = env.openRouterApiKey && !looksLikePlaceholder(env.openRouterApiKey);
+  
+  // If LiteLLM is Railway-internal and we're local, use OpenRouter
+  if (!litellmAvailable && openRouterAvailable) return 'openrouter';
+  if (litellmAvailable) return 'litellm';
+  if (openRouterAvailable) return 'openrouter';
   if (model.startsWith('anthropic/') || model.startsWith('openai/')) return 'openrouter';
   return 'litellm';
 }

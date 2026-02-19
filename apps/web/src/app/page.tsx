@@ -222,6 +222,8 @@ interface ChatMessage {
   streamingProvider?: string;
   thinking?: string;
   thinkingTime?: number;
+  isError?: boolean;
+  retryMessage?: string;
 }
 
 interface SearchResult {
@@ -960,36 +962,30 @@ interface ModelInfo {
       setIsThinking(false);
       setIsStreaming(false);
       
-      // Fallback to local response
-      const response = generateAIResponse(msg, activeTab, selectedText || '');
+      // Show real error with retry capability - NEVER fake responses
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      const errorContent = `⚠️ **Connection Error**\n\n${errorMessage}\n\n**Troubleshooting:**\n- Check your internet connection\n- Verify API keys are configured in \`.env\`\n- If using Claude Sonnet 4, ensure OPENROUTER_API_KEY is set\n\n_Click the retry button below to try again._`;
+      
       setSessions(prev => prev.map(s =>
         s.id === sessionId
           ? {
             ...s,
-            messages: s.messages.map(m => m.id === streamMessageId ? { ...m, content: response, streaming: false, time: 'just now' } : m),
-            changedFiles: s.changedFiles.length === 0 ? [{ name: activeTab, additions: 15, deletions: 3, ...getFileInfo(activeTab) }] : s.changedFiles,
+            messages: s.messages.map(m => m.id === streamMessageId 
+              ? { 
+                  ...m, 
+                  content: errorContent, 
+                  streaming: false, 
+                  time: 'just now',
+                  isError: true,
+                  retryMessage: msg,
+                } 
+              : m
+            ),
           }
           : s
       ));
     }
   }, [chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, applyDiffDecorations]);
-
-  const generateAIResponse = (query: string, file: string, selectedCode: string): string => {
-    const lowerQuery = query.toLowerCase();
-    if (lowerQuery.includes('explain')) {
-      return `I can see you're working on \`${file}\`. ${selectedCode ? `The selected code defines a ${selectedCode.includes('class') ? 'class' : selectedCode.includes('function') ? 'function' : 'code block'} that handles specific logic.` : 'This file contains TypeScript code for the application.'} Would you like me to provide a more detailed explanation of any specific part?`;
-    }
-    if (lowerQuery.includes('refactor') || lowerQuery.includes('improve')) {
-      return `I've analyzed \`${file}\` and found a few areas for improvement:\n\n1. **Type Safety**: Consider adding more explicit type annotations\n2. **Error Handling**: Add try-catch blocks for async operations\n3. **Performance**: The loop on line 25 could be optimized with a Map lookup\n\nWould you like me to apply these changes?`;
-    }
-    if (lowerQuery.includes('test')) {
-      return `I'll generate unit tests for \`${file}\`:\n\n\`\`\`typescript\ndescribe('AgentOrchestrator', () => {\n  it('should dispatch tasks correctly', async () => {\n    const orchestrator = new AgentOrchestrator(config);\n    const result = await orchestrator.dispatch(mockTask);\n    expect(result).toBeDefined();\n  });\n});\n\`\`\`\n\nShall I create a test file with these tests?`;
-    }
-    if (lowerQuery.includes('bug') || lowerQuery.includes('fix') || lowerQuery.includes('error')) {
-      return `I've scanned \`${file}\` for potential issues:\n\n**Found 1 potential bug:**\n- Line 34: Possible null reference when \`candidates\` array is empty\n\n**Suggested fix:**\n\`\`\`typescript\nreturn candidates[0] ?? this.defaultAgent;\n\`\`\`\n\nWould you like me to apply this fix?`;
-    }
-    return `I'll help you with that. I can see you're working on \`${file}\`${selectedCode ? ' with some selected code' : ''}. Let me analyze and work on your request.\n\nWhat specific changes would you like me to make?`;
-  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1715,6 +1711,16 @@ interface ModelInfo {
                   }
                   setPendingDiff(null);
                 }}
+                onRetry={(message) => {
+                  // Remove the error message and retry
+                  setSessions(prev => prev.map(s => 
+                    s.id === activeSessionId 
+                      ? { ...s, messages: s.messages.filter(m => !m.isError) }
+                      : s
+                  ));
+                  setChatInput(message);
+                  setTimeout(() => handleSend(), 100);
+                }}
               />
             )}
 
@@ -2343,12 +2349,13 @@ function ExtensionsPanel() {
   );
 }
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; activeModel: string;
   onNewAgent: () => void; onSend: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
   hasPendingDiff?: boolean; onRejectDiff?: () => void;
   onRenameSession?: (id: string, name: string) => void; onDeleteSession?: (id: string) => void;
+  onRetry?: (message: string) => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
   return (
@@ -2436,11 +2443,11 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
             )}
             {/* Main message content */}
             <div className="flex gap-2">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-[#3c3c3c]' : 'bg-[#007acc]'}`}>
-                {msg.role === 'user' ? <AccountIcon size={14} /> : <TitanAgentIcon size={14} />}
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'user' ? 'bg-[#3c3c3c]' : msg.isError ? 'bg-[#f85149]' : 'bg-[#007acc]'}`}>
+                {msg.role === 'user' ? <AccountIcon size={14} /> : msg.isError ? <span className="text-white text-[12px]">!</span> : <TitanAgentIcon size={14} />}
               </div>
               <div className="flex-1 text-[13px] text-[#cccccc] leading-relaxed whitespace-pre-wrap">
-                <div>
+                <div className={msg.isError ? 'text-[#f85149]' : ''}>
                   {msg.content}
                   {msg.streaming && <span className="inline-block ml-1 w-1.5 h-4 bg-[#808080] animate-pulse align-[-2px]" />}
                 </div>
@@ -2452,6 +2459,17 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                     )}
                     {msg.streamingProvider && <span> via {msg.streamingProvider}</span>}
                   </div>
+                )}
+                {msg.isError && msg.retryMessage && onRetry && (
+                  <button
+                    onClick={() => onRetry(msg.retryMessage!)}
+                    className="mt-2 px-3 py-1.5 bg-[#007acc] hover:bg-[#0098ff] text-white text-[12px] font-medium rounded-md flex items-center gap-2"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                    </svg>
+                    Retry
+                  </button>
                 )}
               </div>
             </div>
