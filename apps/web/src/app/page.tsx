@@ -35,6 +35,11 @@ import { useTerminalStore } from '@/stores/terminal-store';
 import { useDebugStore } from '@/stores/debug-store';
 import { initCommandRegistry } from '@/lib/ide/command-registry';
 
+// GitHub / Git Integration
+const IDEUserMenu = dynamic(() => import('@/components/ide/UserMenu'), { ssr: false });
+const IDEGitPanel = dynamic(() => import('@/components/ide/GitPanel'), { ssr: false });
+const IDECloneRepoDialog = dynamic(() => import('@/components/ide/CloneRepoDialog'), { ssr: false });
+
 /* ═══ LANGUAGE DETECTION ═══ */
 function getLanguageFromFilename(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
@@ -240,6 +245,8 @@ export default function TitanIDE() {
   const [commitMessage, setCommitMessage] = useState('');
   const [stagedFiles, setStagedFiles] = useState<string[]>([]);
   const [gitBranch, setGitBranch] = useState('main');
+  const [workspacePath, setWorkspacePath] = useState<string>('');
+  const [showCloneDialog, setShowCloneDialog] = useState(false);
 
   // Settings state
   const [fontSize, setFontSize] = useState(13);
@@ -1402,6 +1409,7 @@ interface ModelInfo {
               { type: 'separator' },
               { label: 'Open File...', shortcut: 'Ctrl+O', action: () => openFile() },
               { label: 'Open Folder...', shortcut: 'Ctrl+K O', action: () => openFolder() },
+              { label: 'Clone Repository...', shortcut: 'Ctrl+Shift+G C', action: () => setShowCloneDialog(true) },
               { type: 'separator' },
               { label: 'Save', shortcut: 'Ctrl+S', action: () => executeCommand('save') },
               { label: 'Save All', shortcut: 'Ctrl+K S', action: () => executeCommand('saveAll') },
@@ -1617,7 +1625,24 @@ interface ModelInfo {
             </div>
           )}
         </div>
+
+        {/* User Menu */}
+        <div className="flex items-center pr-2">
+          {mounted && <IDEUserMenu />}
+        </div>
       </div>
+
+      {/* Clone Dialog */}
+      {mounted && (
+        <IDECloneRepoDialog
+          isOpen={showCloneDialog}
+          onClose={() => setShowCloneDialog(false)}
+          onCloneComplete={(path, name) => {
+            setWorkspacePath(path);
+            setShowCloneDialog(false);
+          }}
+        />
+      )}
 
       {/* ═══ MAIN CONTENT ═══ */}
       <div className="flex-1 flex overflow-hidden min-h-0">
@@ -1650,17 +1675,7 @@ interface ModelInfo {
 
             {/* GIT */}
             {activeView === 'git' && (
-              <GitPanel
-                commitMessage={commitMessage}
-                setCommitMessage={setCommitMessage}
-                branch={gitBranch}
-                setBranch={setGitBranch}
-                modifiedFiles={tabs.filter(t => t.modified)}
-                stagedFiles={stagedFiles}
-                onStage={(file) => setStagedFiles(prev => [...prev, file])}
-                onUnstage={(file) => setStagedFiles(prev => prev.filter(f => f !== file))}
-                onCommit={handleCommit}
-              />
+              <IDEGitPanel workspacePath={workspacePath} />
             )}
 
             {/* DEBUG */}
@@ -1776,8 +1791,8 @@ interface ModelInfo {
                   <>
                     <div className="text-6xl mb-4 opacity-20">📂</div>
                     <div className="text-xl mb-2 text-[#cccccc]">No Files Open</div>
-                    <div className="text-sm text-[#555] mb-6">Open a folder or create a new file to get started</div>
-                    <div className="flex gap-3">
+                    <div className="text-sm text-[#555] mb-6">Open a folder, clone a repo, or create a new file to get started</div>
+                    <div className="flex flex-wrap gap-3 justify-center">
                       <button
                         onClick={openFolder}
                         className="px-5 py-2.5 bg-[#007acc] hover:bg-[#005a99] text-white rounded text-sm font-medium transition-colors flex items-center gap-2"
@@ -1786,6 +1801,15 @@ interface ModelInfo {
                           <path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H7.707l-1-1A1.5 1.5 0 0 0 5.586 3H1.5z"/>
                         </svg>
                         Open Folder
+                      </button>
+                      <button
+                        onClick={() => setShowCloneDialog(true)}
+                        className="px-5 py-2.5 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm font-medium transition-colors flex items-center gap-2"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                          <path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm0 2.122a2.25 2.25 0 1 0-1.5 0v.878A2.25 2.25 0 0 0 5.75 8.5h1.5v2.128a2.251 2.251 0 1 0 1.5 0V8.5h1.5a2.25 2.25 0 0 0 2.25-2.25v-.878a2.25 2.25 0 1 0-1.5 0v.878a.75.75 0 0 1-.75.75h-4.5A.75.75 0 0 1 5 6.25v-.878zm3.75 7.378a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm3-8.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0z"/>
+                        </svg>
+                        Clone Repository
                       </button>
                       <button
                         onClick={() => executeCommand('newFile')}
@@ -2306,43 +2330,6 @@ function SearchPanel({ searchQuery, setSearchQuery, replaceQuery, setReplaceQuer
   );
 }
 
-function GitPanel({ commitMessage, setCommitMessage, branch, setBranch, modifiedFiles, stagedFiles, onStage, onUnstage, onCommit }: {
-  commitMessage: string; setCommitMessage: (v: string) => void; branch: string; setBranch: (v: string) => void;
-  modifiedFiles: FileTab[]; stagedFiles: string[]; onStage: (f: string) => void; onUnstage: (f: string) => void; onCommit: () => void;
-}) {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="px-3 pt-3 pb-2 shrink-0">
-        <select value={branch} onChange={(e) => setBranch(e.target.value)} className="w-full bg-[#2d2d2d] border border-[#3c3c3c] rounded-md px-2 py-1 text-[12px] text-[#cccccc] mb-2">
-          <option value="main">main</option>
-          <option value="develop">develop</option>
-          <option value="feature/ai">feature/ai</option>
-        </select>
-        <textarea value={commitMessage} onChange={(e) => setCommitMessage(e.target.value)} placeholder="Commit message"
-          className="w-full bg-[#2d2d2d] border border-[#3c3c3c] rounded-md px-3 py-2 text-[12px] text-[#cccccc] placeholder-[#666] resize-none" rows={2} />
-        <button onClick={onCommit} disabled={!commitMessage.trim()} className="w-full h-[28px] bg-[#007acc] hover:bg-[#0098ff] disabled:bg-[#3c3c3c] disabled:text-[#808080] text-white text-[12px] font-medium rounded-md mt-2">
-          Commit {stagedFiles.length > 0 ? `(${stagedFiles.length})` : ''}
-        </button>
-      </div>
-      <div className="px-2 flex-1 overflow-y-auto">
-        <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5">Staged ({stagedFiles.length})</div>
-        {stagedFiles.map(f => (
-          <div key={f} className="flex items-center justify-between px-2 py-1 hover:bg-[#2a2a2a] rounded">
-            <span className="text-[12px] text-[#cccccc]">{f}</span>
-            <button onClick={() => onUnstage(f)} className="text-[10px] text-[#808080] hover:text-white">−</button>
-          </div>
-        ))}
-        <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5 mt-2">Changes ({modifiedFiles.length})</div>
-        {modifiedFiles.filter(f => !stagedFiles.includes(f.name)).map(f => (
-          <div key={f.name} className="flex items-center justify-between px-2 py-1 hover:bg-[#2a2a2a] rounded">
-            <span className="text-[12px] text-[#cccccc]">{f.name}</span>
-            <button onClick={() => onStage(f.name)} className="text-[10px] text-[#808080] hover:text-white">+</button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function DebugPanel({ onStart, onStop }: { onStart: () => void; onStop: () => void }) {
   const [isRunning, setIsRunning] = useState(false);

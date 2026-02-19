@@ -1,9 +1,59 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useFileStore, type FileNode } from '@/stores/file-store';
 import { useEditorStore } from '@/stores/editor-store';
 import { executeCommand } from '@/lib/ide/command-registry';
+
+// ─── Git Status Hook ─────────────────────────────────────────────────────────
+function useGitStatus(workspacePath: string | null) {
+  const [gitStatus, setGitStatus] = useState<{
+    modified: Set<string>;
+    staged: Set<string>;
+    untracked: Set<string>;
+    deleted: Set<string>;
+  }>({ modified: new Set(), staged: new Set(), untracked: new Set(), deleted: new Set() });
+
+  useEffect(() => {
+    if (!workspacePath) return;
+
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch(`/api/git/status?path=${encodeURIComponent(workspacePath)}`);
+        if (!res.ok) return;
+        const data = await res.json() as {
+          modified?: string[];
+          staged?: string[];
+          untracked?: string[];
+          deleted?: string[];
+        };
+        setGitStatus({
+          modified: new Set(data.modified ?? []),
+          staged: new Set(data.staged ?? []),
+          untracked: new Set(data.untracked ?? []),
+          deleted: new Set(data.deleted ?? []),
+        });
+      } catch { /* ignore */ }
+    };
+
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 5000);
+    return () => clearInterval(interval);
+  }, [workspacePath]);
+
+  return gitStatus;
+}
+
+// ─── Git status badge ────────────────────────────────────────────────────────
+function GitBadge({ status }: { status: 'M' | 'A' | 'U' | 'D' | null }) {
+  if (!status) return null;
+  const colors: Record<string, string> = { M: '#e3b341', A: '#3fb950', U: '#808080', D: '#f85149' };
+  return (
+    <span style={{ fontSize: 9, fontWeight: 700, color: colors[status], marginLeft: 'auto', paddingLeft: 4 }}>
+      {status}
+    </span>
+  );
+}
 
 // ─── File icon maps ───────────────────────────────────────────────────────────
 const EXT_ICONS: Record<string, { icon: string; color: string }> = {
@@ -126,10 +176,12 @@ function FileTreeNode({
   node,
   depth,
   onContextMenu,
+  gitStatus,
 }: {
   node: FileNode;
   depth: number;
   onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
+  gitStatus?: { modified: Set<string>; staged: Set<string>; untracked: Set<string>; deleted: Set<string> };
 }) {
   const { expandedPaths, selectedPath, toggleExpand, selectPath, renamingPath, setRenamingPath, refreshFileTree } = useFileStore();
   const { openTab, fileContents } = useEditorStore();
@@ -243,15 +295,25 @@ function FileTreeNode({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span style={{ fontSize: 12, color: '#cdd6f4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 12, color: '#cdd6f4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
             {node.name}
           </span>
         )}
+
+        {/* Git status badge */}
+        {node.type === 'file' && gitStatus && (() => {
+          const fileName = node.name;
+          if (gitStatus.staged.has(fileName) || gitStatus.staged.has(node.path)) return <GitBadge status="A" />;
+          if (gitStatus.modified.has(fileName) || gitStatus.modified.has(node.path)) return <GitBadge status="M" />;
+          if (gitStatus.deleted.has(fileName) || gitStatus.deleted.has(node.path)) return <GitBadge status="D" />;
+          if (gitStatus.untracked.has(fileName) || gitStatus.untracked.has(node.path)) return <GitBadge status="U" />;
+          return null;
+        })()}
       </div>
 
       {/* Children */}
       {node.type === 'folder' && isExpanded && node.children?.map((child) => (
-        <FileTreeNode key={child.path} node={child} depth={depth + 1} onContextMenu={onContextMenu} />
+        <FileTreeNode key={child.path} node={child} depth={depth + 1} onContextMenu={onContextMenu} gitStatus={gitStatus} />
       ))}
     </>
   );
@@ -259,9 +321,10 @@ function FileTreeNode({
 
 // ─── FileExplorer ─────────────────────────────────────────────────────────────
 export default function FileExplorer() {
-  const { fileTree, workspaceName, workspaceOpen, searchQuery, setSearchQuery, newItemParent, newItemType, setNewItemParent, refreshFileTree } = useFileStore();
+  const { fileTree, workspaceName, workspaceOpen, workspacePath, searchQuery, setSearchQuery, newItemParent, newItemType, setNewItemParent, refreshFileTree } = useFileStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [newItemName, setNewItemName] = useState('');
+  const gitStatus = useGitStatus(workspaceOpen ? (workspacePath ?? workspaceName) : null);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, node: FileNode) => {
     e.preventDefault();
@@ -407,7 +470,7 @@ export default function FileExplorer() {
           </div>
         ) : (
           filteredTree.map((node) => (
-            <FileTreeNode key={node.path} node={node} depth={0} onContextMenu={handleContextMenu} />
+            <FileTreeNode key={node.path} node={node} depth={0} onContextMenu={handleContextMenu} gitStatus={gitStatus} />
           ))
         )}
       </div>

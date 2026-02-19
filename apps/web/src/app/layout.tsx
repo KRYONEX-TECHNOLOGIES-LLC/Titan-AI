@@ -4,6 +4,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import TitanSessionProvider from '@/providers/session-provider';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -107,7 +108,9 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: hydrationGuardScript }}
         />
         <div id="titan-root" suppressHydrationWarning>
-          {children}
+          <TitanSessionProvider>
+            {children}
+          </TitanSessionProvider>
         </div>
       </body>
     </html>
