@@ -447,7 +447,7 @@ async function providerPlan(model: string, preferred: Provider, env: ResolvedPro
   if (ranked.includes('litellm') && ranked.length > 1) {
     const healthy = await probeLiteLlm(env);
     if (!healthy) {
-      ranked = ranked.filter(p => p !== 'litellm').concat('litellm');
+      ranked = [...ranked.filter(p => p !== 'litellm'), 'litellm' as const];
     }
   }
 
