@@ -545,11 +545,19 @@ interface ModelInfo {
       }
 
       await readDir(dirHandle);
+
+      const folderName = dirHandle.name;
+
+      // Open the folder in the file store (even if empty)
+      const { openFolder: openFolderStore } = useFileStore.getState();
+      openFolderStore(folderName, folderName, []);
+
+      // Switch to explorer view so files show on LEFT
+      setActiveView('explorer');
       
       if (Object.keys(newFiles).length === 0) {
         setIsLoadingFiles(false);
         setLoadingMessage('');
-        alert('No readable files found in this folder.');
         return;
       }
       
@@ -2014,12 +2022,7 @@ interface ModelInfo {
           )}
         </div>
 
-        {/* RIGHT PANEL - only show when files are open */}
-        {showRightPanel && activeView !== 'explorer' && Object.keys(fileContents).length > 0 && (
-          <div className="w-[260px] bg-[#1e1e1e] border-l border-[#3c3c3c] flex flex-col shrink-0">
-            <ExplorerPanel activeTab={activeTab} onFileClick={handleFileClick} fileContents={fileContents} isRight />
-          </div>
-        )}
+        {/* RIGHT PANEL REMOVED - files always in left explorer like VS Code */}
       </div>
 
       {/* STATUS BAR */}

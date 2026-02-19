@@ -42,21 +42,35 @@ function CodeBlock({ language, filename, children, onApply }: {
   children: string;
   onApply?: (code: string, filename?: string) => void;
 }) {
+  const [applied, setApplied] = useState(false);
+
+  const handleApply = () => {
+    onApply?.(children, filename);
+    setApplied(true);
+  };
+
   return (
-    <div className="my-2 rounded-lg border border-[#3c3c3c] overflow-hidden bg-[#1e1e1e]">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#2d2d2d] border-b border-[#3c3c3c]">
+    <div className={`my-2 rounded-lg overflow-hidden bg-[#1e1e1e] border ${applied ? 'border-[#238636]' : 'border-[#3c3c3c]'}`}>
+      <div className={`flex items-center justify-between px-3 py-1.5 border-b ${applied ? 'bg-[#0d1f12] border-[#238636]' : 'bg-[#2d2d2d] border-[#3c3c3c]'}`}>
         <span className="text-[11px] text-[#808080] font-mono">
           {filename || language || 'code'}
         </span>
         <div className="flex items-center gap-1">
           <CopyButton text={children} />
           {onApply && (
-            <button
-              onClick={() => onApply(children, filename)}
-              className="px-2 py-1 text-[11px] text-[#3fb950] hover:text-[#2ea043] hover:bg-[#ffffff10] rounded transition-colors"
-            >
-              Apply
-            </button>
+            applied ? (
+              <span className="px-2 py-1 text-[11px] text-[#3fb950] flex items-center gap-1">
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>
+                Applied
+              </span>
+            ) : (
+              <button
+                onClick={handleApply}
+                className="px-2 py-1 text-[11px] text-[#569cd6] hover:text-[#6eb0e6] hover:bg-[#ffffff10] rounded transition-colors font-medium"
+              >
+                Apply
+              </button>
+            )
           )}
         </div>
       </div>
