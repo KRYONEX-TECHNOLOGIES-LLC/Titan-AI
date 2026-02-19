@@ -32,6 +32,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider !== 'github') return false;
       if (!profile || !account?.access_token) return false;
 
+      // Try to persist user to database, but don't block sign-in if it fails
+      // (JWT sessions work independently of database)
       try {
         const githubProfile = profile as unknown as {
           id: number;
@@ -50,12 +52,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           avatarUrl: githubProfile.avatar_url ?? null,
           profileUrl: githubProfile.html_url ?? null,
         });
-
-        return true;
       } catch (err) {
-        console.error('[Auth] signIn callback error:', err);
-        return false;
+        // Log but don't fail sign-in - database is optional
+        console.error('[Auth] Failed to persist user to database:', err);
       }
+
+      return true;
     },
   },
 });
