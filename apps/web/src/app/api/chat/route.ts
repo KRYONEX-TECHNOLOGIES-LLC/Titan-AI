@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ModelInfo, MODEL_REGISTRY } from '@/lib/model-registry';
+import { scanForThreats, isHighSeverityThreat } from '@/lib/security';
 
 export interface ChatRequest {
   sessionId: string;
@@ -98,6 +99,16 @@ export async function POST(request: NextRequest) {
 
   if (!message?.trim()) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+  }
+
+  // Security: scan for injection threats
+  const threats = scanForThreats(message);
+  if (isHighSeverityThreat(threats)) {
+    console.warn('[SECURITY] High-severity threat detected in chat input:', threats.map(t => t.description));
+    return NextResponse.json({
+      error: 'Security warning: potentially harmful content detected.',
+      threats: threats.map(t => ({ type: t.type, severity: t.severity, description: t.description })),
+    }, { status: 400 });
   }
 
   // Build system prompt with code context
