@@ -3,16 +3,7 @@ const path = require('path');
 const nextConfig = {
   outputFileTracingRoot: path.join(__dirname, '../../'),
   reactStrictMode: true,
-  transpilePackages: [
-    '@titan/vectordb',
-    '@titan/mcp',
-    '@titan/security',
-    '@titan/repo-map',
-    '@titan/midnight',
-    '@titan/ai-agents',
-    '@titan/ai-speculative',
-    '@titan/shadow-sandbox',
-  ],
+  transpilePackages: [],
   webpack: (config, { isServer }) => {
     // Handle Monaco Editor + WASM (Tree-sitter)
     if (!isServer) {
