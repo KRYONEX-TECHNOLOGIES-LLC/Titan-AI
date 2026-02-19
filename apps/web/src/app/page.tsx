@@ -215,6 +215,7 @@ export default function TitanIDE() {
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const thinkingStartRef = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Session state
   const [sessions, setSessions] = useState<Session[]>([
@@ -875,10 +876,14 @@ interface ModelInfo {
       })
       .join('\n\n');
 
+    let streamed = '';
     try {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           sessionId,
           message: msg,
@@ -903,7 +908,6 @@ interface ModelInfo {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let streamed = '';
         let finalPayload: { content?: string; suggestedEdits?: Array<{ file: string; content?: string }> } | null = null;
 
         while (true) {
@@ -980,11 +984,19 @@ interface ModelInfo {
         handleSuggestedEdits(data);
       }
     } catch (error) {
-      console.error('Chat error:', error);
       setIsThinking(false);
       setIsStreaming(false);
-      
-      // Show real error with retry capability - NEVER fake responses
+      abortControllerRef.current = null;
+
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        updateStreamingAssistant(
+          streamed || 'Generation stopped.',
+          true
+        );
+        return;
+      }
+
+      console.error('Chat error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       const is401 = errorMessage.includes('401') || errorMessage.toLowerCase().includes('user not found');
       const troubleshooting = is401
@@ -1010,8 +1022,19 @@ interface ModelInfo {
           }
           : s
       ));
+    } finally {
+      abortControllerRef.current = null;
     }
   }, [chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, applyDiffDecorations]);
+
+  const handleStop = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsThinking(false);
+    setIsStreaming(false);
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1696,9 +1719,11 @@ interface ModelInfo {
                 chatInput={chatInput}
                 setChatInput={setChatInput}
                 isThinking={isThinking}
+                isStreaming={isStreaming}
                 activeModel={activeModelLabel}
                 onNewAgent={handleNewAgent}
                 onSend={handleSend}
+                onStop={handleStop}
                 onKeyDown={handleKeyDown}
                 onApply={handleApplyChanges}
                 chatEndRef={chatEndRef}
@@ -2380,10 +2405,10 @@ function ExtensionsPanel() {
   );
 }
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
-  chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; activeModel: string;
-  onNewAgent: () => void; onSend: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
+  chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; isStreaming: boolean; activeModel: string;
+  onNewAgent: () => void; onSend: () => void; onStop: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
   hasPendingDiff?: boolean; onRejectDiff?: () => void;
   onRenameSession?: (id: string, name: string) => void; onDeleteSession?: (id: string) => void;
   onRetry?: (message: string) => void;
@@ -2566,10 +2591,16 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           <textarea value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} placeholder="Message Titan Agent..." rows={1}
             className="w-full max-h-[96px] bg-[#252526] border border-[#3c3c3c] rounded-md px-2.5 py-2 text-[12px] text-[#e0e0e0] placeholder-[#666] focus:outline-none focus:border-[#007acc] resize-none leading-5" />
           <div className="flex items-center justify-between mt-1.5">
-            <span className="text-[12px] text-[#808080] flex items-center gap-1"><span className="w-1.5 h-1.5 bg-[#3fb950] rounded-full"></span>{activeModel}</span>
-            <button onClick={onSend} disabled={!chatInput.trim()} className={`w-[28px] h-[28px] flex items-center justify-center rounded-full ${chatInput.trim() ? 'bg-[#007acc] hover:bg-[#0098ff] text-white' : 'bg-[#3c3c3c] text-[#555]'}`}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-            </button>
+            <span className="text-[12px] text-[#808080] flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${isThinking || isStreaming ? 'bg-[#f9826c] animate-pulse' : 'bg-[#3fb950]'}`}></span>{activeModel}</span>
+            {isThinking || isStreaming ? (
+              <button onClick={onStop} className="w-[28px] h-[28px] flex items-center justify-center rounded-full bg-[#f85149] hover:bg-[#da3633] text-white" title="Stop generating">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
+              </button>
+            ) : (
+              <button onClick={onSend} disabled={!chatInput.trim()} className={`w-[28px] h-[28px] flex items-center justify-center rounded-full ${chatInput.trim() ? 'bg-[#007acc] hover:bg-[#0098ff] text-white' : 'bg-[#3c3c3c] text-[#555]'}`} title="Send message">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+              </button>
+            )}
           </div>
         </div>
       </div>
