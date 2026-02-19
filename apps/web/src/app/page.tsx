@@ -419,49 +419,6 @@ interface ModelInfo {
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
-  // Global keyboard shortcuts
-  useEffect(() => {
-    const handleKeyboard = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + Key combinations
-      const ctrl = e.ctrlKey || e.metaKey;
-      
-      if (ctrl && e.key === 'b') {
-        e.preventDefault();
-        setActiveView(prev => prev ? '' : 'titan-agent');
-      } else if (ctrl && e.key === 's') {
-        e.preventDefault();
-        executeCommand('save');
-      } else if (ctrl && e.key === 'n') {
-        e.preventDefault();
-        executeCommand('newFile');
-      } else if (ctrl && e.key === '`') {
-        e.preventDefault();
-        setShowTerminal(prev => !prev);
-      } else if (ctrl && e.shiftKey && e.key === 'E') {
-        e.preventDefault();
-        setActiveView('explorer');
-      } else if (ctrl && e.shiftKey && e.key === 'F') {
-        e.preventDefault();
-        setActiveView('search');
-      } else if (ctrl && e.shiftKey && e.key === 'G') {
-        e.preventDefault();
-        setActiveView('git');
-      } else if (ctrl && e.shiftKey && e.key === 'P') {
-        e.preventDefault();
-        executeCommand('commandPalette');
-      } else if (e.key === 'Escape') {
-        // Escape to close modals/dropdowns
-        setShowModelDropdown(false);
-        setShowPlusDropdown(false);
-        setOpenMenu(null);
-        if (showFactoryView) setShowFactoryView(false);
-      }
-    };
-    
-    document.addEventListener('keydown', handleKeyboard);
-    return () => document.removeEventListener('keydown', handleKeyboard);
-  }, [executeCommand, showFactoryView]);
-
   // Get file icon and color
   const getFileInfo = (fileName: string): { icon: string; color: string } => {
     const ext = fileName.split('.').pop()?.toLowerCase();
@@ -478,38 +435,209 @@ interface ModelInfo {
         return { icon: '{ }', color: '#f1e05a' };
       case 'md':
         return { icon: 'MD', color: '#083fa1' };
+      case 'py':
+        return { icon: 'PY', color: '#3572A5' };
+      case 'html':
+        return { icon: 'HTML', color: '#e34c26' };
+      case 'scss':
+      case 'less':
+        return { icon: 'CSS', color: '#c6538c' };
+      case 'yaml':
+      case 'yml':
+        return { icon: 'YML', color: '#cb171e' };
+      case 'env':
+        return { icon: 'ENV', color: '#ecd53f' };
+      case 'sh':
+      case 'bash':
+        return { icon: 'SH', color: '#89e051' };
+      case 'rs':
+        return { icon: 'RS', color: '#dea584' };
+      case 'go':
+        return { icon: 'GO', color: '#00ADD8' };
       default:
         return { icon: 'TXT', color: '#808080' };
     }
   };
 
+  /* ═══ OPEN FOLDER — File System Access API ═══ */
+  const openFolder = useCallback(async () => {
+    try {
+      if (!('showDirectoryPicker' in window)) {
+        alert('Your browser does not support opening folders. Use Chrome or Edge.');
+        return;
+      }
+      const dirHandle = await (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
+      const newFiles: Record<string, string> = {};
+      const newTabs: FileTab[] = [];
+
+      async function readDir(handle: FileSystemDirectoryHandle, prefix = '') {
+        for await (const [name, entry] of (handle as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
+          if (name.startsWith('.') || name === 'node_modules' || name === '__pycache__' || name === '.git') continue;
+          const path = prefix ? `${prefix}/${name}` : name;
+          if (entry.kind === 'file') {
+            try {
+              const file = await (entry as FileSystemFileHandle).getFile();
+              if (file.size > 500_000) continue;
+              const text = await file.text();
+              newFiles[path] = text;
+            } catch { /* skip unreadable */ }
+          } else if (entry.kind === 'directory') {
+            await readDir(entry as FileSystemDirectoryHandle, path);
+          }
+        }
+      }
+
+      await readDir(dirHandle);
+      setFileContents(newFiles);
+      const sortedFiles = Object.keys(newFiles).sort();
+      const firstFile = sortedFiles[0] || '';
+      if (firstFile) {
+        const info = getFileInfo(firstFile);
+        newTabs.push({ name: firstFile, icon: info.icon, color: info.color });
+      }
+      setTabs(newTabs);
+      setActiveTab(firstFile);
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      console.error('Open folder failed:', e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ═══ OPEN FILE — File System Access API ═══ */
+  const openFile = useCallback(async () => {
+    try {
+      if (!('showOpenFilePicker' in window)) {
+        alert('Your browser does not support opening files. Use Chrome or Edge.');
+        return;
+      }
+      const [fileHandle] = await (window as unknown as { showOpenFilePicker: () => Promise<FileSystemFileHandle[]> }).showOpenFilePicker();
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+      const fileName = file.name;
+      setFileContents(prev => ({ ...prev, [fileName]: text }));
+      const info = getFileInfo(fileName);
+      setTabs(prev => {
+        if (prev.find(t => t.name === fileName)) return prev;
+        return [...prev, { name: fileName, icon: info.icon, color: info.color }];
+      });
+      setActiveTab(fileName);
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') return;
+      console.error('Open file failed:', e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleKeyboard = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      
+      if (ctrl && e.key === 'b') {
+        e.preventDefault();
+        setActiveView(prev => prev ? '' : 'titan-agent');
+      } else if (ctrl && e.key === 's') {
+        e.preventDefault();
+        executeCommand('save');
+      } else if (ctrl && e.key === 'n') {
+        e.preventDefault();
+        executeCommand('newFile');
+      } else if (ctrl && e.key === 'o' && !e.shiftKey) {
+        e.preventDefault();
+        openFolder();
+      } else if (ctrl && e.key === '`') {
+        e.preventDefault();
+        setShowTerminal(prev => !prev);
+      } else if (ctrl && e.shiftKey && e.key === 'E') {
+        e.preventDefault();
+        setActiveView('explorer');
+      } else if (ctrl && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        setActiveView('search');
+      } else if (ctrl && e.shiftKey && e.key === 'G') {
+        e.preventDefault();
+        setActiveView('git');
+      } else if (ctrl && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        executeCommand('commandPalette');
+      } else if (e.key === 'Escape') {
+        setShowModelDropdown(false);
+        setShowPlusDropdown(false);
+        setOpenMenu(null);
+        if (showFactoryView) setShowFactoryView(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyboard);
+    return () => document.removeEventListener('keydown', handleKeyboard);
+  }, [executeCommand, openFolder, showFactoryView]);
+
   /* ═══ EDITOR COMMANDS ═══ */
 
   function executeCommand(command: string) {
-    if (!editorInstance || !monacoInstance) return;
-
+    // Commands that work WITHOUT the editor loaded
     switch (command) {
-      // File commands
       case 'newFile': {
         const newFileName = `untitled-${Date.now()}.ts`;
         setFileContents(prev => ({ ...prev, [newFileName]: '// New file\n' }));
         const info = getFileInfo(newFileName);
         setTabs(prev => [...prev, { name: newFileName, icon: info.icon, color: info.color }]);
         setActiveTab(newFileName);
-        break;
+        return;
+      }
+      case 'file.openFolder': {
+        openFolder();
+        return;
+      }
+      case 'file.openFile': {
+        openFile();
+        return;
       }
       case 'save': {
         setTabs(prev => prev.map(t => t.name === activeTab ? { ...t, modified: false } : t));
         setTerminalOutput(prev => [...prev, `$ File saved: ${activeTab}`]);
-        break;
+        return;
       }
       case 'saveAll': {
         setTabs(prev => prev.map(t => ({ ...t, modified: false })));
         setTerminalOutput(prev => [...prev, '$ All files saved']);
-        break;
+        return;
       }
+      case 'toggleSidebar': {
+        setActiveView(prev => prev ? '' : 'titan-agent');
+        return;
+      }
+      case 'togglePanel': {
+        setShowTerminal(prev => !prev);
+        return;
+      }
+      case 'newTerminal': {
+        setShowTerminal(true);
+        setTerminalOutput(prev => [...prev, '$ New terminal session started']);
+        setTimeout(() => terminalInputRef.current?.focus(), 100);
+        return;
+      }
+      case 'splitTerminal': {
+        setShowTerminal(true);
+        setTerminalOutput(prev => [...prev, '$ Terminal split']);
+        return;
+      }
+      case 'startDebug': {
+        setShowTerminal(true);
+        setTerminalOutput(prev => [...prev, '$ Starting debugger...', '$ Debugger attached to process', '$ Listening on port 9229']);
+        return;
+      }
+      case 'stopDebug': {
+        setTerminalOutput(prev => [...prev, '$ Debugger disconnected']);
+        return;
+      }
+    }
 
-      // Edit commands
+    // Commands that REQUIRE the Monaco editor
+    if (!editorInstance || !monacoInstance) return;
+
+    switch (command) {
       case 'undo':
         editorInstance.trigger('keyboard', 'undo', null);
         break;
@@ -531,27 +659,15 @@ interface ModelInfo {
       case 'replace':
         editorInstance.trigger('keyboard', 'editor.action.startFindReplaceAction', null);
         break;
-
-      // Selection commands
       case 'selectAll':
         editorInstance.trigger('keyboard', 'editor.action.selectAll', null);
         break;
       case 'expandSelection':
         editorInstance.trigger('keyboard', 'editor.action.smartSelect.expand', null);
         break;
-
-      // View commands
       case 'commandPalette':
         editorInstance.trigger('keyboard', 'editor.action.quickCommand', null);
         break;
-      case 'toggleSidebar':
-        setActiveView(prev => prev ? '' : 'titan-agent');
-        break;
-      case 'togglePanel':
-        setShowTerminal(prev => !prev);
-        break;
-
-      // Go commands
       case 'goToFile':
         editorInstance.trigger('keyboard', 'workbench.action.quickOpen', null);
         break;
@@ -560,26 +676,6 @@ interface ModelInfo {
         break;
       case 'goToLine':
         editorInstance.trigger('keyboard', 'editor.action.gotoLine', null);
-        break;
-
-      // Terminal commands
-      case 'newTerminal':
-        setShowTerminal(true);
-        setTerminalOutput(prev => [...prev, '$ New terminal session started']);
-        setTimeout(() => terminalInputRef.current?.focus(), 100);
-        break;
-      case 'splitTerminal':
-        setShowTerminal(true);
-        setTerminalOutput(prev => [...prev, '$ Terminal split (simulated)']);
-        break;
-
-      // Debug commands
-      case 'startDebug':
-        setShowTerminal(true);
-        setTerminalOutput(prev => [...prev, '$ Starting debugger...', '$ Debugger attached to process', '$ Listening on port 9229']);
-        break;
-      case 'stopDebug':
-        setTerminalOutput(prev => [...prev, '$ Debugger disconnected']);
         break;
     }
   }
@@ -827,7 +923,11 @@ interface ModelInfo {
       
       // Show real error with retry capability - NEVER fake responses
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      const errorContent = `⚠️ **Connection Error**\n\n${errorMessage}\n\n**Troubleshooting:**\n- Check your internet connection\n- Verify API keys are configured in \`.env\`\n- If using Claude Sonnet 4, ensure OPENROUTER_API_KEY is set\n\n_Click the retry button below to try again._`;
+      const is401 = errorMessage.includes('401') || errorMessage.toLowerCase().includes('user not found');
+      const troubleshooting = is401
+        ? `- Your OpenRouter API key is invalid or expired\n- Go to https://openrouter.ai/keys and create a new key\n- Update OPENROUTER_API_KEY in your Railway environment variables\n- Make sure your OpenRouter account has credits`
+        : `- Check your internet connection\n- Verify API keys are configured in your environment\n- Try a different model from the model selector`;
+      const errorContent = `⚠️ **Connection Error**\n\n${errorMessage}\n\n**Troubleshooting:**\n${troubleshooting}\n\n_Click the retry button below to try again._`;
       
       setSessions(prev => prev.map(s =>
         s.id === sessionId
@@ -1244,29 +1344,8 @@ interface ModelInfo {
               { label: 'New File', shortcut: 'Ctrl+N', action: () => executeCommand('newFile') },
               { label: 'New Window', shortcut: 'Ctrl+Shift+N' },
               { type: 'separator' },
-              { label: 'Open File...', shortcut: 'Ctrl+O' },
-              { label: 'Open Folder...', shortcut: 'Ctrl+K O', action: async () => {
-                // Trigger folder import with Tree-sitter indexing
-                const mockPath = '/Users/dev/my-project';
-                try {
-                  const res = await fetch('/api/workspace', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'import', path: mockPath }),
-                  });
-                  const data = await res.json();
-                  if (data.success) {
-                    setTerminalOutput(prev => [...prev, 
-                      `$ Opening folder: ${mockPath}`,
-                      '$ Starting Tree-sitter indexer...',
-                      '$ Generating LanceDB embeddings...',
-                    ]);
-                    setShowTerminal(true);
-                  }
-                } catch (e) {
-                  console.error('Folder import failed:', e);
-                }
-              }},
+              { label: 'Open File...', shortcut: 'Ctrl+O', action: () => openFile() },
+              { label: 'Open Folder...', shortcut: 'Ctrl+K O', action: () => openFolder() },
               { type: 'separator' },
               { label: 'Save', shortcut: 'Ctrl+S', action: () => executeCommand('save') },
               { label: 'Save All', shortcut: 'Ctrl+K S', action: () => executeCommand('saveAll') },
