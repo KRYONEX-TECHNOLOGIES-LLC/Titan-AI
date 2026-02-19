@@ -5,7 +5,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-declare const self: Worker;
+/* global self */
 
 let Parser: any = null;
 let initialized = false;
@@ -23,11 +23,12 @@ const LANG_WASM_MAP: Record<string, string> = {
 async function initTreeSitter() {
   try {
     const TreeSitter = await import('web-tree-sitter');
-    await (TreeSitter.default ?? TreeSitter).init({
+    const ParserClass: any = (TreeSitter as any).default ?? TreeSitter;
+    await ParserClass.init({
       locateFile: (path: string) =>
         `https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/${path}`,
     });
-    Parser = (TreeSitter.default ?? TreeSitter);
+    Parser = ParserClass;
     initialized = true;
     return true;
   } catch (err) {

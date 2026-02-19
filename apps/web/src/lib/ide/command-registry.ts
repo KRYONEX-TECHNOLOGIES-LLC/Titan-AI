@@ -1,5 +1,11 @@
 'use client';
 
+import type { LayoutState } from '@/stores/layout-store';
+import type { EditorState } from '@/stores/editor-store';
+import type { FileState, FileNode } from '@/stores/file-store';
+import type { TerminalState } from '@/stores/terminal-store';
+import type { DebugState } from '@/stores/debug-store';
+
 /**
  * Titan AI Command Registry
  * Central source of truth for every IDE command: ID, label, keybinding, category, when-clause, and executor.
@@ -12,7 +18,7 @@ export interface Command {
   keybinding?: string;
   macKeybinding?: string;
   when?: string;
-  execute: (...args: unknown[]) => void | Promise<void>;
+  execute: (...args: unknown[]) => unknown;
   description?: string;
   icon?: string;
 }
@@ -21,18 +27,18 @@ type CommandMap = Record<string, Command>;
 
 // Global registry singleton
 const registry: CommandMap = {};
-let layoutStore: (() => import('@/stores/layout-store').LayoutState) | null = null;
-let editorStore: (() => import('@/stores/editor-store').EditorState) | null = null;
-let fileStore: (() => import('@/stores/file-store').FileState) | null = null;
-let terminalStore: (() => import('@/stores/terminal-store').TerminalState) | null = null;
-let debugStore: (() => import('@/stores/debug-store').DebugState) | null = null;
+let layoutStore: (() => LayoutState) | null = null;
+let editorStore: (() => EditorState) | null = null;
+let fileStore: (() => FileState) | null = null;
+let terminalStore: (() => TerminalState) | null = null;
+let debugStore: (() => DebugState) | null = null;
 
 export function initCommandRegistry(stores: {
-  layout: () => import('@/stores/layout-store').LayoutState;
-  editor: () => import('@/stores/editor-store').EditorState;
-  file: () => import('@/stores/file-store').FileState;
-  terminal: () => import('@/stores/terminal-store').TerminalState;
-  debug: () => import('@/stores/debug-store').DebugState;
+  layout: () => LayoutState;
+  editor: () => EditorState;
+  file: () => FileState;
+  terminal: () => TerminalState;
+  debug: () => DebugState;
 }) {
   layoutStore = stores.layout;
   editorStore = stores.editor;
@@ -89,9 +95,10 @@ function buildRegistry() {
     execute: async () => {
       try {
         const dirHandle = await (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
-        const walkDir = async (handle: FileSystemDirectoryHandle, path: string): Promise<import('@/stores/file-store').FileNode[]> => {
-          const nodes: import('@/stores/file-store').FileNode[] = [];
-          for await (const [name, entry] of handle.entries()) {
+        const walkDir = async (handle: FileSystemDirectoryHandle, path: string): Promise<FileNode[]> => {
+          const nodes: FileNode[] = [];
+          const dirHandle = handle as unknown as AsyncIterable<[string, FileSystemHandle]>;
+          for await (const [name, entry] of dirHandle) {
             if (name.startsWith('.') || name === 'node_modules') continue;
             const entryPath = `${path}/${name}`;
             if (entry.kind === 'directory') {

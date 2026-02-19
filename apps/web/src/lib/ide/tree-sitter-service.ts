@@ -92,7 +92,7 @@ class TreeSitterService {
     }
 
     if (method === 'getSmartSelection') {
-      const { code, line, column } = a as { code: string; line: number; column: number; language: string };
+      const { code, line, column } = (args as unknown) as { code: string; line: number; column: number; language: string };
       return getSmartSelectionHeuristic(code, line, column);
     }
 

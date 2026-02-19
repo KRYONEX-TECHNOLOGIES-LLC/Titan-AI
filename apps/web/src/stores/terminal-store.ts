@@ -11,7 +11,7 @@ export interface TerminalSession {
   exitCode?: number | null;
 }
 
-interface TerminalState {
+export interface TerminalState {
   sessions: TerminalSession[];
   activeSessionId: string;
   shellType: 'bash' | 'node' | 'python' | 'powershell' | 'zsh';

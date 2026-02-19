@@ -90,9 +90,9 @@ export default function IDETerminal() {
       // WebContainer spawn or SSE mock
       let wcSession: { input: WritableStream; } | null = null;
       try {
-        const { getWebContainerInstance } = await import('@/lib/webcontainer').catch(() => ({ getWebContainerInstance: null }));
-        if (getWebContainerInstance) {
-          const wc = await getWebContainerInstance();
+        const wcModule = await import('@/lib/webcontainer').catch(() => null);
+        if (wcModule?.getWebContainer) {
+          const wc = await wcModule.getWebContainer();
           const proc = await wc.spawn('bash', [], { env: { TERM: 'xterm-256color' } });
           wcSession = proc;
           const writer = proc.input.getWriter();

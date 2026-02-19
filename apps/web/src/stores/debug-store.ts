@@ -56,7 +56,7 @@ export interface DebugOutput {
   line?: number;
 }
 
-interface DebugState {
+export interface DebugState {
   // Session
   status: DebugSessionStatus;
   activeConfigId: string;

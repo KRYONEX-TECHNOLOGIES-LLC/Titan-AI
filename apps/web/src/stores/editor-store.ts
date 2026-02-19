@@ -28,7 +28,7 @@ export interface Breakpoint {
   hitCount?: number;
 }
 
-interface EditorState {
+export interface EditorState {
   // Tabs
   tabs: FileTab[];
   activeTab: string;

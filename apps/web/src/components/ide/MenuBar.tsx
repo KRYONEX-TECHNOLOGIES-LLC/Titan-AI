@@ -5,6 +5,7 @@ import { executeCommand } from '@/lib/ide/command-registry';
 import { useLayoutStore } from '@/stores/layout-store';
 import { useEditorStore } from '@/stores/editor-store';
 import { useDebugStore } from '@/stores/debug-store';
+import { useFileStore } from '@/stores/file-store';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface MenuItem {
@@ -125,6 +126,7 @@ export default function MenuBar() {
   const layout = useLayoutStore();
   const editorState = useEditorStore();
   const debugState = useDebugStore();
+  const fileState = useFileStore();
 
   // Close on outside click
   useEffect(() => {
@@ -147,7 +149,7 @@ export default function MenuBar() {
         { type: 'separator' },
         { label: 'Open File...', commandId: 'file.open', keybinding: 'Ctrl+O' },
         { label: 'Open Folder...', commandId: 'file.openFolder', keybinding: 'Ctrl+K Ctrl+O' },
-        { label: 'Close Folder', commandId: 'file.closeFolder', disabled: !layout.workspaceOpen, destructive: false },
+        { label: 'Close Folder', commandId: 'file.closeFolder', disabled: !fileState.workspacePath, destructive: false },
         { type: 'separator' },
         { label: 'Save', commandId: 'file.save', keybinding: 'Ctrl+S' },
         { label: 'Save As...', commandId: 'file.saveAs', keybinding: 'Ctrl+Shift+S' },

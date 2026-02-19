@@ -301,6 +301,13 @@ export default function TitanIDE() {
     });
   }, []);
 
+  // Panel visibility (declared before effects that reference them)
+  const [activeView, setActiveView] = useState<string>('titan-agent');
+  const [showRightPanel, setShowRightPanel] = useState(true);
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalOutput, setTerminalOutput] = useState<string[]>(['$ Welcome to Titan AI Terminal', '$ Type commands here...']);
+  const [terminalInput, setTerminalInput] = useState('');
+
   // ── Sync Zustand layout store → local state for legacy compat ──────────────
   useEffect(() => {
     if (!mounted) return;
@@ -308,7 +315,6 @@ export default function TitanIDE() {
       setActiveView(state.sidebarView || '');
       setShowTerminal(state.panelVisible && state.panelView === 'terminal');
       setShowRightPanel(state.rightPanelVisible);
-      setFontSize(state.minimapEnabled ? fontSize : fontSize); // no-op, keeps editor in sync
     });
     return unsub;
   }, [mounted]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -324,13 +330,6 @@ export default function TitanIDE() {
     if (showTerminal) useLayoutStore.setState({ panelVisible: true, panelView: 'terminal' });
     else useLayoutStore.setState({ panelVisible: false });
   }, [showTerminal, mounted]);
-
-  // Panel visibility
-  const [activeView, setActiveView] = useState<string>('titan-agent');
-  const [showRightPanel, setShowRightPanel] = useState(true);
-  const [showTerminal, setShowTerminal] = useState(false);
-  const [terminalOutput, setTerminalOutput] = useState<string[]>(['$ Welcome to Titan AI Terminal', '$ Type commands here...']);
-  const [terminalInput, setTerminalInput] = useState('');
 
   // Editor state
   const [editorInstance, setEditorInstance] = useState<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -1694,6 +1693,12 @@ interface ModelInfo {
                 onKeyDown={handleKeyDown}
                 onApply={handleApplyChanges}
                 chatEndRef={chatEndRef}
+                onRenameSession={(id, name) => setSessions(prev => prev.map(s => s.id === id ? { ...s, name } : s))}
+                onDeleteSession={(id) => {
+                  const remaining = sessions.filter(s => s.id !== id);
+                  setSessions(remaining);
+                  if (activeSessionId === id && remaining.length > 0) setActiveSessionId(remaining[0].id);
+                }}
                 hasPendingDiff={pendingDiff !== null}
                 onRejectDiff={() => {
                   // Reject diff - revert to original content
@@ -2338,11 +2343,12 @@ function ExtensionsPanel() {
   );
 }
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, activeModel, onNewAgent, onSend, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; activeModel: string;
   onNewAgent: () => void; onSend: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
   hasPendingDiff?: boolean; onRejectDiff?: () => void;
+  onRenameSession?: (id: string, name: string) => void; onDeleteSession?: (id: string) => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
   return (
@@ -2383,7 +2389,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                       e.stopPropagation();
                       const newName = prompt('Rename session:', s.name);
                       if (newName?.trim()) {
-                        setSessions(prev => prev.map(sess => sess.id === s.id ? { ...sess, name: newName.trim() } : sess));
+                        onRenameSession?.(s.id, newName.trim());
                       }
                       document.getElementById(`session-menu-${s.id}`)?.classList.add('hidden');
                     }}
@@ -2396,9 +2402,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                       e.stopPropagation();
                       document.getElementById(`session-menu-${s.id}`)?.classList.add('hidden');
                       if (sessions.length === 1) return;
-                      const remaining = sessions.filter(sess => sess.id !== s.id);
-                      setSessions(remaining);
-                      if (activeSessionId === s.id) setActiveSessionId(remaining[0].id);
+                      onDeleteSession?.(s.id);
                     }}
                     className="w-full text-left px-3 py-2 text-[13px] text-[#f48771] hover:bg-[#2a2d2e]"
                   >

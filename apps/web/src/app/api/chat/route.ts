@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ModelInfo, MODEL_REGISTRY } from '../models/route';
+import { ModelInfo, MODEL_REGISTRY } from '@/lib/model-registry';
 
 export interface ChatRequest {
   sessionId: string;
@@ -18,6 +18,7 @@ export interface ChatRequest {
     language: string;
   };
   contextFiles?: string[];
+  crossSessionMemory?: boolean;
 }
 
 export interface ChatResponse {

@@ -71,7 +71,7 @@ const BINDINGS: Binding[] = [
 
   { ctrl: true, shift: true, key: '`', commandId: 'terminal.new' },
 
-  { ctrl: true, tab: true, key: 'Tab', commandId: 'workbench.nextTab' },
+  { ctrl: true, key: 'Tab', commandId: 'workbench.nextTab' },
   { ctrl: true, shift: true, key: 'Tab', commandId: 'workbench.prevTab' },
   { ctrl: true, key: ',', commandId: 'workbench.settings' },
 ];

@@ -16,7 +16,7 @@ export type PanelView = 'terminal' | 'output' | 'problems' | 'debug-console';
 
 export type LayoutPreset = 'default' | 'zen' | 'centered' | 'debug' | 'full-editor';
 
-interface LayoutState {
+export interface LayoutState {
   // Sidebar
   sidebarVisible: boolean;
   sidebarView: SidebarView;

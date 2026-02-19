@@ -11,7 +11,7 @@ export interface FileNode {
   expanded?: boolean;
 }
 
-interface FileState {
+export interface FileState {
   // Workspace / folder
   workspacePath: string;
   workspaceName: string;
