@@ -552,8 +552,11 @@ interface ModelInfo {
       const { openFolder: openFolderStore } = useFileStore.getState();
       openFolderStore(folderName, folderName, []);
 
-      // Switch to explorer view so files show on LEFT
-      setActiveView('explorer');
+      // Explorer is on the RIGHT and auto-shows when files are loaded
+      // Keep the chat panel open on left
+      if (!activeView || activeView === 'explorer') {
+        setActiveView('titan-agent');
+      }
       
       if (Object.keys(newFiles).length === 0) {
         setIsLoadingFiles(false);
@@ -1698,7 +1701,7 @@ interface ModelInfo {
 
         {/* Activity Bar */}
         <div className="w-[48px] bg-[#2b2b2b] flex flex-col items-center py-1 shrink-0 border-r border-[#3c3c3c]">
-          <ActivityIcon active={activeView === 'explorer'} onClick={() => handleActivityClick('explorer')} title="Explorer"><ExplorerIcon /></ActivityIcon>
+          <ActivityIcon active={showRightPanel} onClick={() => setShowRightPanel(prev => !prev)} title="Explorer"><ExplorerIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'search'} onClick={() => handleActivityClick('search')} title="Search"><SearchIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'git'} onClick={() => handleActivityClick('git')} title="Source Control"><GitIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'debug'} onClick={() => handleActivityClick('debug')} title="Run and Debug"><DebugIcon /></ActivityIcon>
@@ -1709,14 +1712,9 @@ interface ModelInfo {
           <ActivityIcon active={activeView === 'settings'} onClick={() => handleActivityClick('settings')} title="Settings"><SettingsGearIcon /></ActivityIcon>
         </div>
 
-        {/* LEFT PANEL */}
-        {activeView && (
+        {/* LEFT PANEL - Chat/Settings/Git (NOT explorer) */}
+        {activeView && activeView !== 'explorer' && (
           <div className="w-[320px] bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
-            {/* EXPLORER */}
-            {activeView === 'explorer' && (
-              <IDEFileExplorer />
-            )}
-
             {/* SEARCH */}
             {activeView === 'search' && (
               <IDESemanticSearch />
@@ -2022,7 +2020,12 @@ interface ModelInfo {
           )}
         </div>
 
-        {/* RIGHT PANEL REMOVED - files always in left explorer like VS Code */}
+        {/* RIGHT PANEL - File Explorer (like Cursor) */}
+        {showRightPanel && (
+          <div className="w-[280px] bg-[#1e1e1e] border-l border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
+            <IDEFileExplorer />
+          </div>
+        )}
       </div>
 
       {/* STATUS BAR */}
