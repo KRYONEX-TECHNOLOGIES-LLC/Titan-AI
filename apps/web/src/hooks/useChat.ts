@@ -67,7 +67,7 @@ export function useChat({
   const abortControllerRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
-  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath });
+  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath, fileContents });
 
   const updateMessage = useCallback((
     sessionId: string,
@@ -135,14 +135,23 @@ export function useChat({
 
   async function fetchGitStatus(): Promise<{ branch?: string; modified?: string[]; untracked?: string[]; staged?: string[] } | undefined> {
     try {
-      const res = await fetch('/api/git/status', { method: 'GET', signal: AbortSignal.timeout(3000) });
+      // Only fetch git status if workspace is a real server path (not a browser-local folder)
+      const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
+      const isServerPath = wsPath.startsWith('/') || /^[A-Z]:\\/i.test(wsPath);
+
+      const url = isServerPath && wsPath
+        ? `/api/git/status?path=${encodeURIComponent(wsPath)}`
+        : '/api/git/status';
+
+      const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(3000) });
       if (!res.ok) return undefined;
       const data = await res.json();
+      if (!data.isRepo) return undefined;
       return {
         branch: data.branch || data.current,
-        modified: data.modified || data.files?.filter((f: any) => f.working_dir !== ' ').map((f: any) => f.path),
-        untracked: data.not_added || data.files?.filter((f: any) => f.index === '?').map((f: any) => f.path),
-        staged: data.staged || data.files?.filter((f: any) => f.index !== ' ' && f.index !== '?').map((f: any) => f.path),
+        modified: data.modified || [],
+        untracked: data.untracked || data.not_added || [],
+        staged: data.staged || [],
       };
     } catch { return undefined; }
   }
