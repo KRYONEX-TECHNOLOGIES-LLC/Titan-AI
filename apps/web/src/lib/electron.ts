@@ -77,10 +77,10 @@ export interface ElectronAPI {
 }
 
 export const isElectron: boolean =
-  typeof window !== 'undefined' && !!(window as Record<string, unknown>).electronAPI;
+  typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).electronAPI;
 
 export const electronAPI: ElectronAPI | null =
-  isElectron ? (window as Record<string, unknown>).electronAPI as ElectronAPI : null;
+  isElectron ? (window as unknown as Record<string, unknown>).electronAPI as ElectronAPI : null;
 
 declare global {
   interface Window {

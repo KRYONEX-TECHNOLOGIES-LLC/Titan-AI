@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "chokidar": "^4.0.0",
-    "electron-store": "^10.0.0",
+    "electron-store": "^8.2.0",
     "fast-glob": "^3.3.0",
     "node-pty": "^1.0.0",
     "simple-git": "^3.31.1",

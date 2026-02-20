@@ -98,7 +98,7 @@ export default function IDETerminal() {
 
       // ── Electron: real PTY via node-pty ──
       if (isElectron && electronAPI) {
-        const cwd = (window as Record<string, unknown>).__titanWorkspacePath as string || undefined;
+        const cwd = (window as unknown as Record<string, unknown>).__titanWorkspacePath as string || undefined;
         await electronAPI.terminal.create(sessionId, undefined, cwd);
 
         const unsubData = electronAPI.terminal.onData(sessionId, (data) => {
@@ -212,12 +212,8 @@ export default function IDETerminal() {
       };
       const runTextHandler = (e: Event) => {
         const text = (e as CustomEvent<string>).detail;
-        if (wcSession) {
-          // write to WebContainer
-        } else {
-          term.writeln(`\r\n\x1b[90m# ${text}\x1b[0m`);
-          term.write('\x1b[1;34m$ \x1b[0m');
-        }
+        term.writeln(`\r\n\x1b[90m# ${text}\x1b[0m`);
+        term.write('\x1b[1;34m$ \x1b[0m');
       };
 
       window.addEventListener('titan:terminal:clear', clearHandler);

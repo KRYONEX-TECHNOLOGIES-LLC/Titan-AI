@@ -1,6 +1,5 @@
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
-import Store from 'electron-store';
 
 interface WindowState {
   width: number;
@@ -9,6 +8,9 @@ interface WindowState {
   y?: number;
   isMaximized: boolean;
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyStore = { get: (key: string, fallback?: any) => any; set: (key: string, value: any) => void };
 
 export function createMainWindow(state: WindowState): BrowserWindow {
   const win = new BrowserWindow({
@@ -46,7 +48,7 @@ export function createMainWindow(state: WindowState): BrowserWindow {
   return win;
 }
 
-export function restoreWindowState(store: Store): WindowState {
+export function restoreWindowState(store: AnyStore): WindowState {
   const defaults: WindowState = { width: 1400, height: 900, isMaximized: false };
   const saved = store.get('windowState', defaults) as WindowState;
 
@@ -59,7 +61,7 @@ export function restoreWindowState(store: Store): WindowState {
   };
 }
 
-export function saveWindowState(win: BrowserWindow, store: Store): void {
+export function saveWindowState(win: BrowserWindow, store: AnyStore): void {
   const isMaximized = win.isMaximized();
   const bounds = win.getBounds();
 

@@ -87,7 +87,7 @@ export function useAutoContext(
 
     const fetchDiagnostics = async () => {
       try {
-        const diag = await electronAPI.linter.getDiagnostics(activeTab);
+        const diag = await electronAPI!.linter.getDiagnostics(activeTab);
         setLinterDiagnostics(diag);
       } catch {
         setLinterDiagnostics([]);
@@ -121,7 +121,7 @@ export function useAutoContext(
 
     const checkMarkers = () => {
       try {
-        const monaco = (window as Record<string, unknown>).monaco as {
+        const monaco = (window as unknown as Record<string, unknown>).monaco as {
           editor: {
             getModelMarkers: (opts: { resource: unknown }) => Array<{
               startLineNumber: number;

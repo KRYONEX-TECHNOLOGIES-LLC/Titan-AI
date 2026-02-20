@@ -124,7 +124,7 @@ export default function TitanIDE() {
   // Expose workspace path globally for terminal component
   useEffect(() => {
     if (fileSystem.workspacePath) {
-      (window as Record<string, unknown>).__titanWorkspacePath = fileSystem.workspacePath;
+      (window as unknown as Record<string, unknown>).__titanWorkspacePath = fileSystem.workspacePath;
     }
   }, [fileSystem.workspacePath]);
 
