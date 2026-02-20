@@ -118,6 +118,31 @@ export default function TitanIDE() {
   const { sessions, setSessions, activeSessionId, setActiveSessionId, currentSession, handleNewAgent, handleRenameSession, handleDeleteSession } = useSessions(mounted);
   const fileSystem = useFileSystem(setTabs, setActiveTab, setFileContents, setActiveView, activeView);
 
+  // Sync: when FileExplorer opens a file via editor store, update page.tsx local state
+  useEffect(() => {
+    if (!mounted) return;
+    const unsub = useEditorStore.subscribe((state, prev) => {
+      if (state.tabs !== prev.tabs) {
+        setTabs(state.tabs);
+      }
+      if (state.activeTab !== prev.activeTab) {
+        setActiveTab(state.activeTab);
+      }
+      if (state.fileContents !== prev.fileContents) {
+        setFileContents(prevLocal => {
+          const merged = { ...prevLocal };
+          for (const key of Object.keys(state.fileContents)) {
+            if (!(key in merged) || merged[key] !== state.fileContents[key]) {
+              merged[key] = state.fileContents[key];
+            }
+          }
+          return merged;
+        });
+      }
+    });
+    return unsub;
+  }, [mounted]);
+
   // Diff decorations
   const applyDiffDecorations = useCallback((oldContent: string, newContent: string) => {
     if (!editorInstance || !monacoInstance) return;

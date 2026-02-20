@@ -198,22 +198,27 @@ function FileTreeNode({
     if (node.type === 'folder') {
       toggleExpand(node.path);
     } else {
-      // Open file
-      fetch(`/api/workspace?path=${encodeURIComponent(node.path)}`)
-        .then((r) => r.json())
-        .then((data) => {
-          const ext = node.name.split('.').pop()?.toLowerCase() ?? '';
-          const langMap: Record<string, string> = { ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', py: 'python', rs: 'rust', go: 'go', json: 'json', md: 'markdown', css: 'css', html: 'html' };
-          openTab({ name: node.name, path: node.path, icon, color, modified: false, language: langMap[ext] ?? 'plaintext' });
-          if (data.content !== undefined && !fileContents[node.name]) {
-            const { useEditorStore } = require('@/stores/editor-store');
-            useEditorStore.getState().updateFileContent(node.name, data.content);
-            useEditorStore.getState().markTabModified(node.name, false);
-          }
-        })
-        .catch(() => {
-          openTab({ name: node.name, path: node.path, icon, color, modified: false, language: 'plaintext' });
-        });
+      const ext = node.name.split('.').pop()?.toLowerCase() ?? '';
+      const langMap: Record<string, string> = { ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', py: 'python', rs: 'rust', go: 'go', json: 'json', md: 'markdown', css: 'css', html: 'html' };
+      const language = langMap[ext] ?? 'plaintext';
+
+      const existingContent = fileContents[node.name] ?? fileContents[node.path];
+      if (existingContent !== undefined) {
+        openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+      } else {
+        fetch(`/api/workspace?path=${encodeURIComponent(node.path)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+            if (data.content !== undefined) {
+              const store = require('@/stores/editor-store').useEditorStore;
+              store.getState().loadFileContents({ [node.name]: data.content });
+            }
+          })
+          .catch(() => {
+            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+          });
+      }
     }
   }, [node, icon, color, selectPath, toggleExpand, openTab, fileContents]);
 

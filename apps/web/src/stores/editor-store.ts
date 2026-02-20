@@ -79,6 +79,7 @@ export interface EditorState {
   removeAllBreakpoints: () => void;
 
   addRecentFile: (path: string) => void;
+  loadFileContents: (contents: Record<string, string>) => void;
 }
 
 function getFileInfo(name: string): { icon: string; color: string; language: string } {
@@ -254,6 +255,11 @@ export const useEditorStore = create<EditorState>()(
       addRecentFile: (path) =>
         set((s) => ({
           recentFiles: [path, ...s.recentFiles.filter((f) => f !== path)].slice(0, 20),
+        })),
+
+      loadFileContents: (contents) =>
+        set((s) => ({
+          fileContents: { ...s.fileContents, ...contents },
         })),
     }),
     {

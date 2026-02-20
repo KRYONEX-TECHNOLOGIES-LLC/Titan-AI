@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useFileStore } from '@/stores/file-store';
+import { useFileStore, type FileNode } from '@/stores/file-store';
+import { useEditorStore } from '@/stores/editor-store';
 import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
 import type { FileTab } from '@/types/ide';
 import { workerManager } from '@/lib/worker-manager';
@@ -9,6 +10,45 @@ import { workerManager } from '@/lib/worker-manager';
 const MAX_FILES = 500;
 const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.next', 'dist', 'build', '.cache', 'coverage', '.vscode', '.idea']);
 const SKIP_EXTENSIONS = new Set(['exe', 'dll', 'so', 'dylib', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'wav', 'avi', 'mov', 'pdf', 'zip', 'tar', 'gz', 'rar', '7z']);
+
+function buildFileTree(_dirHandle: FileSystemDirectoryHandle, entries: Array<{ path: string; kind: 'file' | 'directory' }>): FileNode[] {
+  const root: FileNode[] = [];
+  const folderMap = new Map<string, FileNode>();
+
+  const sorted = [...entries].sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === 'directory' ? -1 : 1;
+    return a.path.localeCompare(b.path);
+  });
+
+  for (const entry of sorted) {
+    const parts = entry.path.split('/');
+    const name = parts[parts.length - 1];
+    const node: FileNode = {
+      name,
+      path: entry.path,
+      type: entry.kind === 'directory' ? 'folder' : 'file',
+      children: entry.kind === 'directory' ? [] : undefined,
+    };
+
+    if (entry.kind === 'directory') {
+      folderMap.set(entry.path, node);
+    }
+
+    if (parts.length === 1) {
+      root.push(node);
+    } else {
+      const parentPath = parts.slice(0, -1).join('/');
+      const parent = folderMap.get(parentPath);
+      if (parent && parent.children) {
+        parent.children.push(node);
+      } else {
+        root.push(node);
+      }
+    }
+  }
+
+  return root;
+}
 
 export function useFileSystem(
   setTabs: React.Dispatch<React.SetStateAction<FileTab[]>>,
@@ -35,6 +75,7 @@ export function useFileSystem(
       setLoadingMessage('Reading folder contents...');
 
       const newFiles: Record<string, string> = {};
+      const treeEntries: Array<{ path: string; kind: 'file' | 'directory' }> = [];
       let fileCount = 0;
 
       async function readDir(handle: FileSystemDirectoryHandle, prefix = ''): Promise<void> {
@@ -48,15 +89,18 @@ export function useFileSystem(
             if (entry.kind === 'file') {
               const ext = name.split('.').pop()?.toLowerCase() || '';
               if (SKIP_EXTENSIONS.has(ext)) continue;
+              treeEntries.push({ path, kind: 'file' });
               try {
                 const file = await (entry as FileSystemFileHandle).getFile();
                 if (file.size > 500_000) continue;
                 const text = await file.text();
                 newFiles[path] = text;
+                newFiles[name] = text;
                 fileCount++;
                 if (fileCount % 20 === 0) setLoadingMessage(`Reading files... (${fileCount} files)`);
               } catch { /* skip unreadable */ }
             } else if (entry.kind === 'directory') {
+              treeEntries.push({ path, kind: 'directory' });
               await readDir(entry as FileSystemDirectoryHandle, path);
             }
           }
@@ -68,8 +112,9 @@ export function useFileSystem(
       await readDir(dirHandle);
 
       const folderName = dirHandle.name;
+      const fileTree = buildFileTree(dirHandle, treeEntries);
       const { openFolder: openFolderStore } = useFileStore.getState();
-      openFolderStore(folderName, folderName, []);
+      openFolderStore(folderName, folderName, fileTree);
       setWorkspacePath(folderName);
 
       if (!activeView || activeView === 'explorer') {
@@ -111,6 +156,7 @@ export function useFileSystem(
 
       setLoadingMessage('Loading editor...');
       setFileContents(newFiles);
+      useEditorStore.getState().loadFileContents(newFiles);
 
       const sortedFiles = Object.keys(newFiles).sort((a, b) => {
         const aDepth = a.split('/').length;
