@@ -49,13 +49,21 @@ export function registerTerminalHandlers(ipcMain: IpcMain, win: BrowserWindow): 
   ipcMain.handle('terminal:write', async (_e, id: string, data: string) => {
     const session = terminals.get(id);
     if (!session) throw new Error(`Terminal ${id} not found`);
-    session.pty.write(data);
+    try {
+      session.pty.write(data);
+    } catch (err) {
+      console.error(`[Terminal] Write failed for ${id}:`, err);
+    }
   });
 
   ipcMain.handle('terminal:resize', async (_e, id: string, cols: number, rows: number) => {
     const session = terminals.get(id);
     if (!session) throw new Error(`Terminal ${id} not found`);
-    session.pty.resize(cols, rows);
+    try {
+      session.pty.resize(cols, rows);
+    } catch (err) {
+      console.error(`[Terminal] Resize failed for ${id}:`, err);
+    }
   });
 
   ipcMain.handle('terminal:kill', async (_e, id: string) => {

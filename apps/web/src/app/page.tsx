@@ -214,16 +214,12 @@ export default function TitanIDE() {
       if (model && filePath === activeTab) model.setValue(newContent);
     }
 
-    if (isElectron && electronAPI) {
+    if (electronAPI) {
       electronAPI.fs.writeFile(filePath, newContent).catch(err =>
         console.error('[handleAgentFileEdited] Disk write failed:', err)
       );
-    } else if (fileSystem.directoryHandle) {
-      fileSystem.writeFile(filePath, newContent).catch(err =>
-        console.error('[handleAgentFileEdited] FS write failed:', err)
-      );
     }
-  }, [activeTab, editorInstance, fileSystem]);
+  }, [activeTab, editorInstance]);
 
   const handleAgentFileCreated = useCallback((filePath: string, content: string) => {
     const info = getFileInfo(filePath);
@@ -236,7 +232,31 @@ export default function TitanIDE() {
     });
     setActiveTab(filePath);
 
-    if (isElectron && electronAPI) {
+    // Add new file to the file explorer tree
+    const parts = filePath.split('/');
+    const fileName = parts[parts.length - 1] || filePath;
+    const store = useFileStore.getState();
+    const newNode = { name: fileName, path: filePath, type: 'file' as const };
+    if (parts.length === 1) {
+      store.setFileTree([...store.fileTree, newNode]);
+    } else {
+      const parentPath = parts.slice(0, -1).join('/');
+      store.expandPath(parentPath);
+      function insertIntoTree(nodes: typeof store.fileTree): typeof store.fileTree {
+        return nodes.map(n => {
+          if (n.type === 'folder' && n.path === parentPath) {
+            return { ...n, children: [...(n.children || []), newNode] };
+          }
+          if (n.type === 'folder' && n.children) {
+            return { ...n, children: insertIntoTree(n.children) };
+          }
+          return n;
+        });
+      }
+      store.setFileTree(insertIntoTree(store.fileTree));
+    }
+
+    if (electronAPI) {
       electronAPI.fs.writeFile(filePath, content).catch(err =>
         console.error('[handleAgentFileCreated] Disk write failed:', err)
       );
@@ -655,7 +675,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   }, [chatInput]);
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e]">
+    <div className="flex flex-col h-full bg-[#1e1e1e] overflow-hidden min-h-0">
       <div className="px-3 pt-3 pb-2 shrink-0 border-b border-[#2d2d2d]">
         <button onClick={onNewAgent} className="w-full h-[32px] bg-[#2d2d2d] hover:bg-[#3c3c3c] text-[#e0e0e0] text-[12px] font-medium rounded-md flex items-center justify-center gap-1.5 border border-[#3c3c3c] transition-colors">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5h-5.5a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 018 1z"/></svg>

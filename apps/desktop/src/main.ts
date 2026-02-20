@@ -13,6 +13,20 @@ import { registerAuthHandlers } from './auth/github.js';
 import { createAppMenu } from './menu/app-menu.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
 
+// Catch EPIPE and other non-fatal pipe errors so the app doesn't crash
+process.on('uncaughtException', (err) => {
+  const msg = err?.message || '';
+  if (msg.includes('EPIPE') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED') || msg.includes('write after end')) {
+    console.error('[Main] Pipe error (non-fatal):', msg);
+    return;
+  }
+  console.error('[Main] Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Main] Unhandled rejection:', reason);
+});
+
 const store = new Store({
   defaults: {
     windowState: { width: 1400, height: 900, x: undefined, y: undefined, isMaximized: false },
@@ -60,6 +74,10 @@ async function startNextServer(port: number): Promise<void> {
     });
 
     let resolved = false;
+
+    nextServerProcess.stdout?.on('error', () => {});
+    nextServerProcess.stderr?.on('error', () => {});
+    nextServerProcess.stdin?.on('error', () => {});
 
     nextServerProcess.stdout?.on('data', (data: Buffer) => {
       const output = data.toString();

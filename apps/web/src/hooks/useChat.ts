@@ -80,7 +80,7 @@ export function useChat({
   const abortControllerRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
-  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath, fileContents });
+  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath });
 
   const updateMessage = useCallback((
     sessionId: string,
@@ -454,41 +454,19 @@ export function useChat({
 
           if (tc.tool === 'edit_file' && result.success) {
             const newContent = result.metadata?.newContent as string || tc.args.new_string as string;
-            if (isElectron) {
-              const diffBlock: CodeDiffBlock = {
-                id: `diff-${tc.id}`,
-                file: tc.args.path as string,
-                code: newContent,
-                status: 'applied',
-              };
-              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
-            } else {
-              const diffBlock: CodeDiffBlock = {
-                id: `diff-${tc.id}`,
-                file: tc.args.path as string,
-                code: newContent,
-                status: 'pending',
-              };
-              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
-            }
+            appendCodeDiffToMessage(sessionId, streamMessageId, {
+              id: `diff-${tc.id}`,
+              file: tc.args.path as string,
+              code: newContent,
+              status: 'pending',
+            });
           } else if (tc.tool === 'create_file' && result.success) {
-            if (isElectron) {
-              const diffBlock: CodeDiffBlock = {
-                id: `diff-${tc.id}`,
-                file: tc.args.path as string,
-                code: tc.args.content as string,
-                status: 'applied',
-              };
-              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
-            } else {
-              const diffBlock: CodeDiffBlock = {
-                id: `diff-${tc.id}`,
-                file: tc.args.path as string,
-                code: tc.args.content as string,
-                status: 'pending',
-              };
-              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
-            }
+            appendCodeDiffToMessage(sessionId, streamMessageId, {
+              id: `diff-${tc.id}`,
+              file: tc.args.path as string,
+              code: tc.args.content as string,
+              status: 'pending',
+            });
           }
 
           const resultOutput = result.success
@@ -512,9 +490,11 @@ export function useChat({
               return;
             }
             if (r && typeof r === 'object') {
+              const maxLen = 10000;
+              const wasTruncated = r.resultOutput.length > maxLen;
               conversationHistory.push({
                 role: 'tool',
-                content: r.resultOutput.slice(0, 10000),
+                content: r.resultOutput.slice(0, maxLen) + (wasTruncated ? '\n[OUTPUT TRUNCATED - request specific line ranges if needed]' : ''),
                 tool_call_id: r.tc.id,
                 name: r.tc.tool,
               });
@@ -553,9 +533,11 @@ export function useChat({
               return;
             }
             if (r && typeof r === 'object') {
+              const maxLen = 10000;
+              const wasTruncated = r.resultOutput.length > maxLen;
               conversationHistory.push({
                 role: 'tool',
-                content: r.resultOutput.slice(0, 10000),
+                content: r.resultOutput.slice(0, maxLen) + (wasTruncated ? '\n[OUTPUT TRUNCATED - request specific line ranges if needed]' : ''),
                 tool_call_id: r.tc.id,
                 name: r.tc.tool,
               });

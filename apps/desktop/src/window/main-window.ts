@@ -25,7 +25,7 @@ export function createMainWindow(state: WindowState): BrowserWindow {
     show: false,
     backgroundColor: '#0a0a0a',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
