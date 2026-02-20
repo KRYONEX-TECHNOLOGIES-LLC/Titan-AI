@@ -29,6 +29,11 @@ const electronAPI = {
       ipcRenderer.invoke('tools:readLints', filePath) as Promise<{ diagnostics: Array<{ file: string; line: number; column: number; severity: string; message: string; source: string }> }>,
     semanticSearch: (query: string, dirPath: string) =>
       ipcRenderer.invoke('tools:semanticSearch', query, dirPath) as Promise<{ results: Array<{ file: string; line: number; content: string; score: number }> }>,
+    onCommandOutput: (cb: (data: { command: string; stdout: string; stderr: string; exitCode: number }) => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, data: { command: string; stdout: string; stderr: string; exitCode: number }) => cb(data);
+      ipcRenderer.on('tools:commandOutput', listener);
+      return () => { ipcRenderer.removeListener('tools:commandOutput', listener); };
+    },
   },
 
   terminal: {
@@ -158,6 +163,13 @@ const electronAPI = {
       ipcRenderer.invoke('dialog:openFile', filters) as Promise<string | null>,
     saveFile: (defaultPath?: string, filters?: Array<{ name: string; extensions: string[] }>) =>
       ipcRenderer.invoke('dialog:saveFile', defaultPath, filters) as Promise<string | null>,
+  },
+
+  shell: {
+    openExternal: (url: string) =>
+      ipcRenderer.invoke('shell:openExternal', url) as Promise<void>,
+    showItemInFolder: (path: string) =>
+      ipcRenderer.invoke('shell:showItemInFolder', path) as Promise<void>,
   },
 
   store: {

@@ -1,16 +1,5 @@
-/**
- * Titan AI - Route Protection Middleware (Edge Runtime)
- * 
- * Desktop (Electron): No auth gate -- users go straight to the IDE.
- *   GitHub sign-in is optional, available from the Accounts panel.
- * Web (Railway): Auth required -- redirect to sign-in page.
- */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import NextAuth from 'next-auth';
-import { authConfig } from '@/lib/auth.config';
-
-const { auth } = NextAuth(authConfig);
 
 export async function middleware(req: NextRequest) {
   const host = req.headers.get('host') || '';
@@ -20,12 +9,26 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Web deployment: use NextAuth session check
-  const session = await auth();
-  const isAuthRoute = req.nextUrl.pathname.startsWith('/auth') || req.nextUrl.pathname.startsWith('/api/auth');
+  const blockedApiPrefixes = [
+    '/api/chat',
+    '/api/agent',
+    '/api/terminal',
+    '/api/workspace',
+    '/api/git',
+    '/api/sessions',
+    '/api/midnight',
+    '/api/indexing',
+    '/api/mcp',
+  ];
 
-  if (!session && !isAuthRoute && !req.nextUrl.pathname.startsWith('/api/')) {
-    return NextResponse.redirect(new URL('/auth/signin', req.url));
+  if (blockedApiPrefixes.some((prefix) => req.nextUrl.pathname.startsWith(prefix))) {
+    return new NextResponse('Desktop-only endpoint', { status: 403 });
+  }
+
+  // Web deployment is landing/download only.
+  // Block web access to the product runtime routes.
+  if (req.nextUrl.pathname.startsWith('/editor')) {
+    return NextResponse.redirect(new URL('/', req.url));
   }
 
   return NextResponse.next();

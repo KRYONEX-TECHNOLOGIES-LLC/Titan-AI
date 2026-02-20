@@ -99,9 +99,20 @@ export default function TitleBar(props: TitleBarProps) {
       <div className="relative">
         <button
           onClick={(e) => { e.stopPropagation(); setShowModelDropdown(!showModelDropdown); }}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-[#2d2d2d] hover:bg-[#3c3c3c] rounded-full text-[12px] text-[#cccccc] transition-colors mr-2"
+          style={activeModel === 'titan-protocol' ? {
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+            background: 'linear-gradient(90deg, #7c3aed 0%, #5b21b6 100%)',
+            borderRadius: 9999, fontSize: 12, color: '#fff', fontWeight: 600,
+            marginRight: 8, cursor: 'pointer', border: 'none', transition: 'opacity 0.15s',
+          } : {
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+            background: '#2d2d2d', borderRadius: 9999, fontSize: 12, color: '#cccccc',
+            marginRight: 8, cursor: 'pointer', border: 'none', transition: 'background 0.15s',
+          }}
+          onMouseEnter={e => { if (activeModel !== 'titan-protocol') (e.currentTarget as HTMLButtonElement).style.background = '#3c3c3c'; }}
+          onMouseLeave={e => { if (activeModel !== 'titan-protocol') (e.currentTarget as HTMLButtonElement).style.background = '#2d2d2d'; }}
         >
-          <span className="w-2 h-2 bg-[#3fb950] rounded-full"></span>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeModel === 'titan-protocol' ? '#c084fc' : '#3fb950' }}></span>
           {activeModelLabel}
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4z"/></svg>
         </button>
@@ -121,39 +132,71 @@ export default function TitleBar(props: TitleBarProps) {
             </div>
             <div className="max-h-[400px] overflow-y-auto">
               {cappedModelRegistry.length > 0 ? (
-                ['frontier', 'standard', 'economy', 'local'].map(tier => {
-                  const tierModels = filteredModels.filter(m => m.tier === tier);
-                  if (tierModels.length === 0) return null;
-                  return (
-                    <div key={tier}>
-                      <div className="px-3 py-1.5 text-[10px] font-semibold uppercase text-[#808080] bg-[#252525]">
-                        {tier === 'frontier' ? '🚀 Frontier' : tier === 'standard' ? '⚡ Standard' : tier === 'economy' ? '💰 Economy' : '🏠 Local'}
-                      </div>
-                      {tierModels.map(model => (
+                <>
+                  {/* Titan Protocol — always at top */}
+                  {(() => {
+                    const titanModel = filteredModels.find(m => m.id === 'titan-protocol');
+                    if (!titanModel) return null;
+                    return (
+                      <div>
+                        <div style={{ padding: '6px 12px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: '#c084fc', background: 'linear-gradient(90deg, #1a1025 0%, #252525 100%)' }}>
+                          Titan Protocol
+                        </div>
                         <button
-                          key={model.id}
-                          onClick={() => onSelectModel(model.id)}
-                          className={`w-full text-left px-3 py-2 hover:bg-[#3c3c3c] transition-colors border-b border-[#333] ${activeModel === model.id ? 'bg-[#37373d]' : ''} ${filteredModels[highlightedModelIndex]?.id === model.id ? 'ring-1 ring-inset ring-[#007acc]' : ''}`}
+                          onClick={() => onSelectModel(titanModel.id)}
+                          style={{ width: '100%', textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid #3c3c3c', cursor: 'pointer', transition: 'background 0.15s', background: activeModel === titanModel.id ? 'linear-gradient(90deg, #2d1b4e 0%, #37373d 100%)' : 'transparent' }}
+                          onMouseEnter={e => { if (activeModel !== titanModel.id) (e.currentTarget as HTMLButtonElement).style.background = '#2d1b4e40'; }}
+                          onMouseLeave={e => { if (activeModel !== titanModel.id) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
                         >
-                          <div className="flex items-center justify-between">
-                            <span className={`text-[12px] ${activeModel === model.id ? 'text-[#007acc]' : 'text-[#cccccc]'}`}>{model.name}</span>
-                            <span className="text-[10px] text-[#666]">{model.provider}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: activeModel === titanModel.id ? '#c084fc' : '#e0e0e0' }}>Titan Protocol</span>
+                            <span style={{ fontSize: 10, color: '#c084fc', fontWeight: 600 }}>Titan AI</span>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[9px] text-[#555]">{(model.contextWindow / 1000).toFixed(0)}K ctx</span>
-                            {model.supportsThinking && <span className="text-[9px] text-purple-400">🧠</span>}
-                            {model.supportsVision && <span className="text-[9px] text-blue-400">👁️</span>}
-                            {model.costPer1MInput === 0 ? (
-                              <span className="text-[9px] text-green-400">Free</span>
-                            ) : (
-                              <span className="text-[9px] text-[#555]">${model.costPer1MInput}/1M</span>
-                            )}
+                          <div style={{ fontSize: 10, color: '#8b5cf6', marginTop: 3 }}>Multi-agent governance with mandatory verification</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                            <span style={{ fontSize: 9, color: '#7c3aed', background: '#7c3aed20', padding: '1px 5px', borderRadius: 3 }}>Self-Review</span>
+                            <span style={{ fontSize: 9, color: '#7c3aed', background: '#7c3aed20', padding: '1px 5px', borderRadius: 3 }}>Fail-Gate</span>
+                            <span style={{ fontSize: 9, color: '#7c3aed', background: '#7c3aed20', padding: '1px 5px', borderRadius: 3 }}>Quality Enforced</span>
                           </div>
                         </button>
-                      ))}
-                    </div>
-                  );
-                })
+                      </div>
+                    );
+                  })()}
+
+                  {['frontier', 'standard', 'economy', 'local'].map(tier => {
+                    const tierModels = filteredModels.filter(m => m.tier === tier && m.id !== 'titan-protocol');
+                    if (tierModels.length === 0) return null;
+                    return (
+                      <div key={tier}>
+                        <div className="px-3 py-1.5 text-[10px] font-semibold uppercase text-[#808080] bg-[#252525]">
+                          {tier === 'frontier' ? 'Frontier' : tier === 'standard' ? 'Standard' : tier === 'economy' ? 'Economy' : 'Local'}
+                        </div>
+                        {tierModels.map(model => (
+                          <button
+                            key={model.id}
+                            onClick={() => onSelectModel(model.id)}
+                            className={`w-full text-left px-3 py-2 hover:bg-[#3c3c3c] transition-colors border-b border-[#333] ${activeModel === model.id ? 'bg-[#37373d]' : ''} ${filteredModels[highlightedModelIndex]?.id === model.id ? 'ring-1 ring-inset ring-[#007acc]' : ''}`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className={`text-[12px] ${activeModel === model.id ? 'text-[#007acc]' : 'text-[#cccccc]'}`}>{model.name}</span>
+                              <span className="text-[10px] text-[#666]">{model.provider}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-[9px] text-[#555]">{(model.contextWindow / 1000).toFixed(0)}K ctx</span>
+                              {model.supportsThinking && <span className="text-[9px] text-purple-400">*</span>}
+                              {model.supportsVision && <span className="text-[9px] text-blue-400">*</span>}
+                              {model.costPer1MInput === 0 ? (
+                                <span className="text-[9px] text-green-400">Free</span>
+                              ) : (
+                                <span className="text-[9px] text-[#555]">${model.costPer1MInput}/1M</span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </>
               ) : (
                 <div className="p-4 text-center text-[#666] text-[12px]">Loading models...</div>
               )}

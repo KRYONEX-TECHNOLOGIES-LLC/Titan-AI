@@ -20,8 +20,7 @@ export function createMainWindow(state: WindowState): BrowserWindow {
     y: state.y,
     minWidth: 800,
     minHeight: 600,
-    title: 'Titan AI',
-    icon: path.join(__dirname, '..', 'resources', 'icon.png'),
+    title: 'Titan Desktop',
     show: false,
     backgroundColor: '#0a0a0a',
     webPreferences: {

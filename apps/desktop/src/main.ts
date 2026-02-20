@@ -1,9 +1,9 @@
-import { app, BrowserWindow, protocol, ipcMain } from 'electron';
+import { app, BrowserWindow, protocol, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as http from 'http';
 import Store from 'electron-store';
-import { registerToolHandlers } from './ipc/tools.js';
-import { registerTerminalHandlers } from './ipc/terminal.js';
+import { registerToolHandlers, killAllBackground } from './ipc/tools.js';
+import { registerTerminalHandlers, killAllTerminals } from './ipc/terminal.js';
 import { registerFilesystemHandlers } from './ipc/filesystem.js';
 import { registerGitHandlers } from './ipc/git.js';
 import { registerLinterHandlers } from './ipc/linter.js';
@@ -120,11 +120,11 @@ async function createWindow(): Promise<void> {
   registerAllIPC(mainWindow);
   createAppMenu(mainWindow);
 
-  mainWindow.loadURL(`http://localhost:${DESKTOP_PORT}`);
+  mainWindow.loadURL(`http://localhost:${DESKTOP_PORT}/editor`);
 }
 
 function registerAllIPC(win: BrowserWindow): void {
-  registerToolHandlers(ipcMain);
+  registerToolHandlers(ipcMain, win);
   registerTerminalHandlers(ipcMain, win);
   registerFilesystemHandlers(ipcMain, win);
   registerGitHandlers(ipcMain);
@@ -148,6 +148,18 @@ function registerAllIPC(win: BrowserWindow): void {
     store.set('lastOpenedFolder', folderPath);
     return updated;
   });
+
+  ipcMain.handle('shell:openExternal', async (_e, url: string) => {
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      await shell.openExternal(url);
+    }
+  });
+
+  ipcMain.handle('shell:showItemInFolder', async (_e, itemPath: string) => {
+    if (itemPath) {
+      shell.showItemInFolder(itemPath);
+    }
+  });
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -159,6 +171,10 @@ protocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(async () => {
   try {
+    app.setName('Titan Desktop');
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.kryonex.titan-desktop');
+    }
     console.log(`Starting Next.js on port ${DESKTOP_PORT}...`);
     await startNextServer(DESKTOP_PORT);
     console.log('Next.js server ready');
@@ -186,6 +202,8 @@ app.on('activate', async () => {
 });
 
 app.on('before-quit', () => {
+  killAllTerminals();
+  killAllBackground();
   if (nextServerProcess) {
     nextServerProcess.kill();
     nextServerProcess = null;

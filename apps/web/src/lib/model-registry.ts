@@ -20,7 +20,24 @@ export interface ModelInfo {
   description: string;
 }
 
+// Legacy IDs used by older Titan builds/settings. Keep these mappings
+// so saved preferences and old sessions continue to resolve correctly.
+export const MODEL_ID_ALIASES: Record<string, string> = {
+  'claude-4.6-opus': 'claude-opus-4.6',
+  'claude-4.6-sonnet': 'claude-sonnet-4.6',
+  'gemini-2.0-pro': 'gemini-2.5-pro',
+};
+
+export function normalizeModelId(modelId: string): string {
+  const id = (modelId || '').trim();
+  if (!id) return id;
+  return MODEL_ID_ALIASES[id] || id;
+}
+
 export const MODEL_REGISTRY: ModelInfo[] = [
+  // ═══ TITAN PROTOCOL (Multi-Agent Governance System) ═══
+  { id: 'titan-protocol', providerModelId: 'qwen/qwen-2.5-coder-72b-instruct', name: 'Titan Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 128000, maxOutputTokens: 32768, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.35, costPer1MOutput: 0.4, description: 'Multi-agent governance mode powered by Qwen 2.5 Coder 72B with mandatory verification and quality enforcement' },
+
   // ═══ ANTHROPIC (verified from OpenRouter /api/v1/models) ═══
   { id: 'claude-sonnet-4.6', providerModelId: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 64000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Latest and most capable Sonnet with 1M context' },
   { id: 'claude-opus-4.6', providerModelId: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 15, costPer1MOutput: 75, description: 'Most capable Claude model' },
@@ -31,6 +48,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   { id: 'claude-3.5-haiku', providerModelId: 'anthropic/claude-3.5-haiku', name: 'Claude 3.5 Haiku', provider: 'Anthropic', tier: 'economy', contextWindow: 200000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 0.8, costPer1MOutput: 4, description: 'Fast and affordable' },
 
   // ═══ OPENAI ═══
+  { id: 'gpt-5.3', providerModelId: 'openai/gpt-5.3', name: 'GPT-5.3', provider: 'OpenAI', tier: 'frontier', contextWindow: 200000, maxOutputTokens: 100000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 10, costPer1MOutput: 40, description: 'High-capability OpenAI model for advanced coding and reasoning' },
   { id: 'gpt-4o', providerModelId: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI', tier: 'standard', contextWindow: 128000, maxOutputTokens: 16384, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 2.5, costPer1MOutput: 10, description: 'Multimodal with fast responses' },
   { id: 'gpt-4o-mini', providerModelId: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI', tier: 'economy', contextWindow: 128000, maxOutputTokens: 16384, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 0.15, costPer1MOutput: 0.6, description: 'Cost-efficient for simple tasks' },
   { id: 'o3', providerModelId: 'openai/o3', name: 'o3', provider: 'OpenAI', tier: 'frontier', contextWindow: 200000, maxOutputTokens: 100000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 10, costPer1MOutput: 40, description: 'Most capable OpenAI reasoning' },

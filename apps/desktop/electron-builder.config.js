@@ -1,19 +1,22 @@
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
-  appId: 'com.kryonex.titan-ai',
-  productName: 'Titan AI',
+  appId: 'com.kryonex.titan-desktop',
+  productName: 'Titan Desktop',
   copyright: 'Copyright © 2026 Kryonex Technologies LLC',
+  npmRebuild: false,
+  nodeGypRebuild: false,
+  buildDependenciesFromSource: false,
 
   directories: {
     output: 'out',
     buildResources: 'resources',
   },
+  artifactName: 'Titan-Desktop-${version}-${os}-${arch}.${ext}',
 
   files: [
     'dist/**/*',
     'node_modules/**/*',
     '../web/.next/**/*',
-    '../web/public/**/*',
     '../web/package.json',
     '../web/next.config.js',
     '../web/node_modules/**/*',
@@ -25,29 +28,25 @@ module.exports = {
       to: 'app/.next',
       filter: ['**/*'],
     },
-    {
-      from: '../web/public',
-      to: 'app/public',
-      filter: ['**/*'],
-    },
   ],
 
   win: {
     target: [{ target: 'nsis', arch: ['x64'] }],
-    icon: 'resources/icon.ico',
+    publisherName: 'KRYONEX TECHNOLOGIES LLC',
+    verifyUpdateCodeSignature: false,
+    signAndEditExecutable: false,
   },
 
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
-    installerIcon: 'resources/icon.ico',
-    uninstallerIcon: 'resources/icon.ico',
-    installerHeaderIcon: 'resources/icon.ico',
+    shortcutName: 'Titan Desktop',
+    uninstallDisplayName: 'Titan Desktop',
+    displayLanguageSelector: false,
   },
 
   mac: {
     target: [{ target: 'dmg', arch: ['x64', 'arm64'] }],
-    icon: 'resources/icon.icns',
     category: 'public.app-category.developer-tools',
     hardenedRuntime: true,
     gatekeeperAssess: false,
@@ -62,17 +61,21 @@ module.exports = {
 
   linux: {
     target: [{ target: 'AppImage', arch: ['x64'] }, { target: 'deb', arch: ['x64'] }],
-    icon: 'resources/icon.png',
     category: 'Development',
     maintainer: 'Kryonex Technologies LLC',
   },
 
   protocols: [
     {
-      name: 'Titan AI',
-      schemes: ['titan-ai'],
+      name: 'Titan Desktop',
+      schemes: ['titan-desktop', 'titan-ai'],
     },
   ],
 
-  publish: null,
+  publish: [
+    {
+      provider: 'generic',
+      url: process.env.TITAN_RELEASE_BASE_URL || 'https://download.titan.kryonextech.com',
+    },
+  ],
 };

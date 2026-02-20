@@ -1,0 +1,26 @@
+{
+  "product": "Titan Desktop",
+  "channel": "stable",
+  "version": "0.1.0",
+  "publishedAt": "2026-02-20T23:25:11.244Z",
+  "downloads": {
+    "windows": {
+      "available": true,
+      "url": "https://download.titan.kryonextech.com/windows/Titan-Desktop-0.1.0-win-x64.exe",
+      "checksumUrl": "https://download.titan.kryonextech.com/windows/checksums.txt",
+      "releaseNotesUrl": "/release-notes"
+    },
+    "macos": {
+      "available": false,
+      "url": null,
+      "checksumUrl": null,
+      "releaseNotesUrl": "/release-notes"
+    },
+    "linux": {
+      "available": false,
+      "url": null,
+      "checksumUrl": null,
+      "releaseNotesUrl": "/release-notes"
+    }
+  }
+}

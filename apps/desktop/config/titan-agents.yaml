@@ -1,0 +1,77 @@
+# Titan-Governance Agent Configuration v2.0
+# All model IDs must match MODEL_REGISTRY in apps/web/src/lib/model-registry.ts
+
+agents:
+  supervisor:
+    model: claude-opus-4.6
+    fallback: claude-sonnet-4.6
+    role: Supreme Architect & Task Decomposer
+    reads: [memory.md, plan.md, checklist.md]
+    writes: [memory.md, plan.md]
+    delegates_to: [coder, executor, verifier]
+    max_reasoning: true
+
+  executor:
+    model: gpt-5.3
+    fallback: gpt-4o
+    role: Principal Engineer & Tool Specialist
+    reads: [plan.md]
+    writes: [execution.log]
+    tools: [git, terminal, filesystem, database, api]
+    error_protocol: report_only
+    idempotency_check: required
+
+  coder:
+    model: qwen3-coder
+    fallback: claude-sonnet-4.6
+    role: Technical Implementation Worker
+    reads: []  # Receives only what Supervisor sends
+    writes: []  # Output goes to Verifier, not to disk
+    output_format: [inspection_evidence, code_artifact, self_review, verification_hints]
+    forbidden: [placeholders, todos, stubs, happy_path_only]
+
+  verifier:
+    model: claude-opus-4.6
+    fallback: claude-sonnet-4.6
+    role: Adversarial Quality Assassin
+    reads: [checklist.md, plan.md]
+    writes: [quality.log]
+    orientation: adversarial
+    default_assumption: broken
+    forbidden: [suggest_fixes, approve_with_caveats]
+
+protocol:
+  fail_gate:
+    on_fail: discard_artifact
+    max_retries: 3
+    on_max_retries: escalate_to_human
+    patch_stacking: forbidden
+
+  memory:
+    memory_file: docs/memory.md
+    plan_file: docs/plan.md
+    checklist_file: docs/checklist.md
+    memory_write: append_only
+    memory_edit: forbidden
+    memory_delete: forbidden
+
+  verification:
+    trigger: after_every_subtask
+    skippable: false
+    pass_with_findings: treated_as_fail
+
+  context_isolation:
+    coder_sees: [subtask, file_paths, code_snippets, success_criteria]
+    coder_never_sees: [full_plan, memory, other_workers_output]
+    executor_sees: [commands, expected_outputs, rollback_instructions]
+    verifier_sees: [artifact, success_criteria, verification_criteria]
+
+logging:
+  execution_log: logs/execution.log
+  quality_log: logs/quality.log
+  violation_log: logs/violation.log
+
+cost_optimization:
+  cheap_models: [qwen3-coder, gpt-5.3]
+  expensive_models: [claude-opus-4.6]
+  compute_split: "80-90% cheap workers, 10-20% planning + verification"
