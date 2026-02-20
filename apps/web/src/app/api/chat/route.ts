@@ -97,7 +97,12 @@ function normalizeProviderError(error: unknown): {
  * POST /api/chat - Send a chat message
  */
 export async function POST(request: NextRequest) {
-  const body: ChatRequest = await request.json();
+  let body: ChatRequest;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const { message, model, codeContext, stream, crossSessionMemory } = body;
 
   if (!message?.trim()) {

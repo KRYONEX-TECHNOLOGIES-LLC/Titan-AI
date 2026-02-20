@@ -110,41 +110,53 @@ export default function IDETerminal() {
         wcSession = null;
       }
 
-      // Fallback: SSE + REST mock shell
       if (!wcSession) {
-        term.writeln('\x1b[1;32mTitan AI Terminal\x1b[0m — WebContainer shell');
-        term.writeln('\x1b[90mType commands and press Enter\x1b[0m');
+        term.writeln('\x1b[1;32mTitan AI Terminal\x1b[0m');
+        term.writeln('\x1b[90mConnected to server shell\x1b[0m');
         term.writeln('');
 
         let lineBuffer = '';
-        term.write('\x1b[1;34m$ \x1b[0m');
+        let isRunning = false;
+        const prompt = () => term.write('\x1b[1;34m$ \x1b[0m');
+        prompt();
 
-        const mockCommands: Record<string, string[]> = {
-          ls: ['orchestrator.ts', 'package.json', 'tsconfig.json', 'next.config.js'],
-          pwd: ['/workspace'],
-          whoami: ['titan'],
-          node: ['Welcome to Node.js v20.'],
-          clear: ['__CLEAR__'],
-          help: ['Available: ls, pwd, whoami, node, clear, git status'],
+        const executeCommand = async (cmd: string) => {
+          if (!cmd) { prompt(); return; }
+          if (cmd === 'clear') { term.clear(); prompt(); return; }
+          isRunning = true;
+          try {
+            const res = await fetch('/api/terminal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ command: cmd, timeout: 30000 }),
+            });
+            const data = await res.json();
+            if (data.error && !data.stdout && !data.stderr) {
+              term.writeln(`\x1b[31m${data.error}\x1b[0m`);
+            } else {
+              if (data.stdout) {
+                data.stdout.split('\n').forEach((line: string) => term.writeln(line));
+              }
+              if (data.stderr) {
+                data.stderr.split('\n').forEach((line: string) => term.writeln(`\x1b[31m${line}\x1b[0m`));
+              }
+              if (data.exitCode !== 0 && data.exitCode !== undefined) {
+                term.writeln(`\x1b[90m[exit code: ${data.exitCode}]\x1b[0m`);
+              }
+            }
+          } catch (err) {
+            term.writeln(`\x1b[31mFailed to execute: ${err instanceof Error ? err.message : 'Network error'}\x1b[0m`);
+          }
+          isRunning = false;
+          prompt();
         };
 
         term.onData((data) => {
+          if (isRunning) return;
           if (data === '\r') {
             term.write('\r\n');
-            const cmd = lineBuffer.trim().split(' ')[0];
-            const output = mockCommands[cmd];
-            if (output) {
-              if (output[0] === '__CLEAR__') {
-                term.clear();
-              } else {
-                output.forEach((line) => term.writeln(line));
-              }
-            } else if (lineBuffer.trim()) {
-              term.writeln(`\x1b[31mCommand not found: ${lineBuffer.trim()}\x1b[0m`);
-              term.writeln('\x1b[90mTip: WebContainer initializing or add real API key to enable shell\x1b[0m');
-            }
+            executeCommand(lineBuffer.trim());
             lineBuffer = '';
-            term.write('\x1b[1;34m$ \x1b[0m');
           } else if (data === '\u007f') {
             if (lineBuffer.length > 0) {
               lineBuffer = lineBuffer.slice(0, -1);
@@ -152,7 +164,8 @@ export default function IDETerminal() {
             }
           } else if (data === '\u0003') {
             lineBuffer = '';
-            term.write('^C\r\n\x1b[1;34m$ \x1b[0m');
+            term.write('^C\r\n');
+            prompt();
           } else {
             lineBuffer += data;
             term.write(data);

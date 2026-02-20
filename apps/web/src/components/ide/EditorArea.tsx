@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import type * as Monaco from 'monaco-editor';
 import { getLanguageFromFilename } from '@/utils/file-helpers';
+import { useEditorStore } from '@/stores/editor-store';
 import type { FileTab } from '@/types/ide';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
@@ -45,6 +46,7 @@ export default function EditorArea({
     if (value !== undefined) {
       setFileContents(prev => ({ ...prev, [activeTab]: value }));
       setTabs(prev => prev.map(t => t.name === activeTab ? { ...t, modified: true } : t));
+      useEditorStore.getState().loadFileContents({ [activeTab]: value });
     }
   }, [activeTab, setFileContents, setTabs]);
 

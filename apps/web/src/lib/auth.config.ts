@@ -9,10 +9,11 @@ import type { NextAuthConfig } from 'next-auth';
 
 export const authConfig: NextAuthConfig = {
   trustHost: true,
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   providers: [
     GitHub({
-      clientId: process.env.GITHUB_CLIENT_ID!,
-      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      clientId: process.env.GITHUB_CLIENT_ID || '',
+      clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
       authorization: {
         params: {
           scope: 'read:user user:email repo workflow',

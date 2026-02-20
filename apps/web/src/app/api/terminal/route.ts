@@ -6,8 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { execSync, exec } from 'child_process';
+import { execSync } from 'child_process';
 import path from 'path';
+import { requireAuth } from '@/lib/api-auth';
 
 interface TerminalRequest {
   command: string;
@@ -27,6 +28,9 @@ function isCommandSafe(command: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const body: TerminalRequest = await request.json();
     const { command, cwd, timeout = 30000, env } = body;

@@ -142,11 +142,19 @@ function envValue(...names: string[]): string {
 }
 
 export async function POST(request: NextRequest) {
-  const body: ContinueRequest = await request.json();
+  let body: ContinueRequest;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 });
+  }
   let { messages, model, codeContext, repoMap } = body;
 
-  if (!messages || messages.length === 0) {
-    return new Response(JSON.stringify({ error: 'messages required' }), { status: 400 });
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return new Response(JSON.stringify({ error: 'messages array required' }), { status: 400 });
+  }
+  if (!model || typeof model !== 'string') {
+    return new Response(JSON.stringify({ error: 'model string required' }), { status: 400 });
   }
 
   // Inject system prompt if not present

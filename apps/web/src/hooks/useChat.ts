@@ -361,13 +361,12 @@ export function useChat({
             consecutiveFailures = 0;
           }
 
-          // For edit_file, create a CodeDiffBlock
           if (tc.tool === 'edit_file' && result.success) {
             const diffBlock: CodeDiffBlock = {
               id: `diff-${tc.id}`,
               file: tc.args.path as string,
               code: tc.args.new_string as string,
-              status: 'applied',
+              status: 'pending',
             };
             appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
           } else if (tc.tool === 'create_file' && result.success) {
@@ -375,7 +374,7 @@ export function useChat({
               id: `diff-${tc.id}`,
               file: tc.args.path as string,
               code: tc.args.content as string,
-              status: 'applied',
+              status: 'pending',
             };
             appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
           }

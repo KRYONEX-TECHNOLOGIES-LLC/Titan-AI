@@ -257,12 +257,19 @@ export default function TitanIDE() {
       case 'file.openFile': return fileSystem.openFile();
       case 'save': {
         setTabs(prev => prev.map(t => t.name === activeTab ? { ...t, modified: false } : t));
+        useEditorStore.getState().markTabModified(activeTab, false);
         if (fileSystem.directoryHandle && activeTab) {
-          fileSystem.writeFile(activeTab, fileContents[activeTab] || '');
+          fileSystem.writeFile(activeTab, fileContents[activeTab] || '').catch(err =>
+            console.error('Save failed:', err)
+          );
         }
         return;
       }
-      case 'saveAll': { setTabs(prev => prev.map(t => ({ ...t, modified: false }))); return; }
+      case 'saveAll': {
+        setTabs(prev => prev.map(t => ({ ...t, modified: false })));
+        useEditorStore.getState().saveAllTabs();
+        return;
+      }
       case 'toggleSidebar': { setActiveView(prev => prev ? '' : 'titan-agent'); return; }
       case 'togglePanel': { setShowTerminal(prev => !prev); return; }
       case 'newTerminal': { setShowTerminal(true); return; }
@@ -465,6 +472,22 @@ export default function TitanIDE() {
                   }
                 }}
                 onApplyDiff={(diffId) => {
+                  const session = sessions.find(s => s.id === activeSessionId);
+                  if (session) {
+                    for (const msg of session.messages) {
+                      const diff = msg.codeDiffs?.find(d => d.id === diffId);
+                      if (diff && diff.status === 'pending') {
+                        const targetFile = diff.file.split('/').pop() || diff.file;
+                        setFileContents(prev => ({ ...prev, [targetFile]: diff.code, [diff.file]: diff.code }));
+                        if (targetFile === activeTab && editorInstance) {
+                          const model = editorInstance.getModel();
+                          if (model) model.setValue(diff.code);
+                        }
+                        if (fileSystem.directoryHandle) fileSystem.writeFile(targetFile, diff.code);
+                        break;
+                      }
+                    }
+                  }
                   setSessions(prev => prev.map(s => {
                     if (s.id !== activeSessionId) return s;
                     return {

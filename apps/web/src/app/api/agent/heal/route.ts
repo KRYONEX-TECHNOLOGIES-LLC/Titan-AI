@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execSync } from 'child_process';
 import path from 'path';
+import { requireAuth } from '@/lib/api-auth';
 
 interface HealRequest {
   command: string;
@@ -55,6 +56,9 @@ function detectErrorType(output: string): { type: string; suggestion: string } |
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const body: HealRequest = await request.json();
     const { command, cwd, maxRetries = 3, context } = body;

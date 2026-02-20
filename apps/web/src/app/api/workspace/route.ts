@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { readdir, readFile, stat } from 'fs/promises';
 import { join, extname, relative, basename } from 'path';
+import { requireAuth } from '@/lib/api-auth';
 
 async function dynamicImport(moduleName: string): Promise<any> {
   const importer = new Function('m', 'return import(m);') as (m: string) => Promise<any>;
@@ -72,7 +73,15 @@ export async function GET() {
  * POST /api/workspace - Import/open a folder
  */
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) return authResult;
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const { action, path: folderPath } = body;
 
   switch (action) {

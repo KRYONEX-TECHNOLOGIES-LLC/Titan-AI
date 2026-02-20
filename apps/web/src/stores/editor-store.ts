@@ -267,13 +267,31 @@ export const useEditorStore = create<EditorState>()(
       partialize: (s) => ({
         tabs: s.tabs,
         activeTab: s.activeTab,
-        fileContents: s.fileContents,
         fontSize: s.fontSize,
         tabSize: s.tabSize,
         fontFamily: s.fontFamily,
         breakpoints: s.breakpoints,
         recentFiles: s.recentFiles,
       }),
+      storage: {
+        getItem: (name) => {
+          try {
+            const val = localStorage.getItem(name);
+            return val ? JSON.parse(val) : null;
+          } catch { return null; }
+        },
+        setItem: (name, value) => {
+          try { localStorage.setItem(name, JSON.stringify(value)); }
+          catch (e) {
+            if (e instanceof DOMException && e.name === 'QuotaExceededError') {
+              console.warn('[titan-editor] localStorage quota exceeded, clearing old data');
+              try { localStorage.removeItem(name); localStorage.setItem(name, JSON.stringify(value)); }
+              catch { /* give up */ }
+            }
+          }
+        },
+        removeItem: (name) => { try { localStorage.removeItem(name); } catch { /* ignore */ } },
+      },
     }
   )
 );

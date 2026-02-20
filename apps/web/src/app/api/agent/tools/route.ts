@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { requireAuth } from '@/lib/api-auth';
 
 interface ToolCall {
   tool: string;
@@ -29,8 +30,9 @@ const DANGEROUS_PATTERNS = [
 ];
 
 function isPathSafe(filePath: string, workspace: string): boolean {
-  const resolved = path.resolve(workspace, filePath);
-  return resolved.startsWith(workspace);
+  const resolvedWorkspace = path.resolve(workspace);
+  const resolved = path.resolve(resolvedWorkspace, filePath);
+  return resolved.startsWith(resolvedWorkspace + path.sep) || resolved === resolvedWorkspace;
 }
 
 function isCommandSafe(command: string): boolean {
@@ -198,6 +200,9 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
 }
 
 export async function POST(request: NextRequest) {
+  const authResult = await requireAuth();
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     const body: ToolCall | { calls: ToolCall[] } = await request.json();
 

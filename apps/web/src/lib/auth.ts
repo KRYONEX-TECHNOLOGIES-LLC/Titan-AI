@@ -44,7 +44,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           html_url?: string;
         };
 
-        upsertUser({
+        await upsertUser({
           githubId: githubProfile.id,
           username: githubProfile.login,
           name: githubProfile.name ?? null,
