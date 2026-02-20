@@ -1,7 +1,7 @@
 /**
  * Titan AI - NextAuth v5 Edge-Compatible Configuration
  * This file contains ONLY Edge-compatible config for use in middleware.
- * Do NOT import Node.js modules (fs, path, better-sqlite3, etc.) here.
+ * Do NOT import Node.js modules (fs, path, etc.) or heavy libraries here.
  */
 
 import GitHub from 'next-auth/providers/github';

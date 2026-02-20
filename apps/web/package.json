@@ -16,12 +16,12 @@
     "@auth/core": "^0.41.0",
     "@monaco-editor/react": "^4.6.0",
     "@octokit/rest": "^22.0.1",
+    "@supabase/supabase-js": "^2.97.0",
     "@webcontainer/api": "^1.3.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
-    "better-sqlite3": "^12.6.2",
     "clsx": "^2.0.0",
     "monaco-editor": "^0.50.0",
     "next": "^15.1.11",
@@ -37,7 +37,6 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",

@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
     await repoGit.remote(['set-url', 'origin', cloneUrl]);
 
     // Persist workspace to DB
-    const workspace = upsertWorkspace({
+    const workspace = await upsertWorkspace({
       userId: userId ?? '',
       name: repoName,
       path: destPath,

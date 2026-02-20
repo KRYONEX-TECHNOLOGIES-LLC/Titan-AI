@@ -1,106 +1,29 @@
 /**
- * SQLite database client for persistent storage.
- * Uses better-sqlite3 for server-side API routes.
- * Falls back to in-memory mode if disk storage is unavailable.
+ * Supabase database client for Titan AI.
+ * Persistent PostgreSQL storage that survives Railway redeploys.
  */
 
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-let db: Database.Database | null = null;
+let supabase: SupabaseClient | null = null;
 
-function getDbPath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || process.cwd();
-  const titanDir = path.join(homeDir, '.titan-ai');
+export function getSupabase(): SupabaseClient {
+  if (supabase) return supabase;
 
-  try {
-    fs.mkdirSync(titanDir, { recursive: true });
-  } catch {
-    // Fallback to cwd
-    return path.join(process.cwd(), '.titan-ai', 'titan.db');
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      '[db] Missing Supabase credentials. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
+    );
   }
 
-  return path.join(titanDir, 'titan.db');
-}
+  supabase = createClient(url, key, {
+    auth: { persistSession: false },
+  });
 
-export function getDb(): Database.Database {
-  if (db) return db;
-
-  const dbPath = getDbPath();
-
-  try {
-    const dir = path.dirname(dbPath);
-    fs.mkdirSync(dir, { recursive: true });
-  } catch { /* ignore */ }
-
-  try {
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
-    db.pragma('foreign_keys = ON');
-    initSchema(db);
-    return db;
-  } catch {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    initSchema(db);
-    return db;
-  }
-}
-
-function initSchema(database: Database.Database) {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS chat_sessions (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      model TEXT NOT NULL DEFAULT 'claude-4.6-sonnet',
-      messages TEXT NOT NULL DEFAULT '[]',
-      changed_files TEXT NOT NULL DEFAULT '[]',
-      context_window TEXT NOT NULL DEFAULT '[]',
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS indexing_state (
-      file_path TEXT PRIMARY KEY,
-      hash TEXT NOT NULL,
-      symbols TEXT NOT NULL DEFAULT '[]',
-      chunks TEXT NOT NULL DEFAULT '[]',
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS midnight_state (
-      id TEXT PRIMARY KEY,
-      status TEXT NOT NULL DEFAULT 'idle',
-      queue TEXT NOT NULL DEFAULT '[]',
-      current_project TEXT,
-      progress TEXT NOT NULL DEFAULT '{}',
-      trust_level REAL NOT NULL DEFAULT 0.5,
-      confidence REAL NOT NULL DEFAULT 0.0,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS spec_contracts (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      contract TEXT NOT NULL DEFAULT '{}',
-      progress TEXT NOT NULL DEFAULT '[]',
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_sessions_updated ON chat_sessions(updated_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_indexing_hash ON indexing_state(hash);
-  `);
-}
-
-export function closeDb() {
-  if (db) {
-    db.close();
-    db = null;
-  }
+  return supabase;
 }
 
 // ── User management ──
@@ -114,31 +37,24 @@ interface UpsertUserParams {
   profileUrl?: string | null;
 }
 
-export function upsertUser(params: UpsertUserParams) {
+export async function upsertUser(params: UpsertUserParams) {
   try {
-    const database = getDb();
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        github_id INTEGER UNIQUE NOT NULL,
-        username TEXT NOT NULL,
-        name TEXT,
-        email TEXT,
-        avatar_url TEXT,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-      )
-    `);
-    database.prepare(`
-      INSERT INTO users (github_id, username, name, email, avatar_url, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, unixepoch(), unixepoch())
-      ON CONFLICT(github_id) DO UPDATE SET
-        username = excluded.username,
-        name = excluded.name,
-        email = excluded.email,
-        avatar_url = excluded.avatar_url,
-        updated_at = unixepoch()
-    `).run(params.githubId, params.username, params.name, params.email, params.avatarUrl);
+    const sb = getSupabase();
+    const { error } = await sb
+      .from('users')
+      .upsert(
+        {
+          github_id: params.githubId,
+          username: params.username,
+          name: params.name,
+          email: params.email,
+          avatar_url: params.avatarUrl,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'github_id' }
+      );
+
+    if (error) throw error;
   } catch (e) {
     console.warn('[db] upsertUser failed (non-blocking):', (e as Error).message);
   }
@@ -160,7 +76,7 @@ interface UpsertWorkspaceParams {
   repoOwner?: string;
 }
 
-export function upsertWorkspace(params: UpsertWorkspaceParams) {
+export async function upsertWorkspace(params: UpsertWorkspaceParams) {
   const id = params.id || `ws-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const repoName = params.repoName || params.name || 'unknown';
   const cloneUrl = params.cloneUrl || params.repoUrl || '';
@@ -168,35 +84,121 @@ export function upsertWorkspace(params: UpsertWorkspaceParams) {
   const branch = params.branch || params.defaultBranch || 'main';
 
   try {
-    const database = getDb();
-    database.exec(`
-      CREATE TABLE IF NOT EXISTS workspaces (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        repo_name TEXT NOT NULL,
-        clone_url TEXT NOT NULL,
-        local_path TEXT NOT NULL,
-        branch TEXT DEFAULT 'main',
-        repo_owner TEXT,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
-      )
-    `);
-    database.prepare(`
-      INSERT INTO workspaces (id, user_id, repo_name, clone_url, local_path, branch, repo_owner, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())
-      ON CONFLICT(id) DO UPDATE SET
-        repo_name = excluded.repo_name,
-        clone_url = excluded.clone_url,
-        local_path = excluded.local_path,
-        branch = excluded.branch,
-        repo_owner = excluded.repo_owner,
-        updated_at = unixepoch()
-    `).run(id, params.userId, repoName, cloneUrl, localPath, branch, params.repoOwner || null);
+    const sb = getSupabase();
+    const { error } = await sb
+      .from('workspaces')
+      .upsert(
+        {
+          id,
+          user_id: params.userId,
+          repo_name: repoName,
+          clone_url: cloneUrl,
+          local_path: localPath,
+          branch,
+          repo_owner: params.repoOwner || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
 
+    if (error) throw error;
     return { id, ...params };
   } catch (e) {
     console.warn('[db] upsertWorkspace failed:', (e as Error).message);
     return { id, ...params };
+  }
+}
+
+// ── Chat sessions ──
+
+export interface DbChatSession {
+  id: string;
+  user_id?: string | null;
+  name: string;
+  model: string;
+  messages: unknown[];
+  changed_files: unknown[];
+  context_window: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getSession(id: string): Promise<DbChatSession | null> {
+  try {
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from('chat_sessions')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) return null;
+    return data as DbChatSession;
+  } catch {
+    return null;
+  }
+}
+
+export async function getAllSessions(): Promise<DbChatSession[]> {
+  try {
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from('chat_sessions')
+      .select('*')
+      .order('updated_at', { ascending: false });
+
+    if (error || !data) return [];
+    return data as DbChatSession[];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSession(session: {
+  id: string;
+  user_id?: string | null;
+  name: string;
+  model: string;
+  messages: unknown[];
+  changed_files: unknown[];
+  context_window: string[];
+  created_at?: string;
+}) {
+  try {
+    const sb = getSupabase();
+    const { error } = await sb
+      .from('chat_sessions')
+      .upsert(
+        {
+          id: session.id,
+          user_id: session.user_id || null,
+          name: session.name,
+          model: session.model,
+          messages: session.messages,
+          changed_files: session.changed_files,
+          context_window: session.context_window,
+          created_at: session.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+
+    if (error) throw error;
+  } catch (e) {
+    console.warn('[db] saveSession failed:', (e as Error).message);
+  }
+}
+
+export async function deleteSession(id: string) {
+  try {
+    const sb = getSupabase();
+    const { error } = await sb
+      .from('chat_sessions')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  } catch (e) {
+    console.warn('[db] deleteSession failed:', (e as Error).message);
   }
 }
