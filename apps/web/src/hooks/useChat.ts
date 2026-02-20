@@ -5,6 +5,7 @@ import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock } from '@/types
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
 import { useAgentTools, toolCallSummary } from './useAgentTools';
 import { useFileStore } from '@/stores/file-store';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 const MAX_TOOL_CALLS = 25;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -29,6 +30,11 @@ interface UseChatOptions {
   workspacePath?: string;
   openTabs?: string[];
   terminalHistory?: TerminalHistoryEntry[];
+  cursorPosition?: { line: number; column: number; file: string };
+  linterDiagnostics?: Array<{ file: string; line: number; column: number; severity: string; message: string }>;
+  recentlyEditedFiles?: Array<{ file: string; timestamp: number }>;
+  recentlyViewedFiles?: string[];
+  isDesktop?: boolean;
 }
 
 interface LLMMessage {
@@ -59,6 +65,11 @@ export function useChat({
   workspacePath,
   openTabs,
   terminalHistory,
+  cursorPosition,
+  linterDiagnostics,
+  recentlyEditedFiles,
+  recentlyViewedFiles,
+  isDesktop,
 }: UseChatOptions) {
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -135,10 +146,22 @@ export function useChat({
 
   async function fetchGitStatus(): Promise<{ branch?: string; modified?: string[]; untracked?: string[]; staged?: string[] } | undefined> {
     try {
-      // Only fetch git status if workspace is a real server path (not a browser-local folder)
       const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
-      const isServerPath = wsPath.startsWith('/') || /^[A-Z]:\\/i.test(wsPath);
 
+      if (isElectron && electronAPI && wsPath) {
+        const status = await electronAPI.git.status(wsPath);
+        const modified: string[] = [];
+        const staged: string[] = [];
+        const untracked: string[] = [];
+        for (const f of status.files) {
+          if (f.index === 'M' || f.index === 'A' || f.index === 'R') staged.push(f.path);
+          if (f.working_dir === 'M') modified.push(f.path);
+          if (f.index === '?' && f.working_dir === '?') untracked.push(f.path);
+        }
+        return { branch: status.current || undefined, modified, untracked, staged };
+      }
+
+      const isServerPath = wsPath.startsWith('/') || /^[A-Z]:\\/i.test(wsPath);
       const url = isServerPath && wsPath
         ? `/api/git/status?path=${encodeURIComponent(wsPath)}`
         : '/api/git/status';
@@ -184,6 +207,11 @@ export function useChat({
         fileTree,
         gitStatus,
         terminalHistory: terminalHistory?.slice(-5) || [],
+        cursorPosition: cursorPosition || undefined,
+        linterDiagnostics: linterDiagnostics?.slice(0, 10) || [],
+        recentlyEditedFiles: recentlyEditedFiles?.slice(0, 10) || [],
+        recentlyViewedFiles: recentlyViewedFiles?.slice(0, 10) || [],
+        isDesktop: isDesktop || false,
       }),
     });
 
@@ -423,21 +451,41 @@ export function useChat({
 
           if (tc.tool === 'edit_file' && result.success) {
             const newContent = result.metadata?.newContent as string || tc.args.new_string as string;
-            const diffBlock: CodeDiffBlock = {
-              id: `diff-${tc.id}`,
-              file: tc.args.path as string,
-              code: newContent,
-              status: 'pending',
-            };
-            appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+            if (isElectron) {
+              const diffBlock: CodeDiffBlock = {
+                id: `diff-${tc.id}`,
+                file: tc.args.path as string,
+                code: newContent,
+                status: 'applied',
+              };
+              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+            } else {
+              const diffBlock: CodeDiffBlock = {
+                id: `diff-${tc.id}`,
+                file: tc.args.path as string,
+                code: newContent,
+                status: 'pending',
+              };
+              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+            }
           } else if (tc.tool === 'create_file' && result.success) {
-            const diffBlock: CodeDiffBlock = {
-              id: `diff-${tc.id}`,
-              file: tc.args.path as string,
-              code: tc.args.content as string,
-              status: 'pending',
-            };
-            appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+            if (isElectron) {
+              const diffBlock: CodeDiffBlock = {
+                id: `diff-${tc.id}`,
+                file: tc.args.path as string,
+                code: tc.args.content as string,
+                status: 'applied',
+              };
+              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+            } else {
+              const diffBlock: CodeDiffBlock = {
+                id: `diff-${tc.id}`,
+                file: tc.args.path as string,
+                code: tc.args.content as string,
+                status: 'pending',
+              };
+              appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+            }
           }
 
           const resultOutput = result.success
@@ -562,6 +610,7 @@ export function useChat({
     chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
     appendCodeDiffToMessage, agentTools, workspacePath, openTabs, terminalHistory,
+    cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop,
   ]);
 
   const handleStop = useCallback(() => {

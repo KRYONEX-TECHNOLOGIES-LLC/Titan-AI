@@ -57,6 +57,20 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function' as const,
     function: {
+      name: 'delete_file',
+      description: 'Delete a file or directory at the given path. Use with caution.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File or directory path relative to workspace root' },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'list_directory',
       description: 'List files and directories at a given path. Returns file names, types (file/dir), and sizes. Use this to understand project structure before making changes.',
       parameters: {
@@ -87,8 +101,23 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function' as const,
     function: {
+      name: 'glob_search',
+      description: 'Find files matching a glob pattern in the workspace. Returns a list of matching file paths. Use this when you need to find files by name pattern rather than by content.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', description: 'Glob pattern to match files, e.g. "**/*.tsx", "src/**/*.test.ts", "*.json"' },
+          path: { type: 'string', description: 'Base directory to search in (optional, defaults to workspace root)' },
+        },
+        required: ['pattern'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'run_command',
-      description: 'Execute a shell command in the workspace directory. Use for: npm/yarn/pnpm, git operations, build tools, linters, test runners, file operations (mkdir, cp, mv), and any other CLI tool. Commands run on the server, not the user\'s local machine.',
+      description: 'Execute a shell command in the workspace directory. Use for: npm/yarn/pnpm, git operations, build tools, linters, test runners, file operations (mkdir, cp, mv), and any other CLI tool.',
       parameters: {
         type: 'object',
         properties: {
@@ -96,6 +125,63 @@ const TOOL_DEFINITIONS = [
           cwd: { type: 'string', description: 'Working directory relative to workspace root (optional, defaults to workspace root)' },
         },
         required: ['command'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'web_search',
+      description: 'Search the web for real-time information. Use when you need up-to-date documentation, API references, library usage examples, or any information that might not be in your training data.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query. Be specific and include relevant keywords.' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'web_fetch',
+      description: 'Fetch the content of a URL and return it as readable markdown. Use to read documentation pages, API references, or any web content.',
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'The URL to fetch. Must be a fully-formed, valid URL.' },
+        },
+        required: ['url'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'read_lints',
+      description: 'Check a file for linter errors and warnings. Returns diagnostic messages with line numbers, severity, and source. Use this after editing files to verify no linter errors were introduced.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'File path to check for linter errors' },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'semantic_search',
+      description: 'AI-powered code search that finds code by meaning, not exact text. Use when you need to find code by concept rather than specific strings.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'A natural language description of what you are looking for, e.g. "where is user authentication handled"' },
+          path: { type: 'string', description: 'Directory to search in (optional, defaults to workspace root)' },
+        },
+        required: ['query'],
       },
     },
   },
@@ -135,7 +221,7 @@ SECTION 1: ABSOLUTE RULES (VIOLATIONS ARE CRITICAL FAILURES)
 SECTION 2: HOW YOU WORK (THE TOOL-CALLING PATTERN)
 ==========================================================================
 
-You have six tools. Every action you take in the codebase goes through these tools. The IDE executes them on the server and shows the user the results in real time.
+You have 12 tools. Every action you take in the codebase goes through these tools. The IDE executes them natively and shows the user the results in real time.
 
 TOOL: read_file
   Purpose: Read file contents before editing or to understand code.
@@ -153,11 +239,16 @@ TOOL: edit_file
 TOOL: create_file
   Purpose: Create new files or overwrite existing files with complete content.
   When to use: When building new features, creating config files, or when a file needs to be completely rewritten.
-  Tips: Always write complete, working code. Never write placeholder comments like "// TODO: implement this" or "// ... rest of the code". Write the actual implementation.
+  Tips: Always write complete, working code. Never write placeholder comments like "// TODO: implement this".
+
+TOOL: delete_file
+  Purpose: Delete a file or directory.
+  When to use: When removing obsolete files, cleaning up generated artifacts, or restructuring the project.
+  Tips: Use with caution. Always confirm the file is not needed before deleting.
 
 TOOL: list_directory
   Purpose: Explore the project structure.
-  When to use: At the start of a task to understand the project. When looking for specific files. When the user asks about project structure.
+  When to use: At the start of a task to understand the project. When looking for specific files.
   Tips: Start with the root directory, then drill into specific subdirectories.
 
 TOOL: grep_search
@@ -165,11 +256,36 @@ TOOL: grep_search
   When to use: When looking for function definitions, imports, usage patterns, configuration values, error messages.
   Tips: Use specific search terms. Use the glob parameter to filter by file type.
 
+TOOL: glob_search
+  Purpose: Find files matching a name pattern across the workspace.
+  When to use: When you know the file naming pattern but not the location. E.g., finding all test files, all config files.
+  Tips: Patterns like "**/*.tsx", "src/**/*.test.ts", "*.json" are supported.
+
 TOOL: run_command
-  Purpose: Execute any shell command -- install packages, run builds, run tests, git operations, file system operations.
-  When to use: After creating/editing files to verify they work. When the user asks to run something. For git operations. For package management.
-  Tips: Chain commands with && when they depend on each other. Check exit codes in the result.
-  IMPORTANT: Commands run on the server. Long-running commands (like dev servers) will timeout after 30 seconds. For build verification, use single-run commands like "npm run build" not "npm run dev".
+  Purpose: Execute any shell command -- install packages, run builds, run tests, git operations, file operations.
+  When to use: After creating/editing files to verify they work. For git operations. For package management.
+  Tips: Chain commands with && when they depend on each other. Check exit codes.
+  IMPORTANT: Long-running commands (like dev servers) will timeout after 30 seconds. Use single-run commands.
+
+TOOL: web_search
+  Purpose: Search the internet for real-time information, documentation, and API references.
+  When to use: When you need current docs, library usage, or information beyond your training data.
+  Tips: Be specific with queries. Include version numbers when searching for library docs.
+
+TOOL: web_fetch
+  Purpose: Fetch and read the content of a web page as markdown.
+  When to use: When you have a specific URL (documentation page, GitHub README, API reference) to read.
+  Tips: Works best on text-heavy pages. Binary content is not supported.
+
+TOOL: read_lints
+  Purpose: Check a file for linter errors and warnings after making changes.
+  When to use: After editing TypeScript/JavaScript files. After any substantive code change.
+  Tips: Fix any errors you introduce. Ignore pre-existing warnings unless asked.
+
+TOOL: semantic_search
+  Purpose: AI-powered code search that finds code by meaning rather than exact text.
+  When to use: When grep_search returns too many results or when you need to find code by concept.
+  Tips: Use complete questions like "where is user authentication handled" not single keywords.
 
 ==========================================================================
 SECTION 3: STANDARD WORKFLOWS (FOLLOW THESE PATTERNS)
@@ -423,6 +539,38 @@ Path: ${body.workspacePath}`;
     prompt += `\n\nRepository map (condensed):\n${body.repoMap.slice(0, 6000)}`;
   }
 
+  // Cursor position
+  if (body.cursorPosition) {
+    prompt += `\n\nCursor position: line ${body.cursorPosition.line}, column ${body.cursorPosition.column} in ${body.cursorPosition.file}`;
+  }
+
+  // Linter diagnostics
+  if (body.linterDiagnostics && body.linterDiagnostics.length > 0) {
+    prompt += `\n\nLinter errors in current file:`;
+    for (const d of body.linterDiagnostics.slice(0, 10)) {
+      prompt += `\n  ${d.file}:${d.line}:${d.column} ${d.severity}: ${d.message}`;
+    }
+  }
+
+  // Recently edited files
+  if (body.recentlyEditedFiles && body.recentlyEditedFiles.length > 0) {
+    prompt += `\n\nRecently edited files:`;
+    for (const f of body.recentlyEditedFiles.slice(0, 10)) {
+      const ago = Math.round((Date.now() - f.timestamp) / 60000);
+      prompt += `\n- ${f.file} (${ago}m ago)`;
+    }
+  }
+
+  // Recently viewed files
+  if (body.recentlyViewedFiles && body.recentlyViewedFiles.length > 0) {
+    prompt += `\n\nRecently viewed files:\n${body.recentlyViewedFiles.slice(0, 10).map(f => `- ${f}`).join('\n')}`;
+  }
+
+  // Desktop mode indicator
+  if (body.isDesktop) {
+    prompt += `\n\nEnvironment: Titan AI Desktop (Electron). All tools execute natively on the user's machine. File edits apply directly to disk. The terminal is a real PTY shell.`;
+  }
+
   return prompt;
 }
 
@@ -455,6 +603,11 @@ interface ContinueRequest {
     output?: string;
     exitCode: number;
   }>;
+  cursorPosition?: { line: number; column: number; file: string };
+  linterDiagnostics?: Array<{ file: string; line: number; column: number; severity: string; message: string }>;
+  recentlyEditedFiles?: Array<{ file: string; timestamp: number }>;
+  recentlyViewedFiles?: string[];
+  isDesktop?: boolean;
 }
 
 

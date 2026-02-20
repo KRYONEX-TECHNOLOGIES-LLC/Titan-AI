@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTerminalStore } from '@/stores/terminal-store';
 import { useLayoutStore } from '@/stores/layout-store';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 let xtermCssLoaded = false;
 function loadXtermCss() {
@@ -95,86 +96,111 @@ export default function IDETerminal() {
       });
       ro.observe(container);
 
-      // WebContainer spawn or SSE mock
-      let wcSession: { input: WritableStream; } | null = null;
-      try {
-        const wcModule = await import('@/lib/webcontainer').catch(() => null);
-        if (wcModule?.getWebContainer) {
-          const wc = await wcModule.getWebContainer();
-          const proc = await wc.spawn('bash', [], { env: { TERM: 'xterm-256color' } });
-          wcSession = proc;
-          const writer = proc.input.getWriter();
-          term.onData((data) => writer.write(data));
-          const reader = proc.output.getReader();
-          (async () => {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              term.write(value);
-            }
-          })();
-        }
-      } catch {
-        wcSession = null;
-      }
+      // ── Electron: real PTY via node-pty ──
+      if (isElectron && electronAPI) {
+        const cwd = (window as Record<string, unknown>).__titanWorkspacePath as string || undefined;
+        await electronAPI.terminal.create(sessionId, undefined, cwd);
 
-      if (!wcSession) {
-        let lineBuffer = '';
-        let isRunning = false;
-        const prompt = () => term.write('\x1b[32m$\x1b[0m ');
-        prompt();
+        const unsubData = electronAPI.terminal.onData(sessionId, (data) => {
+          term.write(data);
+        });
 
-        const executeCommand = async (cmd: string) => {
-          if (!cmd) { prompt(); return; }
-          if (cmd === 'clear') { term.clear(); prompt(); return; }
-          isRunning = true;
-          try {
-            const res = await fetch('/api/terminal', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ command: cmd, timeout: 30000 }),
-            });
-            const data = await res.json();
-            if (data.error && !data.stdout && !data.stderr) {
-              term.writeln(`\x1b[31m${data.error}\x1b[0m`);
-            } else {
-              if (data.stdout) {
-                data.stdout.split('\n').forEach((line: string) => term.writeln(line));
-              }
-              if (data.stderr) {
-                data.stderr.split('\n').forEach((line: string) => term.writeln(`\x1b[31m${line}\x1b[0m`));
-              }
-              if (data.exitCode !== 0 && data.exitCode !== undefined) {
-                term.writeln(`\x1b[90m[exit code: ${data.exitCode}]\x1b[0m`);
-              }
-            }
-          } catch (err) {
-            term.writeln(`\x1b[31mFailed to execute: ${err instanceof Error ? err.message : 'Network error'}\x1b[0m`);
-          }
-          isRunning = false;
-          prompt();
-        };
+        const unsubExit = electronAPI.terminal.onExit(sessionId, (exitCode) => {
+          term.writeln(`\r\n\x1b[90m[Process exited with code ${exitCode}]\x1b[0m`);
+        });
 
         term.onData((data) => {
-          if (isRunning) return;
-          if (data === '\r') {
-            term.write('\r\n');
-            executeCommand(lineBuffer.trim());
-            lineBuffer = '';
-          } else if (data === '\u007f') {
-            if (lineBuffer.length > 0) {
-              lineBuffer = lineBuffer.slice(0, -1);
-              term.write('\b \b');
-            }
-          } else if (data === '\u0003') {
-            lineBuffer = '';
-            term.write('^C\r\n');
-            prompt();
-          } else {
-            lineBuffer += data;
-            term.write(data);
-          }
+          electronAPI!.terminal.write(sessionId, data);
         });
+
+        term.onResize(({ cols, rows }) => {
+          electronAPI!.terminal.resize(sessionId, cols, rows);
+        });
+
+        (container as HTMLDivElement & { _cleanup?: () => void; _unsubData?: () => void; _unsubExit?: () => void })._unsubData = unsubData;
+        (container as HTMLDivElement & { _unsubData?: () => void; _unsubExit?: () => void })._unsubExit = unsubExit;
+      } else {
+        // ── Web fallback: WebContainer or HTTP API ──
+        let wcSession: { input: WritableStream; } | null = null;
+        try {
+          const wcModule = await import('@/lib/webcontainer').catch(() => null);
+          if (wcModule?.getWebContainer) {
+            const wc = await wcModule.getWebContainer();
+            const proc = await wc.spawn('bash', [], { env: { TERM: 'xterm-256color' } });
+            wcSession = proc;
+            const writer = proc.input.getWriter();
+            term.onData((data) => writer.write(data));
+            const reader = proc.output.getReader();
+            (async () => {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                term.write(value);
+              }
+            })();
+          }
+        } catch {
+          wcSession = null;
+        }
+
+        if (!wcSession) {
+          let lineBuffer = '';
+          let isRunning = false;
+          const prompt = () => term.write('\x1b[32m$\x1b[0m ');
+          prompt();
+
+          const executeCommand = async (cmd: string) => {
+            if (!cmd) { prompt(); return; }
+            if (cmd === 'clear') { term.clear(); prompt(); return; }
+            isRunning = true;
+            try {
+              const res = await fetch('/api/terminal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: cmd, timeout: 30000 }),
+              });
+              const data = await res.json();
+              if (data.error && !data.stdout && !data.stderr) {
+                term.writeln(`\x1b[31m${data.error}\x1b[0m`);
+              } else {
+                if (data.stdout) {
+                  data.stdout.split('\n').forEach((line: string) => term.writeln(line));
+                }
+                if (data.stderr) {
+                  data.stderr.split('\n').forEach((line: string) => term.writeln(`\x1b[31m${line}\x1b[0m`));
+                }
+                if (data.exitCode !== 0 && data.exitCode !== undefined) {
+                  term.writeln(`\x1b[90m[exit code: ${data.exitCode}]\x1b[0m`);
+                }
+              }
+            } catch (err) {
+              term.writeln(`\x1b[31mFailed to execute: ${err instanceof Error ? err.message : 'Network error'}\x1b[0m`);
+            }
+            isRunning = false;
+            prompt();
+          };
+
+          term.onData((data) => {
+            if (isRunning) return;
+            if (data === '\r') {
+              term.write('\r\n');
+              executeCommand(lineBuffer.trim());
+              lineBuffer = '';
+            } else if (data === '\u007f') {
+              if (lineBuffer.length > 0) {
+                lineBuffer = lineBuffer.slice(0, -1);
+                term.write('\b \b');
+              }
+            } else if (data === '\u0003') {
+              lineBuffer = '';
+              term.write('^C\r\n');
+              prompt();
+            } else {
+              lineBuffer += data;
+              term.write(data);
+            }
+          });
+        }
       }
 
       // Global events
@@ -203,6 +229,12 @@ export default function IDETerminal() {
         window.removeEventListener('titan:terminal:clear', clearHandler);
         window.removeEventListener('titan:terminal:scroll', scrollHandler);
         window.removeEventListener('titan:terminal:runText', runTextHandler);
+        if (isElectron && electronAPI) {
+          electronAPI.terminal.kill(sessionId).catch(() => {});
+          const ext = container as HTMLDivElement & { _unsubData?: () => void; _unsubExit?: () => void };
+          ext._unsubData?.();
+          ext._unsubExit?.();
+        }
         term.dispose();
         xtermInstances.current.delete(sessionId);
       };

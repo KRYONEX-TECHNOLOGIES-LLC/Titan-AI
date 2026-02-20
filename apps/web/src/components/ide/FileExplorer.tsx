@@ -4,6 +4,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useFileStore, type FileNode } from '@/stores/file-store';
 import { useEditorStore } from '@/stores/editor-store';
 import { executeCommand } from '@/lib/ide/command-registry';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 // ─── Git Status Hook ─────────────────────────────────────────────────────────
 function useGitStatus(workspacePath: string | null) {
@@ -19,20 +20,36 @@ function useGitStatus(workspacePath: string | null) {
 
     const fetchStatus = async () => {
       try {
-        const res = await fetch(`/api/git/status?path=${encodeURIComponent(workspacePath)}`);
-        if (!res.ok) return;
-        const data = await res.json() as {
-          modified?: string[];
-          staged?: string[];
-          untracked?: string[];
-          deleted?: string[];
-        };
-        setGitStatus({
-          modified: new Set(data.modified ?? []),
-          staged: new Set(data.staged ?? []),
-          untracked: new Set(data.untracked ?? []),
-          deleted: new Set(data.deleted ?? []),
-        });
+        if (isElectron && electronAPI) {
+          const data = await electronAPI.git.status(workspacePath);
+          const modified = new Set<string>();
+          const staged = new Set<string>();
+          const untracked = new Set<string>();
+          const deleted = new Set<string>();
+
+          for (const f of data.files) {
+            if (f.index === 'M' || f.index === 'A' || f.index === 'R') staged.add(f.path);
+            if (f.working_dir === 'M') modified.add(f.path);
+            if (f.working_dir === 'D') deleted.add(f.path);
+            if (f.index === '?' && f.working_dir === '?') untracked.add(f.path);
+          }
+          setGitStatus({ modified, staged, untracked, deleted });
+        } else {
+          const res = await fetch(`/api/git/status?path=${encodeURIComponent(workspacePath)}`);
+          if (!res.ok) return;
+          const data = await res.json() as {
+            modified?: string[];
+            staged?: string[];
+            untracked?: string[];
+            deleted?: string[];
+          };
+          setGitStatus({
+            modified: new Set(data.modified ?? []),
+            staged: new Set(data.staged ?? []),
+            untracked: new Set(data.untracked ?? []),
+            deleted: new Set(data.deleted ?? []),
+          });
+        }
       } catch { /* ignore */ }
     };
 
@@ -205,6 +222,16 @@ function FileTreeNode({
       const existingContent = fileContents[node.name] ?? fileContents[node.path];
       if (existingContent !== undefined) {
         openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+      } else if (isElectron && electronAPI) {
+        electronAPI.fs.readFile(node.path)
+          .then((content) => {
+            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+            const store = require('@/stores/editor-store').useEditorStore;
+            store.getState().loadFileContents({ [node.name]: content, [node.path]: content });
+          })
+          .catch(() => {
+            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+          });
       } else {
         fetch(`/api/workspace?path=${encodeURIComponent(node.path)}`)
           .then((r) => r.json())

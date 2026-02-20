@@ -32,6 +32,7 @@
     "build:native": "cd packages/indexer-native && npm run build",
     "dev": "turbo run dev --parallel",
     "dev:web": "turbo run dev --filter=@titan/web",
+    "dev:desktop": "turbo run dev --filter=@titan/desktop",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",

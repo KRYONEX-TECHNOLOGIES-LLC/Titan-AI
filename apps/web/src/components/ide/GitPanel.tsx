@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 interface GitStatus {
   isRepo: boolean;
@@ -69,10 +70,34 @@ export default function GitPanel({ workspacePath }: Props) {
   const fetchStatus = useCallback(async () => {
     if (!workspacePath) return;
     try {
-      const res = await fetch(`/api/git/status?path=${encodeURIComponent(workspacePath)}`);
-      if (res.ok) {
-        const data = await res.json() as GitStatus;
-        setStatus(data);
+      if (isElectron && electronAPI) {
+        const data = await electronAPI.git.status(workspacePath);
+        const modified: string[] = [];
+        const staged: string[] = [];
+        const untracked: string[] = [];
+        const deleted: string[] = [];
+        for (const f of data.files) {
+          if (f.index === 'M' || f.index === 'A' || f.index === 'R') staged.push(f.path);
+          if (f.working_dir === 'M') modified.push(f.path);
+          if (f.working_dir === 'D') deleted.push(f.path);
+          if (f.index === '?' && f.working_dir === '?') untracked.push(f.path);
+        }
+        setStatus({
+          isRepo: true,
+          branch: data.current,
+          ahead: data.ahead,
+          behind: data.behind,
+          staged, modified, untracked, deleted,
+          conflicted: [], renamed: [],
+          isClean: data.files.length === 0,
+          remoteUrl: data.tracking,
+        });
+      } else {
+        const res = await fetch(`/api/git/status?path=${encodeURIComponent(workspacePath)}`);
+        if (res.ok) {
+          const data = await res.json() as GitStatus;
+          setStatus(data);
+        }
       }
     } catch { /* silently fail during polling */ }
   }, [workspacePath]);
@@ -80,10 +105,21 @@ export default function GitPanel({ workspacePath }: Props) {
   const fetchBranches = useCallback(async () => {
     if (!workspacePath) return;
     try {
-      const res = await fetch(`/api/git/branches?path=${encodeURIComponent(workspacePath)}`);
-      if (res.ok) {
-        const data = await res.json() as { all: Branch[] };
-        setBranches(data.all ?? []);
+      if (isElectron && electronAPI) {
+        const data = await electronAPI.git.branches(workspacePath);
+        const branchList: Branch[] = data.all.map(name => ({
+          name,
+          current: name === data.current,
+          sha: '',
+          remote: name.startsWith('remotes/'),
+        }));
+        setBranches(branchList);
+      } else {
+        const res = await fetch(`/api/git/branches?path=${encodeURIComponent(workspacePath)}`);
+        if (res.ok) {
+          const data = await res.json() as { all: Branch[] };
+          setBranches(data.all ?? []);
+        }
       }
     } catch { /* ignore */ }
   }, [workspacePath]);
@@ -91,11 +127,21 @@ export default function GitPanel({ workspacePath }: Props) {
   const fetchDiff = useCallback(async (file: string, staged = false) => {
     if (!workspacePath) return;
     try {
-      const params = new URLSearchParams({ path: workspacePath, file, staged: staged.toString() });
-      const res = await fetch(`/api/git/diff?${params}`);
-      if (res.ok) {
-        const data = await res.json() as { files: DiffFile[] };
-        setDiffFiles(data.files);
+      if (isElectron && electronAPI) {
+        const diffText = await electronAPI.git.diff(workspacePath, { staged });
+        setDiffFiles([{
+          from: file, to: file, hunks: [{ header: '', lines: diffText.split('\n').map(l => ({
+            type: l.startsWith('+') ? 'add' as const : l.startsWith('-') ? 'remove' as const : 'context' as const,
+            content: l,
+          })) }], additions: 0, deletions: 0,
+        }]);
+      } else {
+        const params = new URLSearchParams({ path: workspacePath, file, staged: staged.toString() });
+        const res = await fetch(`/api/git/diff?${params}`);
+        if (res.ok) {
+          const data = await res.json() as { files: DiffFile[] };
+          setDiffFiles(data.files);
+        }
       }
     } catch { /* ignore */ }
   }, [workspacePath]);

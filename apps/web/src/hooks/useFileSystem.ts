@@ -6,10 +6,26 @@ import { useEditorStore } from '@/stores/editor-store';
 import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
 import type { FileTab } from '@/types/ide';
 import { workerManager } from '@/lib/worker-manager';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 const MAX_FILES = 500;
 const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.next', 'dist', 'build', '.cache', 'coverage', '.vscode', '.idea']);
 const SKIP_EXTENSIONS = new Set(['exe', 'dll', 'so', 'dylib', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'wav', 'avi', 'mov', 'pdf', 'zip', 'tar', 'gz', 'rar', '7z']);
+
+function convertNativeTree(nodes: Array<{ name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }>, prefix: string): FileNode[] {
+  return nodes.map(n => {
+    const relPath = prefix ? `${prefix}/${n.name}` : n.name;
+    const node: FileNode = {
+      name: n.name,
+      path: relPath,
+      type: n.type === 'directory' ? 'folder' : 'file',
+    };
+    if (n.type === 'directory' && n.children) {
+      node.children = convertNativeTree(n.children as typeof nodes, relPath);
+    }
+    return node;
+  });
+}
 
 function buildFileTree(_dirHandle: FileSystemDirectoryHandle, entries: Array<{ path: string; kind: 'file' | 'directory' }>): FileNode[] {
   const root: FileNode[] = [];
@@ -63,6 +79,86 @@ export function useFileSystem(
   const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
 
   const openFolder = useCallback(async () => {
+    // ── Electron native path ──
+    if (isElectron && electronAPI) {
+      try {
+        const folderPath = await electronAPI.dialog.openFolder();
+        if (!folderPath) return;
+
+        setIsLoadingFiles(true);
+        setLoadingMessage('Reading folder contents...');
+
+        const nativeTree = await electronAPI.fs.readDir(folderPath, { recursive: true });
+
+        const newFiles: Record<string, string> = {};
+        let fileCount = 0;
+
+        async function loadFilesFromTree(nodes: typeof nativeTree, prefix: string): Promise<void> {
+          for (const node of nodes) {
+            if (fileCount >= MAX_FILES) break;
+            if (node.type === 'file') {
+              const ext = node.name.split('.').pop()?.toLowerCase() || '';
+              if (SKIP_EXTENSIONS.has(ext)) continue;
+              if ((node as { size?: number }).size && (node as { size?: number }).size! > 500_000) continue;
+              try {
+                const content = await electronAPI!.fs.readFile(node.path);
+                const relPath = prefix ? `${prefix}/${node.name}` : node.name;
+                newFiles[relPath] = content;
+                fileCount++;
+                if (fileCount % 20 === 0) setLoadingMessage(`Reading files... (${fileCount} files)`);
+              } catch { /* skip unreadable */ }
+            } else if (node.type === 'directory' && (node as { children?: unknown[] }).children) {
+              const relPath = prefix ? `${prefix}/${node.name}` : node.name;
+              await loadFilesFromTree((node as { children: typeof nativeTree }).children, relPath);
+            }
+          }
+        }
+
+        await loadFilesFromTree(nativeTree, '');
+
+        const folderName = folderPath.split(/[\\/]/).pop() || folderPath;
+        const fileTree = convertNativeTree(nativeTree, '');
+        const { openFolder: openFolderStore } = useFileStore.getState();
+        openFolderStore(folderName, folderPath, fileTree);
+        setWorkspacePath(folderPath);
+
+        await electronAPI.recentFolders.add(folderPath);
+
+        if (!activeView || activeView === 'explorer') {
+          setActiveView('titan-agent');
+        }
+
+        setLoadingMessage('Loading editor...');
+        setFileContents(newFiles);
+        useEditorStore.getState().loadFileContents(newFiles);
+
+        const sortedFiles = Object.keys(newFiles).sort((a, b) => {
+          const aDepth = a.split('/').length;
+          const bDepth = b.split('/').length;
+          if (aDepth !== bDepth) return aDepth - bDepth;
+          return a.localeCompare(b);
+        });
+
+        const firstFile = sortedFiles[0] || '';
+        if (firstFile) {
+          const info = getFileInfo(firstFile);
+          setTabs([{ name: firstFile, icon: info.icon, color: info.color }]);
+          setActiveTab(firstFile);
+        }
+
+        setIsLoadingFiles(false);
+        setLoadingMessage('');
+        return;
+      } catch (e: unknown) {
+        setIsLoadingFiles(false);
+        setLoadingMessage('');
+        console.error('Electron open folder failed:', e);
+        alert(`Failed to open folder: ${e instanceof Error ? e.message : 'Unknown error'}`);
+        return;
+      }
+    }
+
+    // ── Browser File System Access API path ──
     if (!('showDirectoryPicker' in window)) {
       alert('Your browser does not support opening folders.\n\nPlease use Chrome, Edge, or another Chromium-based browser.');
       return;
@@ -127,7 +223,6 @@ export function useFileSystem(
         return;
       }
 
-      // Index files in background via web worker
       setLoadingMessage('Indexing files...');
       const filesToIndex = Object.entries(newFiles).map(([path, content]) => ({
         path,
@@ -138,7 +233,6 @@ export function useFileSystem(
         console.warn('[useFileSystem] Background indexing failed:', err)
       );
 
-      // Generate repo map for AI context
       setLoadingMessage('Generating repo map...');
       try {
         const mapRes = await fetch('/api/workspace/repomap', {
@@ -208,6 +302,16 @@ export function useFileSystem(
   }, [setFileContents, setTabs, setActiveTab]);
 
   const writeFile = useCallback(async (filePath: string, content: string): Promise<boolean> => {
+    if (isElectron && electronAPI) {
+      try {
+        await electronAPI.fs.writeFile(filePath, content);
+        return true;
+      } catch (e) {
+        console.error('Electron write file failed:', e);
+        return false;
+      }
+    }
+
     if (!directoryHandle) return false;
     try {
       const parts = filePath.split('/');

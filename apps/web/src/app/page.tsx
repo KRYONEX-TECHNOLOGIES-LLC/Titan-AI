@@ -13,6 +13,7 @@ import { useSessions } from '@/hooks/useSessions';
 import { useSettings } from '@/hooks/useSettings';
 import { useMidnight } from '@/hooks/useMidnight';
 import { useFileSystem } from '@/hooks/useFileSystem';
+import { useAutoContext } from '@/hooks/useAutoContext';
 
 // Utils
 import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
@@ -43,6 +44,7 @@ import { useFileStore } from '@/stores/file-store';
 import { useTerminalStore } from '@/stores/terminal-store';
 import { useDebugStore } from '@/stores/debug-store';
 import { initCommandRegistry } from '@/lib/ide/command-registry';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 /* ═══ MAIN IDE COMPONENT ═══ */
 export default function TitanIDE() {
@@ -117,6 +119,14 @@ export default function TitanIDE() {
   const midnight = useMidnight(mounted, settings.activeModel);
   const { sessions, setSessions, activeSessionId, setActiveSessionId, currentSession, handleNewAgent, handleRenameSession, handleDeleteSession } = useSessions(mounted);
   const fileSystem = useFileSystem(setTabs, setActiveTab, setFileContents, setActiveView, activeView);
+  const autoContext = useAutoContext(editorInstance, activeTab, fileSystem.workspacePath);
+
+  // Expose workspace path globally for terminal component
+  useEffect(() => {
+    if (fileSystem.workspacePath) {
+      (window as Record<string, unknown>).__titanWorkspacePath = fileSystem.workspacePath;
+    }
+  }, [fileSystem.workspacePath]);
 
   // Sync: when FileExplorer opens a file via editor store, update page.tsx local state
   useEffect(() => {
@@ -193,9 +203,9 @@ export default function TitanIDE() {
     const info = getFileInfo(filePath);
     setTabs(prev => {
       if (prev.find(t => t.name === filePath)) {
-        return prev.map(t => t.name === filePath ? { ...t, modified: true } : t);
+        return prev.map(t => t.name === filePath ? { ...t, modified: false } : t);
       }
-      return [...prev, { name: filePath, icon: info.icon, color: info.color, modified: true }];
+      return [...prev, { name: filePath, icon: info.icon, color: info.color, modified: false }];
     });
     setActiveTab(filePath);
 
@@ -203,7 +213,17 @@ export default function TitanIDE() {
       const model = editorInstance.getModel();
       if (model && filePath === activeTab) model.setValue(newContent);
     }
-  }, [activeTab, editorInstance]);
+
+    if (isElectron && electronAPI) {
+      electronAPI.fs.writeFile(filePath, newContent).catch(err =>
+        console.error('[handleAgentFileEdited] Disk write failed:', err)
+      );
+    } else if (fileSystem.directoryHandle) {
+      fileSystem.writeFile(filePath, newContent).catch(err =>
+        console.error('[handleAgentFileEdited] FS write failed:', err)
+      );
+    }
+  }, [activeTab, editorInstance, fileSystem]);
 
   const handleAgentFileCreated = useCallback((filePath: string, content: string) => {
     const info = getFileInfo(filePath);
@@ -212,10 +232,20 @@ export default function TitanIDE() {
 
     setTabs(prev => {
       if (prev.find(t => t.name === filePath)) return prev;
-      return [...prev, { name: filePath, icon: info.icon, color: info.color, modified: true }];
+      return [...prev, { name: filePath, icon: info.icon, color: info.color, modified: false }];
     });
     setActiveTab(filePath);
-  }, []);
+
+    if (isElectron && electronAPI) {
+      electronAPI.fs.writeFile(filePath, content).catch(err =>
+        console.error('[handleAgentFileCreated] Disk write failed:', err)
+      );
+    } else if (fileSystem.directoryHandle) {
+      fileSystem.writeFile(filePath, content).catch(err =>
+        console.error('[handleAgentFileCreated] FS write failed:', err)
+      );
+    }
+  }, [fileSystem]);
 
   const chat = useChat({
     sessions, setSessions, activeSessionId,
@@ -226,6 +256,11 @@ export default function TitanIDE() {
     workspacePath: fileSystem.workspacePath,
     openTabs: tabs.map(t => t.name),
     terminalHistory: terminalHistoryRef.current,
+    cursorPosition: autoContext.cursorPosition || undefined,
+    linterDiagnostics: autoContext.linterDiagnostics,
+    recentlyEditedFiles: autoContext.recentlyEditedFiles,
+    recentlyViewedFiles: autoContext.recentlyViewedFiles,
+    isDesktop: autoContext.isDesktop,
   });
 
   // Apply changes
