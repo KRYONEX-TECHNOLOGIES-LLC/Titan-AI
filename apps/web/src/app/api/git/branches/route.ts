@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import simpleGit from 'simple-git';
+import { simpleGit } from 'simple-git';
 import path from 'path';
 
 export async function GET(req: NextRequest) {

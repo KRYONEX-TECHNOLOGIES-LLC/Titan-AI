@@ -4,7 +4,6 @@
  * Gracefully returns empty status for non-existent paths or non-git directories.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
 
 const EMPTY_STATUS = {
   isRepo: false,
@@ -21,91 +20,56 @@ const EMPTY_STATUS = {
   remoteUrl: null,
 };
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const workspacePath = searchParams.get('path');
+async function getGitStatus(dirPath: string) {
+  const fs = await import('fs');
+  const path = await import('path');
+  const resolvedPath = path.resolve(dirPath);
 
-  if (!workspacePath) {
-    // No path provided -- try process.cwd() as default
-    try {
-      const simpleGit = (await import('simple-git')).default;
-      const git = simpleGit(process.cwd());
-      const isRepo = await git.checkIsRepo();
-      if (!isRepo) return NextResponse.json(EMPTY_STATUS);
-
-      const status = await git.status();
-      let remoteUrl: string | null = null;
-      try {
-        const remotes = await git.getRemotes(true);
-        const origin = remotes.find(r => r.name === 'origin');
-        remoteUrl = origin?.refs?.fetch ?? null;
-      } catch { /* no remote */ }
-
-      return NextResponse.json({
-        isRepo: true,
-        branch: status.current ?? 'HEAD',
-        ahead: status.ahead,
-        behind: status.behind,
-        staged: status.staged,
-        modified: status.modified,
-        untracked: status.not_added,
-        conflicted: status.conflicted,
-        deleted: status.deleted,
-        renamed: status.renamed.map(r => ({ from: r.from, to: r.to })),
-        isClean: status.isClean(),
-        remoteUrl,
-      });
-    } catch {
-      return NextResponse.json(EMPTY_STATUS);
-    }
+  if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isDirectory()) {
+    return EMPTY_STATUS;
   }
 
-  // Validate path exists on the filesystem before trying git operations
+  const { simpleGit } = await import('simple-git');
+  const git = simpleGit(resolvedPath);
+
+  if (!(await git.checkIsRepo())) {
+    return EMPTY_STATUS;
+  }
+
+  const status = await git.status();
+
+  let remoteUrl: string | null = null;
   try {
-    const fs = await import('fs');
-    const resolvedPath = path.resolve(workspacePath);
+    const remotes = await git.getRemotes(true);
+    const origin = remotes.find(r => r.name === 'origin');
+    remoteUrl = origin?.refs?.fetch ?? null;
+  } catch { /* no remote configured */ }
 
-    if (!fs.existsSync(resolvedPath)) {
-      return NextResponse.json(EMPTY_STATUS);
-    }
+  return {
+    isRepo: true,
+    branch: status.current ?? 'HEAD',
+    ahead: status.ahead,
+    behind: status.behind,
+    staged: status.staged,
+    modified: status.modified,
+    untracked: status.not_added,
+    conflicted: status.conflicted,
+    deleted: status.deleted,
+    renamed: status.renamed.map(r => ({ from: r.from, to: r.to })),
+    isClean: status.isClean(),
+    remoteUrl,
+  };
+}
 
-    const stat = fs.statSync(resolvedPath);
-    if (!stat.isDirectory()) {
-      return NextResponse.json(EMPTY_STATUS);
-    }
-
-    const simpleGit = (await import('simple-git')).default;
-    const git = simpleGit(resolvedPath);
-    const isRepo = await git.checkIsRepo();
-
-    if (!isRepo) {
-      return NextResponse.json(EMPTY_STATUS);
-    }
-
-    const status = await git.status();
-
-    let remoteUrl: string | null = null;
-    try {
-      const remotes = await git.getRemotes(true);
-      const origin = remotes.find(r => r.name === 'origin');
-      remoteUrl = origin?.refs?.fetch ?? null;
-    } catch { /* no remote */ }
-
-    return NextResponse.json({
-      isRepo: true,
-      branch: status.current ?? 'HEAD',
-      ahead: status.ahead,
-      behind: status.behind,
-      staged: status.staged,
-      modified: status.modified,
-      untracked: status.not_added,
-      conflicted: status.conflicted,
-      deleted: status.deleted,
-      renamed: status.renamed.map(r => ({ from: r.from, to: r.to })),
-      isClean: status.isClean(),
-      remoteUrl,
-    });
-  } catch {
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const workspacePath = searchParams.get('path');
+    const dirPath = workspacePath || process.cwd();
+    const result = await getGitStatus(dirPath);
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error('[git/status] Error:', err);
     return NextResponse.json(EMPTY_STATUS);
   }
 }

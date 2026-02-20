@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["python3", "gcc", "gnumake", "nodejs_20"]
+nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["cd apps/web && npm ci"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["cd apps/web && npm run build"]
 
 [start]
-cmd = "npm run start"
+cmd = "cd apps/web && npm run start"
