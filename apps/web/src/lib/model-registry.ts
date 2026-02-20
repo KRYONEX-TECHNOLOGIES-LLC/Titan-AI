@@ -22,8 +22,8 @@ export interface ModelInfo {
 
 export const MODEL_REGISTRY: ModelInfo[] = [
   // ═══ ANTHROPIC (verified from OpenRouter /api/v1/models) ═══
-  { id: 'claude-sonnet-4.6', providerModelId: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 200000, maxOutputTokens: 64000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Latest and most capable Sonnet' },
-  { id: 'claude-opus-4.6', providerModelId: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 200000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 15, costPer1MOutput: 75, description: 'Most capable Claude model' },
+  { id: 'claude-sonnet-4.6', providerModelId: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 64000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Latest and most capable Sonnet with 1M context' },
+  { id: 'claude-opus-4.6', providerModelId: 'anthropic/claude-opus-4.6', name: 'Claude Opus 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 15, costPer1MOutput: 75, description: 'Most capable Claude model' },
   { id: 'claude-sonnet-4', providerModelId: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4', provider: 'Anthropic', tier: 'frontier', contextWindow: 200000, maxOutputTokens: 64000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Excellent coding and reasoning' },
   { id: 'claude-opus-4', providerModelId: 'anthropic/claude-opus-4', name: 'Claude Opus 4', provider: 'Anthropic', tier: 'frontier', contextWindow: 200000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 15, costPer1MOutput: 75, description: 'Deep reasoning flagship' },
   { id: 'claude-3.7-sonnet', providerModelId: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7 Sonnet', provider: 'Anthropic', tier: 'standard', contextWindow: 200000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Great balance of speed and capability' },
@@ -45,7 +45,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   // ═══ DEEPSEEK ═══
   { id: 'deepseek-chat', providerModelId: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'DeepSeek', tier: 'economy', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.14, costPer1MOutput: 0.28, description: 'Excellent code generation' },
   { id: 'deepseek-r1', providerModelId: 'deepseek/deepseek-r1', name: 'DeepSeek R1', provider: 'DeepSeek', tier: 'standard', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.55, costPer1MOutput: 2.19, description: 'Reasoning with chain-of-thought' },
-  { id: 'deepseek-v3.2', providerModelId: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', provider: 'DeepSeek', tier: 'standard', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.3, costPer1MOutput: 0.88, description: 'Latest DeepSeek generation' },
+  { id: 'deepseek-v3.2', providerModelId: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', provider: 'DeepSeek', tier: 'standard', contextWindow: 163840, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.26, costPer1MOutput: 0.38, description: 'GPT-5 class reasoning, gold-medal IMO/IOI performance' },
 
   // ═══ MISTRAL ═══
   { id: 'mistral-large', providerModelId: 'mistralai/mistral-large', name: 'Mistral Large', provider: 'Mistral', tier: 'standard', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 2, costPer1MOutput: 6, description: 'European frontier model' },
@@ -62,7 +62,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   { id: 'command-r', providerModelId: 'cohere/command-r-08-2024', name: 'Command R', provider: 'Cohere', tier: 'economy', contextWindow: 128000, maxOutputTokens: 4096, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.15, costPer1MOutput: 0.6, description: 'Efficient retrieval model' },
 
   // ═══ XAI ═══
-  { id: 'grok-4', providerModelId: 'x-ai/grok-4', name: 'Grok 4', provider: 'xAI', tier: 'frontier', contextWindow: 131072, maxOutputTokens: 16384, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 5, costPer1MOutput: 20, description: 'Latest xAI frontier model' },
+  { id: 'grok-4', providerModelId: 'x-ai/grok-4', name: 'Grok 4', provider: 'xAI', tier: 'frontier', contextWindow: 256000, maxOutputTokens: 16384, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Latest xAI reasoning model with 256K context' },
   { id: 'grok-3', providerModelId: 'x-ai/grok-3', name: 'Grok 3', provider: 'xAI', tier: 'standard', contextWindow: 131072, maxOutputTokens: 8192, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Real-time knowledge access' },
 
   // ═══ QWEN ═══

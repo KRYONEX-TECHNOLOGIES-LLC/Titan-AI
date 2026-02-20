@@ -4,9 +4,16 @@ import { useState, useRef, useCallback } from 'react';
 import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock } from '@/types/ide';
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
 import { useAgentTools, toolCallSummary } from './useAgentTools';
+import { useFileStore } from '@/stores/file-store';
 
 const MAX_TOOL_CALLS = 25;
 const MAX_CONSECUTIVE_FAILURES = 3;
+
+interface TerminalHistoryEntry {
+  command: string;
+  output?: string;
+  exitCode: number;
+}
 
 interface UseChatOptions {
   sessions: Session[];
@@ -19,6 +26,9 @@ interface UseChatOptions {
   onTerminalCommand?: (command: string, output: string, exitCode: number) => void;
   onFileEdited?: (path: string, newContent: string) => void;
   onFileCreated?: (path: string, content: string) => void;
+  workspacePath?: string;
+  openTabs?: string[];
+  terminalHistory?: TerminalHistoryEntry[];
 }
 
 interface LLMMessage {
@@ -46,6 +56,9 @@ export function useChat({
   onTerminalCommand,
   onFileEdited,
   onFileCreated,
+  workspacePath,
+  openTabs,
+  terminalHistory,
 }: UseChatOptions) {
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -54,7 +67,7 @@ export function useChat({
   const abortControllerRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
-  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated });
+  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath });
 
   const updateMessage = useCallback((
     sessionId: string,
@@ -103,12 +116,47 @@ export function useChat({
     }));
   }, [updateMessage]);
 
+  function serializeFileTree(): string {
+    try {
+      const { fileTree } = useFileStore.getState();
+      if (!fileTree || fileTree.length === 0) return '';
+      const lines: string[] = [];
+      function walk(nodes: typeof fileTree, depth = 0) {
+        for (const n of nodes) {
+          const indent = '  '.repeat(depth);
+          lines.push(`${indent}${n.type === 'folder' ? n.name + '/' : n.name}`);
+          if (n.children && depth < 3) walk(n.children, depth + 1);
+        }
+      }
+      walk(fileTree);
+      return lines.slice(0, 200).join('\n');
+    } catch { return ''; }
+  }
+
+  async function fetchGitStatus(): Promise<{ branch?: string; modified?: string[]; untracked?: string[]; staged?: string[] } | undefined> {
+    try {
+      const res = await fetch('/api/git/status', { method: 'GET', signal: AbortSignal.timeout(3000) });
+      if (!res.ok) return undefined;
+      const data = await res.json();
+      return {
+        branch: data.branch || data.current,
+        modified: data.modified || data.files?.filter((f: any) => f.working_dir !== ' ').map((f: any) => f.path),
+        untracked: data.not_added || data.files?.filter((f: any) => f.index === '?').map((f: any) => f.path),
+        staged: data.staged || data.files?.filter((f: any) => f.index !== ' ' && f.index !== '?').map((f: any) => f.path),
+      };
+    } catch { return undefined; }
+  }
+
   async function streamFromContinue(
     conversationHistory: LLMMessage[],
     sessionId: string,
     messageId: string,
     abortSignal: AbortSignal,
   ): Promise<{ content: string; toolCalls: StreamToolCall[] }> {
+    const gitStatus = await fetchGitStatus();
+    const fileTree = serializeFileTree();
+    const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
+
     const response = await fetch('/api/chat/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -122,6 +170,11 @@ export function useChat({
           language: getLanguageFromFilename(activeTab),
         },
         repoMap: typeof window !== 'undefined' ? (window as any).__titanRepoMap : undefined,
+        workspacePath: wsPath,
+        openTabs: openTabs || [],
+        fileTree,
+        gitStatus,
+        terminalHistory: terminalHistory?.slice(-5) || [],
       }),
     });
 
@@ -285,6 +338,25 @@ export function useChat({
 
         // No tool calls => LLM is done, final text response
         if (toolCalls.length === 0) {
+          // Tool-nudge retry: detect when LLM describes actions without calling tools
+          const actionPatterns = /\b(I'll|I will|Let me|I would|I can|I should|we can|we should|here's what|I'd)\b.*\b(create|edit|read|run|install|write|fix|modify|update|add|remove|delete|build|open|check)\b/i;
+          const hasNoToolCalls = totalToolCalls === 0;
+          const looksLikeActionDescription = actionPatterns.test(content) && hasNoToolCalls && content.length < 2000;
+
+          if (looksLikeActionDescription && consecutiveFailures === 0) {
+            conversationHistory.push({ role: 'assistant', content });
+            conversationHistory.push({
+              role: 'user',
+              content: 'You described what you would do but did not call any tools. Stop describing and actually do it. Call the appropriate tools now.',
+            });
+            consecutiveFailures++;
+            updateMessage(sessionId, streamMessageId, (m) => ({
+              ...m,
+              streaming: true,
+            }));
+            continue;
+          }
+
           updateMessage(sessionId, streamMessageId, (m) => ({
             ...m,
             streaming: false,
@@ -307,24 +379,15 @@ export function useChat({
           })),
         });
 
-        // Execute each tool call
-        for (const tc of toolCalls) {
-          if (abortedRef.current || controller.signal.aborted) break;
+        // Execute tool calls -- parallelize read-only tools, serialize mutating ones
+        const readOnlyTools = new Set(['read_file', 'list_directory', 'grep_search']);
+        const allReadOnly = toolCalls.every(tc => readOnlyTools.has(tc.tool));
 
+        async function executeSingleTool(tc: StreamToolCall) {
+          if (abortedRef.current || controller.signal.aborted) return null;
           totalToolCalls++;
+          if (totalToolCalls > MAX_TOOL_CALLS) return 'circuit_break';
 
-          // Circuit breaker: max tool calls
-          if (totalToolCalls > MAX_TOOL_CALLS) {
-            const warnMsg = `⚠️ Circuit breaker: stopped after ${MAX_TOOL_CALLS} tool calls to prevent infinite loops.`;
-            updateMessage(sessionId, streamMessageId, (m) => ({
-              ...m,
-              content: (m.content ? m.content + '\n\n' : '') + warnMsg,
-              streaming: false,
-            }));
-            return;
-          }
-
-          // Add running tool call block to the UI
           const toolCallBlock: ToolCallBlock = {
             id: tc.id,
             tool: tc.tool,
@@ -334,10 +397,8 @@ export function useChat({
           };
           appendToolCallToMessage(sessionId, streamMessageId, toolCallBlock);
 
-          // Execute the tool
           const result = await agentTools.executeToolCall(tc.tool, tc.args);
 
-          // Update tool call status
           updateToolCallInMessage(sessionId, streamMessageId, tc.id, {
             status: result.success ? 'done' : 'error',
             result: result.output,
@@ -345,27 +406,18 @@ export function useChat({
             finishedAt: Date.now(),
           });
 
-          // Track consecutive failures
           if (!result.success) {
             consecutiveFailures++;
-            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-              const warnMsg = `⚠️ Circuit breaker: ${MAX_CONSECUTIVE_FAILURES} consecutive tool failures. Stopping to prevent loops.`;
-              updateMessage(sessionId, streamMessageId, (m) => ({
-                ...m,
-                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
-                streaming: false,
-              }));
-              return;
-            }
           } else {
             consecutiveFailures = 0;
           }
 
           if (tc.tool === 'edit_file' && result.success) {
+            const newContent = result.metadata?.newContent as string || tc.args.new_string as string;
             const diffBlock: CodeDiffBlock = {
               id: `diff-${tc.id}`,
               file: tc.args.path as string,
-              code: tc.args.new_string as string,
+              code: newContent,
               status: 'pending',
             };
             appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
@@ -379,17 +431,76 @@ export function useChat({
             appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
           }
 
-          // Append tool result to conversation history
           const resultOutput = result.success
             ? result.output
             : `Error: ${result.error || 'Unknown error'}\n${result.output || ''}`;
 
-          conversationHistory.push({
-            role: 'tool',
-            content: resultOutput.slice(0, 10000),
-            tool_call_id: tc.id,
-            name: tc.tool,
-          });
+          return { tc, resultOutput };
+        }
+
+        if (allReadOnly && toolCalls.length > 1) {
+          // Parallel execution for read-only tools
+          const results = await Promise.all(toolCalls.map(executeSingleTool));
+          for (const r of results) {
+            if (r === 'circuit_break') {
+              const warnMsg = `Circuit breaker: stopped after ${MAX_TOOL_CALLS} tool calls to prevent infinite loops.`;
+              updateMessage(sessionId, streamMessageId, (m) => ({
+                ...m,
+                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
+                streaming: false,
+              }));
+              return;
+            }
+            if (r && typeof r === 'object') {
+              conversationHistory.push({
+                role: 'tool',
+                content: r.resultOutput.slice(0, 10000),
+                tool_call_id: r.tc.id,
+                name: r.tc.tool,
+              });
+            }
+          }
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            const warnMsg = `Circuit breaker: ${MAX_CONSECUTIVE_FAILURES} consecutive tool failures.`;
+            updateMessage(sessionId, streamMessageId, (m) => ({
+              ...m,
+              content: (m.content ? m.content + '\n\n' : '') + warnMsg,
+              streaming: false,
+            }));
+            return;
+          }
+        } else {
+          // Sequential execution for mutating tools
+          for (const tc of toolCalls) {
+            if (abortedRef.current || controller.signal.aborted) break;
+            const r = await executeSingleTool(tc);
+            if (r === 'circuit_break') {
+              const warnMsg = `Circuit breaker: stopped after ${MAX_TOOL_CALLS} tool calls to prevent infinite loops.`;
+              updateMessage(sessionId, streamMessageId, (m) => ({
+                ...m,
+                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
+                streaming: false,
+              }));
+              return;
+            }
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+              const warnMsg = `Circuit breaker: ${MAX_CONSECUTIVE_FAILURES} consecutive tool failures.`;
+              updateMessage(sessionId, streamMessageId, (m) => ({
+                ...m,
+                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
+                streaming: false,
+              }));
+              return;
+            }
+            if (r && typeof r === 'object') {
+              conversationHistory.push({
+                role: 'tool',
+                content: r.resultOutput.slice(0, 10000),
+                tool_call_id: r.tc.id,
+                name: r.tc.tool,
+              });
+            }
+          }
         }
 
         // If aborted, stop the loop
@@ -441,7 +552,7 @@ export function useChat({
   }, [
     chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
-    appendCodeDiffToMessage, agentTools,
+    appendCodeDiffToMessage, agentTools, workspacePath, openTabs, terminalHistory,
   ]);
 
   const handleStop = useCallback(() => {

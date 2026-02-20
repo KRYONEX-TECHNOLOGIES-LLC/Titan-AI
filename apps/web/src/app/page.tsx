@@ -175,9 +175,15 @@ export default function TitanIDE() {
     setPendingDiff({ file: activeTab, oldContent, newContent, decorationIds });
   }, [editorInstance, monacoInstance, activeTab, pendingDiff]);
 
-  // Chat with agent tool callbacks
+  // Terminal history tracking for agent context
+  const terminalHistoryRef = useRef<Array<{ command: string; output?: string; exitCode: number }>>([]);
+
   const handleTerminalCommand = useCallback((command: string, output: string, exitCode: number) => {
     setShowTerminal(true);
+    terminalHistoryRef.current = [
+      ...terminalHistoryRef.current.slice(-9),
+      { command, output: output.slice(0, 500), exitCode },
+    ];
   }, []);
 
   const handleAgentFileEdited = useCallback((filePath: string, newContent: string) => {
@@ -217,6 +223,9 @@ export default function TitanIDE() {
     onTerminalCommand: handleTerminalCommand,
     onFileEdited: handleAgentFileEdited,
     onFileCreated: handleAgentFileCreated,
+    workspacePath: fileSystem.workspacePath,
+    openTabs: tabs.map(t => t.name),
+    terminalHistory: terminalHistoryRef.current,
   });
 
   // Apply changes

@@ -88,7 +88,7 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
         content = content.replace(oldStr, newStr);
         fs.writeFileSync(fullPath, content, 'utf-8');
 
-        return { success: true, output: `File edited: ${filePath}`, metadata: { linesChanged: newStr.split('\n').length } };
+        return { success: true, output: `File edited: ${filePath}`, metadata: { linesChanged: newStr.split('\n').length, newContent: content } };
       } catch (e) {
         return { success: false, output: '', error: `Edit failed: ${(e as Error).message}` };
       }

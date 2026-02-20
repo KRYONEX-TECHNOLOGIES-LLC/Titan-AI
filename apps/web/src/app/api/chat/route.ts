@@ -663,7 +663,7 @@ async function callOpenRouter(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'http://localhost:3000',
+      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || process.env.NEXTAUTH_URL || 'https://titan-ai.up.railway.app',
       'X-Title': 'Titan AI',
     },
     body: JSON.stringify({
@@ -900,7 +900,7 @@ async function streamOpenRouter(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'http://localhost:3000',
+      'HTTP-Referer': process.env.OPENROUTER_SITE_URL || process.env.NEXTAUTH_URL || 'https://titan-ai.up.railway.app',
       'X-Title': 'Titan AI',
     },
     body: JSON.stringify({

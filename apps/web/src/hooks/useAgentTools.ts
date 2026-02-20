@@ -14,9 +14,10 @@ interface UseAgentToolsOptions {
   onTerminalCommand?: (command: string, output: string, exitCode: number) => void;
   onFileEdited?: (path: string, newContent: string) => void;
   onFileCreated?: (path: string, content: string) => void;
+  workspacePath?: string;
 }
 
-export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated }: UseAgentToolsOptions = {}) {
+export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath }: UseAgentToolsOptions = {}) {
   const abortRef = useRef(false);
 
   const executeToolCall = useCallback(async (
@@ -34,7 +35,7 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated }
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             command: args.command,
-            cwd: args.cwd || undefined,
+            cwd: args.cwd || workspacePath || undefined,
             timeout: args.timeout || 30000,
           }),
         });
@@ -57,12 +58,13 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated }
       const res = await fetch('/api/agent/tools', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tool, args }),
+        body: JSON.stringify({ tool, args, workspacePath: workspacePath || undefined }),
       });
-      const data: ToolResult = await res.json();
+      const data = await res.json();
 
       if (tool === 'edit_file' && data.success) {
-        onFileEdited?.(args.path as string, args.new_string as string);
+        const fullContent = data.metadata?.newContent as string || args.new_string as string;
+        onFileEdited?.(args.path as string, fullContent);
       } else if (tool === 'create_file' && data.success) {
         onFileCreated?.(args.path as string, args.content as string);
       }
@@ -75,7 +77,7 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated }
         error: e instanceof Error ? e.message : 'Tool execution failed',
       };
     }
-  }, [onTerminalCommand, onFileEdited, onFileCreated]);
+  }, [onTerminalCommand, onFileEdited, onFileCreated, workspacePath]);
 
   const abort = useCallback(() => {
     abortRef.current = true;
