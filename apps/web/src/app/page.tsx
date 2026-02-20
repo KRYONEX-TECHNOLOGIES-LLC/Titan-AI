@@ -664,115 +664,174 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   onApplyDiff?: (diffId: string) => void;
   onRejectCodeDiff?: (diffId: string) => void;
 }) {
+  const [showHistory, setShowHistory] = useState(false);
   const [showFiles, setShowFiles] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 140) + 'px';
     }
   }, [chatInput]);
 
   return (
-    <div className="flex flex-col h-full bg-[#1e1e1e] overflow-hidden min-h-0">
-      <div className="px-3 pt-3 pb-2 shrink-0 border-b border-[#2d2d2d]">
-        <button onClick={onNewAgent} className="w-full h-[32px] bg-[#2d2d2d] hover:bg-[#3c3c3c] text-[#e0e0e0] text-[12px] font-medium rounded-md flex items-center justify-center gap-1.5 border border-[#3c3c3c] transition-colors">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5h-5.5a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 018 1z"/></svg>
-          New Thread
-            </button>
-                  </div>
-      <div className="px-1 pt-1 shrink-0 max-h-[160px] overflow-y-auto">
-        {sessions.map(s => (
-          <div key={s.id} className={`group relative rounded mb-px ${activeSessionId === s.id ? 'bg-[#37373d]' : 'hover:bg-[#2a2a2a]'}`}>
-            <button onClick={() => setActiveSessionId(s.id)} className="w-full text-left px-3 py-1.5 pr-8">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeSessionId === s.id ? 'bg-[#569cd6]' : 'bg-[#555]'}`} />
-                <span className="text-[12px] text-[#cccccc] truncate">{s.name}</span>
-              </div>
-        </button>
-            <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100">
-              <button onClick={(e) => { e.stopPropagation(); document.getElementById(`session-menu-${s.id}`)?.classList.toggle('hidden'); }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#3c3c3c] text-[#808080] text-[10px]">···</button>
-              <div id={`session-menu-${s.id}`} className="hidden absolute right-0 top-6 z-50 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg min-w-[120px]">
-                <button onClick={(e) => { e.stopPropagation(); const n = prompt('Rename:', s.name); if (n?.trim()) onRenameSession?.(s.id, n.trim()); document.getElementById(`session-menu-${s.id}`)?.classList.add('hidden'); }} className="w-full text-left px-3 py-1.5 text-[12px] text-[#cccccc] hover:bg-[#2a2d2e]">Rename</button>
-                <button onClick={(e) => { e.stopPropagation(); document.getElementById(`session-menu-${s.id}`)?.classList.add('hidden'); if (sessions.length > 1) onDeleteSession?.(s.id); }} className="w-full text-left px-3 py-1.5 text-[12px] text-[#f48771] hover:bg-[#2a2d2e]">Delete</button>
-          </div>
-            </div>
-              </div>
-            ))}
-          </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="px-3 py-3">
-          {currentSession.messages.map((msg, i) => (
-            <ChatMessage key={msg.id || i} role={msg.role as 'user' | 'assistant'} content={msg.content} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} onRetry={onRetry} onApplyCode={onApplyCode} onApplyDiff={onApplyDiff} onRejectDiff={onRejectCodeDiff} />
-          ))}
-          {isThinking && !currentSession.messages.some(m => m.streaming) && (
-            <div className="mb-4 flex items-center gap-2 px-1">
-              <div className="flex items-center gap-2 text-[12px] text-[#808080]">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#569cd6" strokeWidth="2" className="animate-spin"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
-                <span>Thinking...</span>
+    <div className="flex flex-col h-full bg-[#181818] overflow-hidden min-h-0">
+      {/* ── Header: Mode + Model + New Thread + History ── */}
+      <div className="shrink-0 flex items-center justify-between px-3 h-[36px] border-b border-[#252525]">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-[#569cd6] uppercase tracking-wide">Agent</span>
+          <span className="text-[10px] text-[#444]">|</span>
+          <span className="text-[11px] text-[#6e6e6e] truncate max-w-[140px]">{activeModel}</span>
+        </div>
+        <div className="flex items-center gap-0.5">
+          <button onClick={() => setShowHistory(!showHistory)} className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#ffffff08] text-[#6e6e6e] hover:text-[#aaa] transition-colors" title="History">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          </button>
+          <button onClick={onNewAgent} className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#ffffff08] text-[#6e6e6e] hover:text-[#aaa] transition-colors" title="New Thread">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5h-5.5a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 018 1z"/></svg>
+          </button>
+        </div>
       </div>
+
+      {/* ── Thread history dropdown ── */}
+      {showHistory && (
+        <div className="shrink-0 max-h-[180px] overflow-y-auto border-b border-[#252525] bg-[#141414]">
+          {sessions.map(s => (
+            <div key={s.id} className={`group relative ${activeSessionId === s.id ? 'bg-[#1e1e1e]' : 'hover:bg-[#1a1a1a]'}`}>
+              <button onClick={() => { setActiveSessionId(s.id); setShowHistory(false); }} className="w-full text-left px-3 py-1.5 pr-8">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeSessionId === s.id ? 'bg-[#569cd6]' : 'bg-[#333]'}`} />
+                  <span className="text-[11px] text-[#9d9d9d] truncate">{s.name}</span>
+                </div>
+              </button>
+              <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center gap-0.5">
+                <button onClick={(e) => { e.stopPropagation(); const n = prompt('Rename:', s.name); if (n?.trim()) onRenameSession?.(s.id, n.trim()); }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#333] text-[#6e6e6e] text-[10px]" title="Rename">
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61z"/></svg>
+                </button>
+                {sessions.length > 1 && (
+                  <button onClick={(e) => { e.stopPropagation(); onDeleteSession?.(s.id); }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#333] text-[#6e6e6e] hover:text-[#f85149] text-[10px]" title="Delete">
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
+
+      {/* ── Messages area ── */}
+      <div className="flex-1 overflow-y-auto min-h-0 titan-chat-scroll">
+        <div className="px-3 pt-3 pb-6">
+          {currentSession.messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="1"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
+              <p className="mt-3 text-[12px] text-[#444]">What do you want to build?</p>
+            </div>
+          )}
+          {currentSession.messages.map((msg, i) => (
+            <ChatMessage
+              key={msg.id || i}
+              role={msg.role as 'user' | 'assistant'}
+              content={msg.content}
+              thinking={msg.thinking}
+              thinkingTime={msg.thinkingTime}
+              streaming={msg.streaming}
+              streamingModel={msg.streamingModel}
+              streamingProvider={msg.streamingProvider}
+              streamingProviderModel={msg.streamingProviderModel}
+              isError={msg.isError}
+              retryMessage={msg.retryMessage}
+              activeModel={activeModel}
+              toolCalls={msg.toolCalls}
+              codeDiffs={msg.codeDiffs}
+              onRetry={onRetry}
+              onApplyCode={onApplyCode}
+              onApplyDiff={onApplyDiff}
+              onRejectDiff={onRejectCodeDiff}
+            />
+          ))}
+          {isThinking && !currentSession.messages.some(m => m.streaming) && (
+            <div className="flex items-center gap-2 py-1">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#569cd6" strokeWidth="2.5" className="animate-spin">
+                <circle cx="12" cy="12" r="10" strokeOpacity="0.2" />
+                <path d="M12 2a10 10 0 0 1 10 10" />
+              </svg>
+              <span className="text-[11px] text-[#6e6e6e]">Working...</span>
+            </div>
+          )}
           <div ref={(node) => { chatEndRef.current = node; }} />
         </div>
-        </div>
-      <div className="shrink-0 border-t border-[#2d2d2d]">
-        {hasPendingDiff && (
-          <div className="px-3 py-2 bg-[#1a2332] border-b border-[#2d2d2d]">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-[#3fb950] rounded-full animate-pulse" />
-                <span className="text-[11px] text-[#e0e0e0]">Changes ready to apply</span>
       </div>
-              <div className="flex items-center gap-1.5">
-                <button onClick={onRejectDiff} className="h-[22px] px-2 bg-[#da3633] hover:bg-[#f85149] text-white text-[11px] rounded">Reject</button>
-                <button onClick={onApply} className="h-[22px] px-2 bg-[#238636] hover:bg-[#2ea043] text-white text-[11px] rounded">Accept</button>
+
+      {/* ── Bottom: pending diffs + changed files + input ── */}
+      <div className="shrink-0 border-t border-[#252525]">
+        {hasPendingDiff && (
+          <div className="px-3 py-1.5 bg-[#0d1f12] border-b border-[#252525]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-[#3fb950] flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 bg-[#3fb950] rounded-full animate-pulse" />
+                Changes ready
+              </span>
+              <div className="flex items-center gap-1">
+                <button onClick={onRejectDiff} className="h-[20px] px-2 text-[10px] text-[#f85149] hover:bg-[#f85149]/10 rounded transition-colors">Reject</button>
+                <button onClick={onApply} className="h-[20px] px-2 bg-[#238636] hover:bg-[#2ea043] text-white text-[10px] rounded transition-colors">Accept</button>
               </div>
             </div>
           </div>
         )}
+
         {currentSession.changedFiles.length > 0 && !hasPendingDiff && (
-          <div className="border-b border-[#2d2d2d]">
-            <button onClick={() => setShowFiles(!showFiles)} className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] text-[#808080] hover:text-[#cccccc]">
+          <div className="border-b border-[#252525]">
+            <button onClick={() => setShowFiles(!showFiles)} className="w-full flex items-center justify-between px-3 py-1 text-[11px] text-[#6e6e6e] hover:text-[#9d9d9d]">
               <div className="flex items-center gap-1.5">
                 <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${showFiles ? 'rotate-90' : ''}`}><path d="M6 4l4 4-4 4z"/></svg>
                 <span>{currentSession.changedFiles.length} file{currentSession.changedFiles.length !== 1 ? 's' : ''} changed</span>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); onApply(); }} className="h-[20px] px-2 bg-[#238636] hover:bg-[#2ea043] text-white text-[10px] rounded">Apply All</button>
-          </button>
+            </button>
             {showFiles && (
               <div className="px-3 pb-1.5">
                 {currentSession.changedFiles.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 py-0.5 text-[11px]">
-                    <span style={{ color: f.color }} className="text-[9px]">{f.icon}</span>
-                    <span className="text-[#cccccc] truncate flex-1">{f.name}</span>
-                    <span className="text-[#3fb950]">+{f.additions}</span>
-                    <span className="text-[#f85149]">-{f.deletions}</span>
+                  <div key={i} className="flex items-center gap-1.5 py-[2px] text-[10px] font-mono">
+                    <span className="text-[#6e6e6e] truncate flex-1">{f.name}</span>
+                    <span className="text-[#3fb950] tabular-nums">+{f.additions}</span>
+                    <span className="text-[#f85149] tabular-nums">-{f.deletions}</span>
                   </div>
-        ))}
-      </div>
+                ))}
+              </div>
             )}
-    </div>
+          </div>
         )}
+
+        {/* ── Input area ── */}
         <div className="p-2">
-          <div className="bg-[#252526] border border-[#3c3c3c] rounded-lg focus-within:border-[#569cd6] transition-colors">
-            <textarea ref={textareaRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} placeholder="Ask Titan to edit code, fix bugs, run commands..." rows={1} className="w-full bg-transparent px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none resize-none leading-5 max-h-[120px]" />
+          <div className="bg-[#1e1e1e] border border-[#2a2a2a] rounded-lg focus-within:border-[#569cd6]/50 transition-colors">
+            <textarea
+              ref={textareaRef}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Plan, search, build, or fix..."
+              rows={1}
+              className="w-full bg-transparent px-3 py-2 text-[12.5px] text-[#d4d4d4] placeholder-[#444] focus:outline-none resize-none leading-[1.5] max-h-[140px]"
+            />
             <div className="flex items-center justify-between px-2 pb-1.5">
-              <span className="text-[11px] text-[#555] flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${isThinking || isStreaming ? 'bg-[#f9826c] animate-pulse' : 'bg-[#3fb950]'}`} />
-                {activeModel}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full ${isThinking || isStreaming ? 'bg-[#569cd6] animate-pulse' : 'bg-[#333]'}`} />
+                <span className="text-[10px] text-[#444]">
+                  {isThinking || isStreaming ? 'Working...' : 'Ready'}
+                </span>
+              </div>
               {isThinking || isStreaming ? (
-                <button onClick={onStop} className="w-[26px] h-[26px] flex items-center justify-center rounded-md bg-[#f85149] hover:bg-[#da3633] text-white transition-colors" title="Stop">
-                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
-        </button>
+                <button onClick={onStop} className="w-[24px] h-[24px] flex items-center justify-center rounded bg-[#f85149] hover:bg-[#da3633] text-white transition-colors" title="Stop (Esc)">
+                  <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1"/></svg>
+                </button>
               ) : (
-                <button onClick={onSend} disabled={!chatInput.trim()} className={`w-[26px] h-[26px] flex items-center justify-center rounded-md transition-colors ${chatInput.trim() ? 'bg-[#569cd6] hover:bg-[#6eb0e6] text-white' : 'bg-[#2d2d2d] text-[#555]'}`} title="Send (Enter)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <button onClick={onSend} disabled={!chatInput.trim()} className={`w-[24px] h-[24px] flex items-center justify-center rounded transition-colors ${chatInput.trim() ? 'bg-[#569cd6] hover:bg-[#6eb0e6] text-white' : 'bg-[#222] text-[#444]'}`} title="Send (Enter)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                 </button>
               )}
-      </div>
+            </div>
           </div>
         </div>
       </div>

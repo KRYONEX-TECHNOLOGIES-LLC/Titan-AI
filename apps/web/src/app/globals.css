@@ -40,7 +40,7 @@
   }
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - default */
 @layer utilities {
   * {
     scrollbar-width: thin;
@@ -70,6 +70,25 @@
   }
 }
 
+/* Chat panel - narrow scrollbar like Cursor */
+.titan-chat-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.titan-chat-scroll::-webkit-scrollbar-thumb {
+  background-color: #333;
+  border-radius: 3px;
+}
+
+.titan-chat-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #444;
+}
+
+.titan-chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+
 /* Textarea auto-resize */
 textarea {
   field-sizing: content;
@@ -91,11 +110,10 @@ button {
   font: inherit;
 }
 
-/* Smooth transitions globally */
-* {
-  transition-property: color, background-color, border-color, opacity;
-  transition-timing-function: ease;
-  transition-duration: 0ms;
+/* Font rendering for IDE */
+code, pre, .font-mono {
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+  font-variant-ligatures: none;
 }
 
 /* ═══ BROWSER EXTENSION INTERFERENCE FIX ═══ */
