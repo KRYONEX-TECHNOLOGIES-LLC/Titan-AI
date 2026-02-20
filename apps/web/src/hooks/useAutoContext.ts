@@ -30,6 +30,7 @@ export interface AutoContext {
   linterDiagnostics: LinterDiagnostic[];
   terminalOutput: string[];
   isDesktop: boolean;
+  osPlatform: string;
 }
 
 const MAX_RECENT_FILES = 10;
@@ -162,6 +163,12 @@ export function useAutoContext(
     return () => window.removeEventListener('titan:terminal:output', handler);
   }, []);
 
+  const osPlatform = typeof navigator !== 'undefined'
+    ? (navigator.platform?.toLowerCase().includes('win') ? 'windows'
+      : navigator.platform?.toLowerCase().includes('mac') ? 'macos'
+      : 'linux')
+    : 'unknown';
+
   return {
     cursorPosition,
     recentlyEditedFiles,
@@ -169,5 +176,6 @@ export function useAutoContext(
     linterDiagnostics,
     terminalOutput,
     isDesktop: isElectron,
+    osPlatform,
   };
 }

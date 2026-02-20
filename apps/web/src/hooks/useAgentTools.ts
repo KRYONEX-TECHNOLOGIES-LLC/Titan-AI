@@ -212,10 +212,10 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
 
         onTerminalCommand?.(args.command as string, combinedOutput, exitCode);
 
+        const finalOutput = combinedOutput.slice(0, 15000) + (exitCode !== 0 ? `\n[exit code: ${exitCode}]` : '');
         return {
-          success: exitCode === 0,
-          output: combinedOutput.slice(0, 15000),
-          error: exitCode !== 0 ? `Exit code: ${exitCode}` : undefined,
+          success: true,
+          output: finalOutput || '(no output)',
           metadata: { exitCode },
         };
       }
@@ -426,10 +426,10 @@ async function executeElectronTool(
       const data = await api.tools.runCommand(command, cwd);
       const combined = data.stderr ? `${data.stdout}\n${data.stderr}`.trim() : data.stdout;
       ctx.onTerminalCommand?.(command, combined, data.exitCode);
+      const output = combined.slice(0, 15000) + (data.exitCode !== 0 ? `\n[exit code: ${data.exitCode}]` : '');
       return {
-        success: data.exitCode === 0,
-        output: combined.slice(0, 15000),
-        error: data.exitCode !== 0 ? `Exit code: ${data.exitCode}` : undefined,
+        success: true,
+        output: output || '(no output)',
         metadata: { exitCode: data.exitCode },
       };
     }

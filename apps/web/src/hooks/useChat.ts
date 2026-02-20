@@ -35,6 +35,7 @@ interface UseChatOptions {
   recentlyEditedFiles?: Array<{ file: string; timestamp: number }>;
   recentlyViewedFiles?: string[];
   isDesktop?: boolean;
+  osPlatform?: string;
 }
 
 interface LLMMessage {
@@ -70,6 +71,7 @@ export function useChat({
   recentlyEditedFiles,
   recentlyViewedFiles,
   isDesktop,
+  osPlatform,
 }: UseChatOptions) {
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -212,6 +214,7 @@ export function useChat({
         recentlyEditedFiles: recentlyEditedFiles?.slice(0, 10) || [],
         recentlyViewedFiles: recentlyViewedFiles?.slice(0, 10) || [],
         isDesktop: isDesktop || false,
+        osPlatform: osPlatform || 'unknown',
       }),
     });
 
@@ -610,7 +613,7 @@ export function useChat({
     chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
     appendCodeDiffToMessage, agentTools, workspacePath, openTabs, terminalHistory,
-    cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop,
+    cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop, osPlatform,
   ]);
 
   const handleStop = useCallback(() => {

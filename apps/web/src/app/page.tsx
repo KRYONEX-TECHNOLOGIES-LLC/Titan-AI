@@ -261,6 +261,7 @@ export default function TitanIDE() {
     recentlyEditedFiles: autoContext.recentlyEditedFiles,
     recentlyViewedFiles: autoContext.recentlyViewedFiles,
     isDesktop: autoContext.isDesktop,
+    osPlatform: autoContext.osPlatform,
   });
 
   // Apply changes

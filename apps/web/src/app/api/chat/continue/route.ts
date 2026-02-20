@@ -191,9 +191,7 @@ const TOOL_DEFINITIONS = [
 // This is the core identity and instruction set for the Titan AI agent.
 // It must be comprehensive, precise, and leave no ambiguity.
 
-const BASE_SYSTEM_PROMPT = `You are Titan AI, an expert autonomous coding agent embedded inside the Titan AI web IDE. You are not a chatbot. You are not an assistant that describes what it would do. You are a coding agent that takes action. You read code, write code, run commands, debug errors, and build entire projects -- all by calling your tools.
-
-You operate on a remote server. The user interacts with you through a web-based IDE at their domain. There is no localhost. There is no local machine. Every file operation and every shell command you execute runs on the server workspace. The user sees your changes reflected in their IDE in real time.
+const BASE_SYSTEM_PROMPT = `You are Titan AI, an expert autonomous coding agent embedded inside the Titan AI IDE. You are not a chatbot. You are not an assistant that describes what it would do. You are a coding agent that takes action. You read code, write code, run commands, debug errors, and build entire projects -- all by calling your tools.
 
 ==========================================================================
 SECTION 1: ABSOLUTE RULES (VIOLATIONS ARE CRITICAL FAILURES)
@@ -203,9 +201,7 @@ SECTION 1: ABSOLUTE RULES (VIOLATIONS ARE CRITICAL FAILURES)
 
 2. NEVER CLAIM TO HAVE PERFORMED AN ACTION WITHOUT CALLING A TOOL. This is the single most important rule. If you say "I created the file," you MUST have called create_file. If you say "I ran the build," you MUST have called run_command. If you say "I read the code," you MUST have called read_file. Describing what you would do, or what you plan to do, without actually calling the tool is a critical failure. The user will see your tool calls in the UI -- if you claim an action with no corresponding tool call, you lose all credibility.
 
-3. NEVER REFERENCE LOCALHOST, 127.0.0.1, OR LOCAL URLS. This application runs on a remote server. If the user asks "how do I see my app," you must NOT tell them to visit localhost. Instead, tell them about their deployment URL if you know it, or tell them to check their hosting platform dashboard. If you do not know their URL, say so.
-
-4. NEVER GIVE THE USER A URL TO VISIT UNLESS IT IS:
+3. NEVER GIVE THE USER A URL TO VISIT UNLESS IT IS:
    - Their actual production/staging domain (if you know it from environment or context)
    - An external documentation or service URL (like npmjs.com, github.com, etc.)
 
@@ -566,9 +562,42 @@ Path: ${body.workspacePath}`;
     prompt += `\n\nRecently viewed files:\n${body.recentlyViewedFiles.slice(0, 10).map(f => `- ${f}`).join('\n')}`;
   }
 
-  // Desktop mode indicator
+  // Environment context (desktop vs web, OS)
+  const os = body.osPlatform || 'unknown';
   if (body.isDesktop) {
-    prompt += `\n\nEnvironment: Titan AI Desktop (Electron). All tools execute natively on the user's machine. File edits apply directly to disk. The terminal is a real PTY shell.`;
+    const shellName = os === 'windows' ? 'PowerShell/cmd.exe' : os === 'macos' ? 'zsh' : 'bash';
+    prompt += `\n\n==========================================================================
+ENVIRONMENT
+==========================================================================
+Mode: Titan AI Desktop (Electron) -- running natively on the user's machine.
+OS: ${os === 'windows' ? 'Windows' : os === 'macos' ? 'macOS' : 'Linux'}
+Shell: ${shellName}
+All tools execute locally. File edits apply directly to disk. The terminal is a real PTY shell.
+run_command executes in the user's real shell on their machine.
+
+CRITICAL OS-SPECIFIC RULES:
+${os === 'windows' ? `- Use Windows commands: "dir" not "ls", "type" not "cat", "del" not "rm", "copy" not "cp"
+- Use backslashes in paths when calling commands: "dir src\\components"
+- Use "python" not "python3" (Windows typically uses "python")
+- Use "pip" not "pip3"
+- Use PowerShell or cmd syntax: "&&" works, but ";" for chaining and "2>&1" work differently
+- There is no /usr/bin/ -- executables are in PATH or in specific install directories
+- Use "where python" not "which python" to find executables` : os === 'macos' ? `- Use Unix commands (ls, cat, rm, cp, etc.)
+- Use "python3" and "pip3" (macOS may not have "python" by default)
+- Use forward slashes in paths` : `- Use Unix commands (ls, cat, rm, cp, etc.)
+- Use "python3" and "pip3"
+- Use forward slashes in paths`}`;
+  } else {
+    prompt += `\n\n==========================================================================
+ENVIRONMENT
+==========================================================================
+Mode: Titan AI Web (Remote server).
+The user interacts through a web-based IDE. File operations run on the server workspace.
+Do NOT reference localhost, 127.0.0.1, or local URLs.
+If the user asks how to see their app, tell them to check their hosting platform dashboard.`;
+    if (os !== 'unknown') {
+      prompt += `\nUser's browser OS: ${os === 'windows' ? 'Windows' : os === 'macos' ? 'macOS' : 'Linux'} (but commands run on the server, which is Linux)`;
+    }
   }
 
   return prompt;
@@ -608,6 +637,7 @@ interface ContinueRequest {
   recentlyEditedFiles?: Array<{ file: string; timestamp: number }>;
   recentlyViewedFiles?: string[];
   isDesktop?: boolean;
+  osPlatform?: string;
 }
 
 
