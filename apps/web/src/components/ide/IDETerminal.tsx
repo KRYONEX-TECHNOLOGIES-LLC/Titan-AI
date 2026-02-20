@@ -41,33 +41,34 @@ export default function IDETerminal() {
       const { useTerminalStore: store } = await import('@/stores/terminal-store');
 
       const term = new Terminal({
-        fontSize,
-        fontFamily,
+        fontSize: 14,
+        fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
         scrollback,
         cursorStyle: cursorStyle as 'block' | 'underline' | 'bar',
         cursorBlink,
         theme: {
-          background: '#11111b',
-          foreground: '#cdd6f4',
-          cursor: '#89b4fa',
-          cursorAccent: '#1e1e2e',
-          selectionBackground: '#313244',
-          black: '#45475a',
-          red: '#f38ba8',
-          green: '#a6e3a1',
-          yellow: '#f9e2af',
-          blue: '#89b4fa',
-          magenta: '#cba6f7',
-          cyan: '#89dceb',
-          white: '#bac2de',
-          brightBlack: '#585b70',
-          brightRed: '#f38ba8',
-          brightGreen: '#a6e3a1',
-          brightYellow: '#f9e2af',
-          brightBlue: '#89b4fa',
-          brightMagenta: '#cba6f7',
-          brightCyan: '#89dceb',
-          brightWhite: '#a6adc8',
+          background: '#1e1e1e',
+          foreground: '#cccccc',
+          cursor: '#aeafad',
+          cursorAccent: '#1e1e1e',
+          selectionBackground: '#264f78',
+          selectionForeground: '#ffffff',
+          black: '#000000',
+          red: '#cd3131',
+          green: '#0dbc79',
+          yellow: '#e5e510',
+          blue: '#2472c8',
+          magenta: '#bc3fbc',
+          cyan: '#11a8cd',
+          white: '#e5e5e5',
+          brightBlack: '#666666',
+          brightRed: '#f14c4c',
+          brightGreen: '#23d18b',
+          brightYellow: '#f5f543',
+          brightBlue: '#3b8eea',
+          brightMagenta: '#d670d6',
+          brightCyan: '#29b8db',
+          brightWhite: '#e5e5e5',
         },
         allowProposedApi: true,
       });
@@ -111,13 +112,9 @@ export default function IDETerminal() {
       }
 
       if (!wcSession) {
-        term.writeln('\x1b[1;32mTitan AI Terminal\x1b[0m');
-        term.writeln('\x1b[90mConnected to server shell\x1b[0m');
-        term.writeln('');
-
         let lineBuffer = '';
         let isRunning = false;
-        const prompt = () => term.write('\x1b[1;34m$ \x1b[0m');
+        const prompt = () => term.write('\x1b[32m$\x1b[0m ');
         prompt();
 
         const executeCommand = async (cmd: string) => {
@@ -224,19 +221,23 @@ export default function IDETerminal() {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#11111b' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1e1e1e' }}>
       {/* Tab bar */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          background: '#181825',
-          borderBottom: '1px solid #313244',
-          height: 34,
+          background: '#252526',
+          borderBottom: '1px solid #3c3c3c',
+          height: 35,
           flexShrink: 0,
           overflowX: 'auto',
         }}
       >
+        <div style={{ padding: '0 12px', fontSize: 11, color: '#cccccc', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500, whiteSpace: 'nowrap' }}>
+          Terminal
+        </div>
+        <div style={{ flex: 1 }} />
         {sessions.map((session) => (
           <button
             key={session.id}
@@ -245,23 +246,27 @@ export default function IDETerminal() {
               display: 'flex',
               alignItems: 'center',
               gap: 6,
-              padding: '0 12px',
+              padding: '0 10px',
               height: '100%',
-              background: session.id === activeSessionId ? '#11111b' : 'transparent',
+              background: session.id === activeSessionId ? '#1e1e1e' : 'transparent',
               border: 'none',
-              borderRight: '1px solid #313244',
-              color: session.id === activeSessionId ? '#cdd6f4' : '#6c7086',
+              borderBottom: session.id === activeSessionId ? '1px solid #1e1e1e' : '1px solid transparent',
+              borderTop: session.id === activeSessionId ? '1px solid #007acc' : '1px solid transparent',
+              color: session.id === activeSessionId ? '#cccccc' : '#999999',
               fontSize: 12,
+              fontFamily: "'Segoe UI', sans-serif",
               cursor: 'pointer',
               whiteSpace: 'nowrap',
               transition: 'color 0.1s',
             }}
           >
-            <span style={{ fontSize: 10 }}>⚡</span>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.8 }}>
+              <path d="M1 2.795l.783-.419L8.1 6.18V7.82L1.783 11.623 1 11.205V2.795zm1 .895v5.62L6.6 7 2 3.69zM8.1 2.795l.783-.419L15.2 6.18V7.82l-6.317 3.803-.783-.418V2.795zm1 .895v5.62L13.7 7 9.1 3.69z"/>
+            </svg>
             {session.title}
             <span
               onClick={(e) => { e.stopPropagation(); removeSession(session.id); }}
-              style={{ marginLeft: 4, color: '#45475a', cursor: 'pointer', fontSize: 12, lineHeight: 1 }}
+              style={{ marginLeft: 4, color: '#666', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}
               title="Kill terminal"
             >
               ×
@@ -272,13 +277,13 @@ export default function IDETerminal() {
           onClick={() => addSession('bash', '~')}
           title="New Terminal"
           style={{
-            padding: '0 10px',
+            padding: '0 8px',
             height: '100%',
             background: 'transparent',
             border: 'none',
-            color: '#6c7086',
+            color: '#999',
             cursor: 'pointer',
-            fontSize: 18,
+            fontSize: 16,
             lineHeight: 1,
           }}
         >
@@ -301,7 +306,7 @@ export default function IDETerminal() {
           />
         ))}
         {sessions.length === 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#45475a', fontSize: 13 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666', fontSize: 13, fontFamily: "'Segoe UI', sans-serif" }}>
             No terminal sessions. Click + to create one.
           </div>
         )}

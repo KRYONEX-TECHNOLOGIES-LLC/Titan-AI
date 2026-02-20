@@ -181,43 +181,35 @@ export default function TitanIDE() {
   }, []);
 
   const handleAgentFileEdited = useCallback((filePath: string, newContent: string) => {
-    // Read the full file from the server to get current content
-    fetch('/api/agent/tools', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool: 'read_file', args: { path: filePath } }),
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.output) {
-          const fullContent = data.output.split('\n').map((line: string) => {
-            const pipeIdx = line.indexOf('|');
-            return pipeIdx >= 0 ? line.slice(pipeIdx + 1) : line;
-          }).join('\n');
-          setFileContents(prev => ({ ...prev, [filePath]: fullContent }));
-          if (filePath === activeTab && editorInstance) {
-            const model = editorInstance.getModel();
-            if (model) model.setValue(fullContent);
-          }
-          setTabs(prev => prev.map(t => t.name === filePath ? { ...t, modified: true } : t));
-        }
-      })
-      .catch(() => {});
+    setFileContents(prev => ({ ...prev, [filePath]: newContent }));
+    useEditorStore.getState().loadFileContents({ [filePath]: newContent });
+
+    const info = getFileInfo(filePath);
+    setTabs(prev => {
+      if (prev.find(t => t.name === filePath)) {
+        return prev.map(t => t.name === filePath ? { ...t, modified: true } : t);
+      }
+      return [...prev, { name: filePath, icon: info.icon, color: info.color, modified: true }];
+    });
+    setActiveTab(filePath);
+
+    if (editorInstance) {
+      const model = editorInstance.getModel();
+      if (model && filePath === activeTab) model.setValue(newContent);
+    }
   }, [activeTab, editorInstance]);
 
   const handleAgentFileCreated = useCallback((filePath: string, content: string) => {
     const info = getFileInfo(filePath);
     setFileContents(prev => ({ ...prev, [filePath]: content }));
-      setTabs(prev => {
+    useEditorStore.getState().loadFileContents({ [filePath]: content });
+
+    setTabs(prev => {
       if (prev.find(t => t.name === filePath)) return prev;
       return [...prev, { name: filePath, icon: info.icon, color: info.color, modified: true }];
     });
     setActiveTab(filePath);
-    if (editorInstance) {
-      const model = editorInstance.getModel();
-      if (model && filePath === activeTab) model.setValue(content);
-    }
-  }, [activeTab, editorInstance]);
+  }, []);
 
   const chat = useChat({
     sessions, setSessions, activeSessionId,
