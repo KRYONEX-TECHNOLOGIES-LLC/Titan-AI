@@ -34,10 +34,9 @@ export const authConfig: NextAuthConfig = {
 
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
-      // Skip auth when running inside Electron
-      const isElectronRequest = nextUrl.searchParams.get('electron') === 'true' ||
-        process.env.ELECTRON === 'true';
-      if (isElectronRequest) return true;
+      const host = nextUrl.host || '';
+      const isDesktop = host.startsWith('localhost') || host.startsWith('127.0.0.1') || process.env.ELECTRON === 'true';
+      if (isDesktop) return true;
 
       const isLoggedIn = !!auth?.user;
       const isPublicPath = [

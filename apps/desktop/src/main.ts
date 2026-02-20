@@ -37,22 +37,7 @@ const store = new Store({
 
 let mainWindow: BrowserWindow | null = null;
 let nextServerProcess: ReturnType<typeof import('child_process').spawn> | null = null;
-let serverPort: number = 0;
-
-function findFreePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = http.createServer();
-    srv.listen(0, () => {
-      const addr = srv.address();
-      if (addr && typeof addr === 'object') {
-        const port = addr.port;
-        srv.close(() => resolve(port));
-      } else {
-        reject(new Error('Could not find free port'));
-      }
-    });
-  });
-}
+const DESKTOP_PORT = 3100;
 
 async function startNextServer(port: number): Promise<void> {
   const { spawn } = await import('child_process');
@@ -64,6 +49,8 @@ async function startNextServer(port: number): Promise<void> {
       PORT: String(port),
       NODE_ENV: 'production',
       ELECTRON: 'true',
+      NEXTAUTH_URL: `http://localhost:${port}`,
+      AUTH_TRUST_HOST: 'true',
     };
 
     nextServerProcess = spawn('npx', ['next', 'start', '-p', String(port)], {
@@ -133,7 +120,7 @@ async function createWindow(): Promise<void> {
   registerAllIPC(mainWindow);
   createAppMenu(mainWindow);
 
-  mainWindow.loadURL(`http://localhost:${serverPort}`);
+  mainWindow.loadURL(`http://localhost:${DESKTOP_PORT}`);
 }
 
 function registerAllIPC(win: BrowserWindow): void {
@@ -172,9 +159,8 @@ protocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(async () => {
   try {
-    serverPort = await findFreePort();
-    console.log(`Starting Next.js on port ${serverPort}...`);
-    await startNextServer(serverPort);
+    console.log(`Starting Next.js on port ${DESKTOP_PORT}...`);
+    await startNextServer(DESKTOP_PORT);
     console.log('Next.js server ready');
     await createWindow();
   } catch (err) {
