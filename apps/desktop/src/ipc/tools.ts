@@ -137,22 +137,40 @@ export function registerToolHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('tools:runCommand', async (_e, command: string, cwd?: string) => {
     const resolved = cwd ? path.resolve(cwd) : process.cwd();
+
     return new Promise((resolve) => {
       const proc = spawn(command, {
         cwd: resolved,
         shell: true,
-        timeout: 30000,
+        timeout: 120000,
+        env: { ...process.env, FORCE_COLOR: '0' },
       });
 
       let stdout = '';
       let stderr = '';
-      proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-      proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+      let finished = false;
+
+      proc.stdout.on('data', (d: Buffer) => {
+        stdout += d.toString();
+        if (stdout.length > 50000) {
+          stdout = stdout.slice(-40000);
+        }
+      });
+      proc.stderr.on('data', (d: Buffer) => {
+        stderr += d.toString();
+        if (stderr.length > 20000) {
+          stderr = stderr.slice(-15000);
+        }
+      });
 
       proc.on('close', (code) => {
-        resolve({ stdout, stderr, exitCode: code ?? 1 });
+        if (finished) return;
+        finished = true;
+        resolve({ stdout, stderr, exitCode: code ?? 0 });
       });
       proc.on('error', (err) => {
+        if (finished) return;
+        finished = true;
         resolve({ stdout, stderr: stderr + '\n' + err.message, exitCode: 1 });
       });
     });

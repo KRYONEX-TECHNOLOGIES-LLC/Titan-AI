@@ -117,7 +117,7 @@ const TOOL_DEFINITIONS = [
     type: 'function' as const,
     function: {
       name: 'run_command',
-      description: 'Execute a shell command in the workspace directory. Use for: npm/yarn/pnpm, git operations, build tools, linters, test runners, file operations (mkdir, cp, mv), and any other CLI tool.',
+      description: 'Execute a shell command in the workspace directory. Use for: npm/yarn/pnpm, git operations, build tools, linters, test runners, file operations. Commands run directly -- NEVER use "start cmd", "start powershell", or any "start" prefix. Just run the command itself.',
       parameters: {
         type: 'object',
         properties: {
@@ -265,7 +265,8 @@ TOOL: run_command
   Purpose: Execute any shell command -- install packages, run builds, run tests, git operations, file operations.
   When to use: After creating/editing files to verify they work. For git operations. For package management.
   Tips: Chain commands with && when they depend on each other. Check exit codes.
-  IMPORTANT: Long-running commands (like dev servers) will timeout after 30 seconds. Use single-run commands.
+  IMPORTANT: Commands timeout after 2 minutes. For long-running servers, tell the user to start them from the terminal.
+  NEVER use "start cmd" or "start powershell" -- all commands run directly in the background. Do NOT open new terminal windows.
 
 TOOL: web_search
   Purpose: Search the internet for real-time information, documentation, and API references.
@@ -604,9 +605,12 @@ ${os === 'windows' ? `- Use Windows commands: "dir" not "ls", "type" not "cat", 
 - Use backslashes in paths when calling commands: "dir src\\components"
 - Use "python" not "python3" (Windows typically uses "python")
 - Use "pip" not "pip3"
-- Use PowerShell or cmd syntax: "&&" works, but ";" for chaining and "2>&1" work differently
+- Use PowerShell or cmd syntax: "&&" works for chaining
 - There is no /usr/bin/ -- executables are in PATH or in specific install directories
-- Use "where python" not "which python" to find executables` : os === 'macos' ? `- Use Unix commands (ls, cat, rm, cp, etc.)
+- Use "where python" not "which python" to find executables
+- NEVER use "start cmd", "start powershell", "start /b", or any "start" prefix -- commands run directly, do NOT open new windows
+- To run a backend server, just run it directly: "python run_api.py" NOT "start cmd /k python run_api.py"
+- To run multiple commands, chain with "&&" or run them sequentially as separate run_command calls` : os === 'macos' ? `- Use Unix commands (ls, cat, rm, cp, etc.)
 - Use "python3" and "pip3" (macOS may not have "python" by default)
 - Use forward slashes in paths` : `- Use Unix commands (ls, cat, rm, cp, etc.)
 - Use "python3" and "pip3"

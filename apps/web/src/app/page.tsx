@@ -190,6 +190,7 @@ export default function TitanIDE() {
 
   const handleTerminalCommand = useCallback((command: string, output: string, exitCode: number) => {
     setShowTerminal(true);
+    useLayoutStore.setState({ panelVisible: true, panelView: 'terminal' });
     terminalHistoryRef.current = [
       ...terminalHistoryRef.current.slice(-9),
       { command, output: output.slice(0, 500), exitCode },
