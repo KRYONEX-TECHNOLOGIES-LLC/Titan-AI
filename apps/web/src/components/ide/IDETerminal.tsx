@@ -4,11 +4,18 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTerminalStore } from '@/stores/terminal-store';
 import { useLayoutStore } from '@/stores/layout-store';
 
-/**
- * Real xterm.js terminal with FitAddon and WebLinksAddon.
- * Shells via WebContainer API when available, or falls back to a mock PTY via /api/terminal.
- */
+let xtermCssLoaded = false;
+function loadXtermCss() {
+  if (xtermCssLoaded || typeof document === 'undefined') return;
+  xtermCssLoaded = true;
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css';
+  document.head.appendChild(link);
+}
+
 export default function IDETerminal() {
+  useEffect(() => { loadXtermCss(); }, []);
   const { sessions, activeSessionId, addSession, removeSession, setActiveSession, fontSize, fontFamily, scrollback, cursorStyle, cursorBlink } = useTerminalStore();
   const { panelVisible } = useLayoutStore();
 
