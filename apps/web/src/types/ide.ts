@@ -1,3 +1,22 @@
+export interface ToolCallBlock {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
+  status: 'running' | 'done' | 'error';
+  result?: string;
+  error?: string;
+  startedAt: number;
+  finishedAt?: number;
+}
+
+export interface CodeDiffBlock {
+  id: string;
+  file: string;
+  language?: string;
+  code: string;
+  status: 'pending' | 'applied' | 'rejected';
+}
+
 export interface Session {
   id: string;
   name: string;
@@ -23,7 +42,7 @@ export interface ChangedFile {
 
 export interface ChatMessage {
   id?: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
   time?: string;
   streaming?: boolean;
@@ -34,6 +53,9 @@ export interface ChatMessage {
   thinkingTime?: number;
   isError?: boolean;
   retryMessage?: string;
+  toolCalls?: ToolCallBlock[];
+  codeDiffs?: CodeDiffBlock[];
+  toolResultFor?: string;
 }
 
 export interface SearchResult {

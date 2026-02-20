@@ -150,11 +150,56 @@ export default function TitanIDE() {
     setPendingDiff({ file: activeTab, oldContent, newContent, decorationIds });
   }, [editorInstance, monacoInstance, activeTab, pendingDiff]);
 
-  // Chat
+  // Chat with agent tool callbacks
+  const handleTerminalCommand = useCallback((command: string, output: string, exitCode: number) => {
+    setShowTerminal(true);
+  }, []);
+
+  const handleAgentFileEdited = useCallback((filePath: string, newContent: string) => {
+    // Read the full file from the server to get current content
+    fetch('/api/agent/tools', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool: 'read_file', args: { path: filePath } }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.output) {
+          const fullContent = data.output.split('\n').map((line: string) => {
+            const pipeIdx = line.indexOf('|');
+            return pipeIdx >= 0 ? line.slice(pipeIdx + 1) : line;
+          }).join('\n');
+          setFileContents(prev => ({ ...prev, [filePath]: fullContent }));
+          if (filePath === activeTab && editorInstance) {
+            const model = editorInstance.getModel();
+            if (model) model.setValue(fullContent);
+          }
+          setTabs(prev => prev.map(t => t.name === filePath ? { ...t, modified: true } : t));
+        }
+      })
+      .catch(() => {});
+  }, [activeTab, editorInstance]);
+
+  const handleAgentFileCreated = useCallback((filePath: string, content: string) => {
+    const info = getFileInfo(filePath);
+    setFileContents(prev => ({ ...prev, [filePath]: content }));
+    setTabs(prev => {
+      if (prev.find(t => t.name === filePath)) return prev;
+      return [...prev, { name: filePath, icon: info.icon, color: info.color, modified: true }];
+    });
+    setActiveTab(filePath);
+    if (editorInstance) {
+      const model = editorInstance.getModel();
+      if (model && filePath === activeTab) model.setValue(content);
+    }
+  }, [activeTab, editorInstance]);
+
   const chat = useChat({
     sessions, setSessions, activeSessionId,
     activeModel: settings.activeModel, activeTab, fileContents, editorInstance,
-    applyDiffDecorations,
+    onTerminalCommand: handleTerminalCommand,
+    onFileEdited: handleAgentFileEdited,
+    onFileCreated: handleAgentFileCreated,
   });
 
   // Apply changes
@@ -394,6 +439,34 @@ export default function TitanIDE() {
                     if (fileSystem.directoryHandle) fileSystem.writeFile(targetFile, code);
                   }
                 }}
+                onApplyDiff={(diffId) => {
+                  setSessions(prev => prev.map(s => {
+                    if (s.id !== activeSessionId) return s;
+                    return {
+                      ...s,
+                      messages: s.messages.map(m => ({
+                        ...m,
+                        codeDiffs: m.codeDiffs?.map(d =>
+                          d.id === diffId ? { ...d, status: 'applied' as const } : d
+                        ),
+                      })),
+                    };
+                  }));
+                }}
+                onRejectCodeDiff={(diffId) => {
+                  setSessions(prev => prev.map(s => {
+                    if (s.id !== activeSessionId) return s;
+                    return {
+                      ...s,
+                      messages: s.messages.map(m => ({
+                        ...m,
+                        codeDiffs: m.codeDiffs?.map(d =>
+                          d.id === diffId ? { ...d, status: 'rejected' as const } : d
+                        ),
+                      })),
+                    };
+                  }));
+                }}
               />
             )}
             {activeView === 'accounts' && <AccountsPanel />}
@@ -475,7 +548,7 @@ function ActivityIcon({ children, active, onClick, title }: { children: React.Re
 
 import { Session } from '@/types/ide';
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode, onApplyDiff, onRejectCodeDiff }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; isStreaming: boolean; activeModel: string;
   onNewAgent: () => void; onSend: () => void; onStop: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -483,6 +556,8 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   onRenameSession?: (id: string, name: string) => void; onDeleteSession?: (id: string) => void;
   onRetry?: (message: string) => void;
   onApplyCode?: (code: string, filename?: string) => void;
+  onApplyDiff?: (diffId: string) => void;
+  onRejectCodeDiff?: (diffId: string) => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -524,7 +599,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="px-3 py-3">
           {currentSession.messages.map((msg, i) => (
-            <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} onRetry={onRetry} onApplyCode={onApplyCode} />
+            <ChatMessage key={msg.id || i} role={msg.role as 'user' | 'assistant'} content={msg.content} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} onRetry={onRetry} onApplyCode={onApplyCode} onApplyDiff={onApplyDiff} onRejectDiff={onRejectCodeDiff} />
           ))}
           {isThinking && !currentSession.messages.some(m => m.streaming) && (
             <div className="mb-4 flex items-center gap-2 px-1">

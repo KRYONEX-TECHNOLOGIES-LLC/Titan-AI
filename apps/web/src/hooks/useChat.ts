@@ -1,8 +1,12 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import type { Session, ChatMessage } from '@/types/ide';
-import { parseThinkingTags, extractFileBlocks, getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
+import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock } from '@/types/ide';
+import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
+import { useAgentTools, toolCallSummary } from './useAgentTools';
+
+const MAX_TOOL_CALLS = 25;
+const MAX_CONSECUTIVE_FAILURES = 3;
 
 interface UseChatOptions {
   sessions: Session[];
@@ -12,7 +16,23 @@ interface UseChatOptions {
   activeTab: string;
   fileContents: Record<string, string>;
   editorInstance: any;
-  applyDiffDecorations: (oldContent: string, newContent: string) => void;
+  onTerminalCommand?: (command: string, output: string, exitCode: number) => void;
+  onFileEdited?: (path: string, newContent: string) => void;
+  onFileCreated?: (path: string, content: string) => void;
+}
+
+interface LLMMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
+  name?: string;
+}
+
+interface StreamToolCall {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
 }
 
 export function useChat({
@@ -23,18 +43,184 @@ export function useChat({
   activeTab,
   fileContents,
   editorInstance,
-  applyDiffDecorations,
+  onTerminalCommand,
+  onFileEdited,
+  onFileCreated,
 }: UseChatOptions) {
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const thinkingStartRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const abortedRef = useRef(false);
+
+  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated });
+
+  const updateMessage = useCallback((
+    sessionId: string,
+    messageId: string,
+    updater: (msg: ChatMessage) => ChatMessage
+  ) => {
+    setSessions(prev => prev.map(s => {
+      if (s.id !== sessionId) return s;
+      return { ...s, messages: s.messages.map(m => m.id === messageId ? updater(m) : m) };
+    }));
+  }, [setSessions]);
+
+  const appendToolCallToMessage = useCallback((
+    sessionId: string,
+    messageId: string,
+    toolCall: ToolCallBlock
+  ) => {
+    updateMessage(sessionId, messageId, (msg) => ({
+      ...msg,
+      toolCalls: [...(msg.toolCalls || []), toolCall],
+    }));
+  }, [updateMessage]);
+
+  const updateToolCallInMessage = useCallback((
+    sessionId: string,
+    messageId: string,
+    toolCallId: string,
+    updates: Partial<ToolCallBlock>
+  ) => {
+    updateMessage(sessionId, messageId, (msg) => ({
+      ...msg,
+      toolCalls: (msg.toolCalls || []).map(tc =>
+        tc.id === toolCallId ? { ...tc, ...updates } : tc
+      ),
+    }));
+  }, [updateMessage]);
+
+  const appendCodeDiffToMessage = useCallback((
+    sessionId: string,
+    messageId: string,
+    diff: CodeDiffBlock
+  ) => {
+    updateMessage(sessionId, messageId, (msg) => ({
+      ...msg,
+      codeDiffs: [...(msg.codeDiffs || []), diff],
+    }));
+  }, [updateMessage]);
+
+  async function streamFromContinue(
+    conversationHistory: LLMMessage[],
+    sessionId: string,
+    messageId: string,
+    abortSignal: AbortSignal,
+  ): Promise<{ content: string; toolCalls: StreamToolCall[] }> {
+    const response = await fetch('/api/chat/continue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abortSignal,
+      body: JSON.stringify({
+        messages: conversationHistory,
+        model: activeModel,
+        codeContext: {
+          file: activeTab,
+          content: editorInstance?.getValue() || fileContents[activeTab] || '',
+          language: getLanguageFromFilename(activeTab),
+        },
+        repoMap: typeof window !== 'undefined' ? (window as any).__titanRepoMap : undefined,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`LLM request failed (${response.status})`);
+    }
+
+    if (!response.body) {
+      throw new Error('No response body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullContent = '';
+    let toolCalls: StreamToolCall[] = [];
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const evt of events) {
+        const lines = evt.split('\n');
+        let eventType = 'message';
+        let data = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event:')) eventType = line.slice(6).trim();
+          if (line.startsWith('data:')) data += line.slice(5).trim();
+        }
+
+        if (!data) continue;
+
+        try {
+          const payload = JSON.parse(data);
+
+          if (eventType === 'start') {
+            setIsThinking(false);
+            setIsStreaming(true);
+          } else if (eventType === 'token' && payload.content) {
+            fullContent += payload.content;
+            const { thinking, content } = parseThinkingTags(fullContent);
+            const thinkingTime = thinkingStartRef.current > 0
+              ? Math.round((Date.now() - thinkingStartRef.current) / 1000)
+              : 0;
+            updateMessage(sessionId, messageId, (msg) => ({
+              ...msg,
+              content: content || fullContent,
+              thinking: thinking || msg.thinking,
+              thinkingTime: thinking ? thinkingTime : msg.thinkingTime,
+              streaming: true,
+            }));
+          } else if (eventType === 'tool_call') {
+            toolCalls.push({
+              id: payload.id,
+              tool: payload.tool,
+              args: payload.args,
+            });
+          } else if (eventType === 'done') {
+            if (payload.content !== undefined && payload.content) {
+              fullContent = payload.content;
+            }
+            if (payload.toolCalls?.length) {
+              toolCalls = payload.toolCalls;
+            }
+            const { thinking, content } = parseThinkingTags(fullContent);
+            updateMessage(sessionId, messageId, (msg) => ({
+              ...msg,
+              content: content || fullContent,
+              thinking: thinking || msg.thinking,
+              streaming: false,
+            }));
+          } else if (eventType === 'error') {
+            throw new Error(payload.message || 'Streaming error');
+          }
+        } catch (e) {
+          if (e instanceof Error && e.message !== 'Streaming error') {
+            // Skip JSON parse errors on individual chunks
+          } else {
+            throw e;
+          }
+        }
+      }
+    }
+
+    return { content: fullContent, toolCalls };
+  }
 
   const handleSend = useCallback(async () => {
     if (!chatInput.trim()) return;
     const msg = chatInput.trim();
     setChatInput('');
+    abortedRef.current = false;
+    agentTools.reset();
+
     const sessionId = activeSessionId;
     const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -43,234 +229,193 @@ export function useChat({
     const selectedText = selection ? editorInstance?.getModel()?.getValueInRange(selection) : '';
     const currentLanguage = getLanguageFromFilename(activeTab);
 
+    const userContent = selectedText
+      ? `[Selected Code]\n\`\`\`${currentLanguage}\n${selectedText}\n\`\`\`\n\n${msg}`
+      : msg;
+
     const userMessage: ChatMessage = {
       role: 'user',
-      content: selectedText ? `[Selected Code]\n\`\`\`${currentLanguage}\n${selectedText}\n\`\`\`\n\n${msg}` : msg,
+      content: userContent,
       time: 'just now',
     };
-    const placeholderAssistantMessage: ChatMessage = {
+
+    const assistantMessage: ChatMessage = {
       id: streamMessageId,
       role: 'assistant',
       content: '',
       time: 'just now',
       streaming: true,
       streamingModel: activeModel,
+      toolCalls: [],
+      codeDiffs: [],
     };
 
     setSessions(prev => prev.map(s =>
       s.id === sessionId
-        ? { ...s, messages: [...s.messages, userMessage, placeholderAssistantMessage] }
+        ? { ...s, messages: [...s.messages, userMessage, assistantMessage] }
         : s
     ));
     setIsThinking(true);
     thinkingStartRef.current = Date.now();
 
-    const updateStreamingAssistant = (
-      rawContent: string,
-      done = false,
-      metadata?: { model?: string; providerModel?: string; provider?: string }
-    ) => {
-      const { thinking, content } = parseThinkingTags(rawContent);
-      const thinkingTime = thinkingStartRef.current > 0
-        ? Math.round((Date.now() - thinkingStartRef.current) / 1000)
-        : 0;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-      setSessions(prev =>
-        prev.map(s => {
-          if (s.id !== sessionId) return s;
-          return {
-            ...s,
-            messages: s.messages.map(m =>
-              m.id === streamMessageId
-                ? {
-                    ...m,
-                    content: content || rawContent,
-                    thinking: thinking || undefined,
-                    thinkingTime: thinking ? thinkingTime : undefined,
-                    streaming: !done,
-                    time: 'just now',
-                    streamingModel: metadata?.model ?? m.streamingModel,
-                    streamingProviderModel: metadata?.providerModel ?? m.streamingProviderModel,
-                    streamingProvider: metadata?.provider ?? m.streamingProvider,
-                  }
-                : m
-            ),
-          };
-        })
-      );
-    };
+    // Build the LLM conversation history
+    const conversationHistory: LLMMessage[] = [
+      { role: 'user', content: userContent },
+    ];
 
-    const handleSuggestedEdits = (data: { content?: string; suggestedEdits?: Array<{ file: string; content?: string }> }) => {
-      let suggestedEdits = data.suggestedEdits || [];
+    let totalToolCalls = 0;
+    let consecutiveFailures = 0;
 
-      if (suggestedEdits.length === 0 && data.content) {
-        const extractedBlocks = extractFileBlocks(data.content);
-        if (extractedBlocks.length > 0) {
-          suggestedEdits = extractedBlocks.map(block => ({
-            file: block.filename,
-            content: block.content,
-          }));
-        }
-      }
-
-      const newChangedFiles = suggestedEdits.map((edit: { file: string; content?: string }) => {
-        const info = getFileInfo(edit.file);
-        const lines = (edit.content || '').split('\n').length;
-        return { name: edit.file, additions: lines, deletions: 0, icon: info.icon, color: info.color };
-      });
-
-      if (suggestedEdits.length > 0) {
-        const edit = suggestedEdits[0];
-        if (edit.content && edit.file === activeTab) {
-          applyDiffDecorations(currentCode, edit.content);
-        }
-      } else if (data.content?.includes('```')) {
-        const codeMatch = data.content.match(/```(?:\w+)?\n([\s\S]*?)```/);
-        if (codeMatch && codeMatch[1]) {
-          const suggestedCode = codeMatch[1].trim();
-          if (suggestedCode.length > 50) {
-            applyDiffDecorations(currentCode, suggestedCode);
-          }
-        }
-      }
-
-      setSessions(prev => prev.map(s =>
-        s.id === sessionId
-          ? {
-            ...s,
-            changedFiles: newChangedFiles.length > 0
-              ? newChangedFiles
-              : (s.changedFiles.length === 0 && data.content?.includes('```')
-                ? [{ name: activeTab, additions: 15, deletions: 3, ...getFileInfo(activeTab) }]
-                : s.changedFiles),
-          }
-          : s
-      ));
-    };
-
-    const crossSessionMemory = sessions
-      .filter(s => s.id !== sessionId && s.messages.length > 1)
-      .map(s => {
-        const lastMsgs = s.messages.slice(-4).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 200)}`).join('\n');
-        return `[Session: ${s.name}]\n${lastMsgs}`;
-      })
-      .join('\n\n');
-
-    let streamed = '';
     try {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
+      // ── The Tool-Calling Loop ──
+      // Keep streaming + executing tool calls until the LLM returns pure text
+      while (true) {
+        if (abortedRef.current || controller.signal.aborted) break;
+
+        setIsStreaming(true);
+        const { content, toolCalls } = await streamFromContinue(
+          conversationHistory,
           sessionId,
-          message: msg,
-          model: activeModel,
-          stream: true,
-          codeContext: {
-            file: activeTab,
-            content: currentCode,
-            selection: selectedText || undefined,
-            language: currentLanguage,
-          },
-          crossSessionMemory: crossSessionMemory || undefined,
-          repoMap: typeof window !== 'undefined' ? (window as any).__titanRepoMap : undefined,
-        }),
-      });
+          streamMessageId,
+          controller.signal,
+        );
 
-      if (!response.ok) {
-        throw new Error(`Chat request failed (${response.status})`);
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('text/event-stream') && response.body) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let finalPayload: { content?: string; suggestedEdits?: Array<{ file: string; content?: string }> } | null = null;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split('\n\n');
-          buffer = events.pop() || '';
-
-          for (const evt of events) {
-            const lines = evt.split('\n');
-            let eventType = 'message';
-            let data = '';
-
-            for (const line of lines) {
-              if (line.startsWith('event:')) eventType = line.slice(6).trim();
-              if (line.startsWith('data:')) data += line.slice(5).trim();
-            }
-
-            if (!data) continue;
-            const payload = JSON.parse(data) as {
-              content?: string;
-              suggestedEdits?: Array<{ file: string; content?: string }>;
-              message?: string;
-              model?: string;
-              providerModel?: string;
-              provider?: string;
-            };
-
-            if (eventType === 'token' && payload.content) {
-              streamed += payload.content;
-              setIsStreaming(true);
-              updateStreamingAssistant(streamed, false);
-            } else if (eventType === 'start') {
-              setIsStreaming(true);
-              setIsThinking(false);
-              updateStreamingAssistant(streamed, false, {
-                model: payload.model,
-                providerModel: payload.providerModel,
-                provider: payload.provider,
-              });
-            } else if (eventType === 'done') {
-              finalPayload = payload;
-              if (payload.content !== undefined) {
-                streamed = payload.content;
-              }
-              setIsStreaming(false);
-              updateStreamingAssistant(streamed || 'Done.', true, {
-                model: payload.model,
-                providerModel: payload.providerModel,
-                provider: payload.provider,
-              });
-            } else if (eventType === 'error') {
-              setIsStreaming(false);
-              throw new Error(payload.message || 'Streaming error');
-            }
-          }
+        // No tool calls => LLM is done, final text response
+        if (toolCalls.length === 0) {
+          updateMessage(sessionId, streamMessageId, (m) => ({
+            ...m,
+            streaming: false,
+            content: m.content || content || 'Done.',
+          }));
+          break;
         }
 
-        setIsThinking(false);
-        setIsStreaming(false);
-        const normalized = finalPayload || { content: streamed };
-        updateStreamingAssistant(normalized.content || 'I apologize, but I encountered an error processing your request.', true);
-        handleSuggestedEdits(normalized);
-      } else {
-        const data = await response.json();
-        setIsThinking(false);
-        setIsStreaming(false);
-        updateStreamingAssistant(
-          data.content || 'I apologize, but I encountered an error processing your request.',
-          true
-        );
-        handleSuggestedEdits(data);
+        // Append the assistant message with tool_calls to conversation history
+        conversationHistory.push({
+          role: 'assistant',
+          content: content || null,
+          tool_calls: toolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: {
+              name: tc.tool,
+              arguments: JSON.stringify(tc.args),
+            },
+          })),
+        });
+
+        // Execute each tool call
+        for (const tc of toolCalls) {
+          if (abortedRef.current || controller.signal.aborted) break;
+
+          totalToolCalls++;
+
+          // Circuit breaker: max tool calls
+          if (totalToolCalls > MAX_TOOL_CALLS) {
+            const warnMsg = `⚠️ Circuit breaker: stopped after ${MAX_TOOL_CALLS} tool calls to prevent infinite loops.`;
+            updateMessage(sessionId, streamMessageId, (m) => ({
+              ...m,
+              content: (m.content ? m.content + '\n\n' : '') + warnMsg,
+              streaming: false,
+            }));
+            return;
+          }
+
+          // Add running tool call block to the UI
+          const toolCallBlock: ToolCallBlock = {
+            id: tc.id,
+            tool: tc.tool,
+            args: tc.args,
+            status: 'running',
+            startedAt: Date.now(),
+          };
+          appendToolCallToMessage(sessionId, streamMessageId, toolCallBlock);
+
+          // Execute the tool
+          const result = await agentTools.executeToolCall(tc.tool, tc.args);
+
+          // Update tool call status
+          updateToolCallInMessage(sessionId, streamMessageId, tc.id, {
+            status: result.success ? 'done' : 'error',
+            result: result.output,
+            error: result.error,
+            finishedAt: Date.now(),
+          });
+
+          // Track consecutive failures
+          if (!result.success) {
+            consecutiveFailures++;
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+              const warnMsg = `⚠️ Circuit breaker: ${MAX_CONSECUTIVE_FAILURES} consecutive tool failures. Stopping to prevent loops.`;
+              updateMessage(sessionId, streamMessageId, (m) => ({
+                ...m,
+                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
+                streaming: false,
+              }));
+              return;
+            }
+          } else {
+            consecutiveFailures = 0;
+          }
+
+          // For edit_file, create a CodeDiffBlock
+          if (tc.tool === 'edit_file' && result.success) {
+            const diffBlock: CodeDiffBlock = {
+              id: `diff-${tc.id}`,
+              file: tc.args.path as string,
+              code: tc.args.new_string as string,
+              status: 'applied',
+            };
+            appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+          } else if (tc.tool === 'create_file' && result.success) {
+            const diffBlock: CodeDiffBlock = {
+              id: `diff-${tc.id}`,
+              file: tc.args.path as string,
+              code: tc.args.content as string,
+              status: 'applied',
+            };
+            appendCodeDiffToMessage(sessionId, streamMessageId, diffBlock);
+          }
+
+          // Append tool result to conversation history
+          const resultOutput = result.success
+            ? result.output
+            : `Error: ${result.error || 'Unknown error'}\n${result.output || ''}`;
+
+          conversationHistory.push({
+            role: 'tool',
+            content: resultOutput.slice(0, 10000),
+            tool_call_id: tc.id,
+            name: tc.tool,
+          });
+        }
+
+        // If aborted, stop the loop
+        if (abortedRef.current || controller.signal.aborted) {
+          updateMessage(sessionId, streamMessageId, (m) => ({
+            ...m,
+            content: m.content || 'Generation stopped.',
+            streaming: false,
+          }));
+          break;
+        }
+
+        // Clear the content for the next turn (the LLM will produce a new response)
+        updateMessage(sessionId, streamMessageId, (m) => ({
+          ...m,
+          streaming: true,
+        }));
       }
     } catch (error) {
-      setIsThinking(false);
-      setIsStreaming(false);
-      abortControllerRef.current = null;
-
       if (error instanceof DOMException && error.name === 'AbortError') {
-        updateStreamingAssistant(streamed || 'Generation stopped.', true);
+        updateMessage(sessionId, streamMessageId, (m) => ({
+          ...m,
+          content: m.content || 'Generation stopped.',
+          streaming: false,
+        }));
         return;
       }
 
@@ -282,37 +427,34 @@ export function useChat({
         : `- Check your internet connection\n- Verify API keys are configured in your environment\n- Try a different model from the model selector`;
       const errorContent = `⚠️ **Connection Error**\n\n${errorMessage}\n\n**Troubleshooting:**\n${troubleshooting}\n\n_Click the retry button below to try again._`;
 
-      setSessions(prev => prev.map(s =>
-        s.id === sessionId
-          ? {
-            ...s,
-            messages: s.messages.map(m => m.id === streamMessageId
-              ? {
-                  ...m,
-                  content: errorContent,
-                  streaming: false,
-                  time: 'just now',
-                  isError: true,
-                  retryMessage: msg,
-                }
-              : m
-            ),
-          }
-          : s
-      ));
+      updateMessage(sessionId, streamMessageId, (m) => ({
+        ...m,
+        content: errorContent,
+        streaming: false,
+        isError: true,
+        retryMessage: msg,
+      }));
     } finally {
+      setIsThinking(false);
+      setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, sessions, setSessions, applyDiffDecorations]);
+  }, [
+    chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel,
+    setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
+    appendCodeDiffToMessage, agentTools,
+  ]);
 
   const handleStop = useCallback(() => {
+    abortedRef.current = true;
+    agentTools.abort();
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
     setIsThinking(false);
     setIsStreaming(false);
-  }, []);
+  }, [agentTools]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
