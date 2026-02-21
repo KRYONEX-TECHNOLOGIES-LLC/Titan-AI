@@ -233,9 +233,9 @@ protocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(async () => {
   try {
-    app.setName('Titan Desktop');
+    app.setName('Titan AI');
     if (process.platform === 'win32') {
-      app.setAppUserModelId('com.kryonex.titan-desktop');
+      app.setAppUserModelId('com.kryonex.titan-ai');
     }
     console.log(`Starting Next.js on port ${DESKTOP_PORT}...`);
     await startNextServer(DESKTOP_PORT);
