@@ -13,6 +13,7 @@ import { useSessions } from '@/hooks/useSessions';
 import { useSettings } from '@/hooks/useSettings';
 import { useMidnight } from '@/hooks/useMidnight';
 import { useFileSystem } from '@/hooks/useFileSystem';
+import { useSession } from '@/providers/session-provider';
 
 // Utils
 import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
@@ -48,6 +49,8 @@ import { initCommandRegistry } from '@/lib/ide/command-registry';
 export default function TitanIDE() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  const titanSession = useSession();
 
   // Zustand stores
   useLayoutStore();
@@ -364,6 +367,7 @@ export default function TitanIDE() {
                 isThinking={chat.isThinking} isStreaming={chat.isStreaming} activeModel={settings.activeModelLabel}
                 onNewAgent={() => handleNewAgent(settings.activeModel)} onSend={chat.handleSend} onStop={chat.handleStop}
                 onKeyDown={chat.handleKeyDown} onApply={handleApplyChanges} chatEndRef={chatEndRef}
+                attachments={chat.attachments} onAddAttachments={chat.addAttachments} onRemoveAttachment={chat.removeAttachment}
                 onRenameSession={handleRenameSession} onDeleteSession={handleDeleteSession}
                 hasPendingDiff={pendingDiff !== null}
                 onRejectDiff={() => {
@@ -457,6 +461,7 @@ export default function TitanIDE() {
         currentLanguage={currentFileLanguage} cursorLine={cursorPosition.line} cursorColumn={cursorPosition.column}
         activeModelLabel={settings.activeModelLabel}
         onGitClick={() => setActiveView('git')} onSettingsClick={() => setActiveView('settings')}
+        creatorModeActive={titanSession?.user?.creatorModeOn === true}
       />
 
       {/* Factory View */}
@@ -481,9 +486,10 @@ function ActivityIcon({ children, active, onClick, title }: { children: React.Re
   );
 }
 
-import { Session } from '@/types/ide';
+import { Session, FileAttachment } from '@/types/ide';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode, attachments, onAddAttachments, onRemoveAttachment }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; isStreaming: boolean; activeModel: string;
   onNewAgent: () => void; onSend: () => void; onStop: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -491,9 +497,20 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   onRenameSession?: (id: string, name: string) => void; onDeleteSession?: (id: string) => void;
   onRetry?: (message: string) => void;
   onApplyCode?: (code: string, filename?: string) => void;
+  attachments?: FileAttachment[];
+  onAddAttachments?: (files: File[]) => void;
+  onRemoveAttachment?: (id: string) => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
+  const [isDragOver, setIsDragOver] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef(chatInput);
+  chatInputRef.current = chatInput;
+
+  const voice = useVoiceInput(useCallback((text: string) => {
+    setChatInput(chatInputRef.current + text);
+  }, [setChatInput]));
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -501,6 +518,49 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
     }
   }, [chatInput]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      onAddAttachments?.(imageFiles);
+    }
+  }, [onAddAttachments]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) onAddAttachments?.(files);
+  }, [onAddAttachments]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  }, []);
+
+  const handleFilePickerChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) onAddAttachments?.(files);
+    e.target.value = '';
+  }, [onAddAttachments]);
 
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
@@ -583,23 +643,60 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
             )}
           </div>
         )}
-        <div className="p-2">
-          <div className="bg-[#252526] border border-[#3c3c3c] rounded-lg focus-within:border-[#569cd6] transition-colors">
-            <textarea ref={textareaRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} placeholder="Ask Titan to edit code, fix bugs, run commands..." rows={1} className="w-full bg-transparent px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none resize-none leading-5 max-h-[120px]" />
+        <div className="p-2" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilePickerChange} />
+          <div className={`bg-[#252526] border rounded-lg focus-within:border-[#569cd6] transition-colors ${isDragOver ? 'border-[#569cd6] bg-[#569cd6]/10' : 'border-[#3c3c3c]'}`}>
+            {isDragOver && (
+              <div className="px-3 py-2 text-center text-[12px] text-[#569cd6]">Drop images here</div>
+            )}
+            {attachments && attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+                {attachments.map(att => (
+                  <div key={att.id} className="relative group w-14 h-14 rounded-md overflow-hidden border border-[#3c3c3c] bg-[#2d2d2d]">
+                    <img src={att.previewUrl} alt="" className="w-full h-full object-cover" />
+                    {att.status === 'pending' && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+                    <button
+                      onClick={() => onRemoveAttachment?.(att.id)}
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-[#f85149] rounded-full flex items-center justify-center text-white text-[8px] opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <textarea ref={textareaRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} onPaste={handlePaste} placeholder={voice.isListening ? 'Listening...' : 'Ask Titan to edit code, fix bugs, run commands...'} rows={1} className="w-full bg-transparent px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none resize-none leading-5 max-h-[120px]" />
+            {voice.interimText && (
+              <div className="px-3 pb-1 text-[12px] text-[#666] italic">{voice.interimText}</div>
+            )}
             <div className="flex items-center justify-between px-2 pb-1.5">
               <span className="text-[11px] text-[#555] flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full ${isThinking || isStreaming ? 'bg-[#f9826c] animate-pulse' : 'bg-[#3fb950]'}`} />
                 {activeModel}
               </span>
-              {isThinking || isStreaming ? (
-                <button onClick={onStop} className="w-[26px] h-[26px] flex items-center justify-center rounded-md bg-[#f85149] hover:bg-[#da3633] text-white transition-colors" title="Stop">
-                  <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
+              <div className="flex items-center gap-1">
+                <button onClick={() => fileInputRef.current?.click()} className="w-[26px] h-[26px] flex items-center justify-center rounded-md hover:bg-[#3c3c3c] text-[#808080] hover:text-[#cccccc] transition-colors" title="Attach image">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                 </button>
-              ) : (
-                <button onClick={onSend} disabled={!chatInput.trim()} className={`w-[26px] h-[26px] flex items-center justify-center rounded-md transition-colors ${chatInput.trim() ? 'bg-[#569cd6] hover:bg-[#6eb0e6] text-white' : 'bg-[#2d2d2d] text-[#555]'}`} title="Send (Enter)">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                </button>
-              )}
+                {voice.isSupported && (
+                  <button onClick={voice.toggleListening} className={`w-[26px] h-[26px] flex items-center justify-center rounded-md transition-colors ${voice.isListening ? 'bg-[#f85149] text-white animate-pulse' : 'hover:bg-[#3c3c3c] text-[#808080] hover:text-[#cccccc]'}`} title={voice.isListening ? 'Stop recording' : 'Voice input'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                  </button>
+                )}
+                {isThinking || isStreaming ? (
+                  <button onClick={onStop} className="w-[26px] h-[26px] flex items-center justify-center rounded-md bg-[#f85149] hover:bg-[#da3633] text-white transition-colors" title="Stop">
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
+                  </button>
+                ) : (
+                  <button onClick={onSend} disabled={!chatInput.trim() && (!attachments || attachments.length === 0)} className={`w-[26px] h-[26px] flex items-center justify-center rounded-md transition-colors ${chatInput.trim() || (attachments && attachments.length > 0) ? 'bg-[#569cd6] hover:bg-[#6eb0e6] text-white' : 'bg-[#2d2d2d] text-[#555]'}`} title="Send (Enter)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -658,6 +755,33 @@ function AccountsPanel() {
 function SettingsPanel({ fontSize, setFontSize, tabSize, setTabSize, wordWrap, setWordWrap, activeModel, setActiveModel, models, trustLevel, setTrustLevel, midnightActive }: {
   fontSize: number; setFontSize: (v: number) => void; tabSize: number; setTabSize: (v: number) => void; wordWrap: boolean; setWordWrap: (v: boolean) => void; activeModel: string; setActiveModel: (v: string) => void; models: string[]; trustLevel: 1 | 2 | 3; setTrustLevel: (v: 1 | 2 | 3) => void; midnightActive: boolean;
 }) {
+  const { user, refreshUser } = useSession();
+  const isCreator = user?.isCreator === true;
+  const [creatorModeOn, setCreatorModeOn] = useState(user?.creatorModeOn ?? false);
+  const [togglingCreatorMode, setTogglingCreatorMode] = useState(false);
+
+  useEffect(() => {
+    if (user?.creatorModeOn !== undefined) setCreatorModeOn(user.creatorModeOn);
+  }, [user?.creatorModeOn]);
+
+  const handleToggleCreatorMode = async () => {
+    setTogglingCreatorMode(true);
+    try {
+      const newState = !creatorModeOn;
+      const res = await fetch('/api/creator-mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: newState }),
+      });
+      if (res.ok) {
+        setCreatorModeOn(newState);
+        refreshUser();
+      }
+    } catch { /* ignore */ } finally {
+      setTogglingCreatorMode(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-3 pt-3 pb-2 shrink-0"><input placeholder="Search settings" className="w-full bg-[#2d2d2d] border border-[#3c3c3c] rounded-md px-3 py-1.5 text-[12px] text-[#cccccc] placeholder-[#666] focus:outline-none" /></div>
@@ -668,6 +792,27 @@ function SettingsPanel({ fontSize, setFontSize, tabSize, setTabSize, wordWrap, s
         <div className="flex items-center justify-between px-2 py-1.5"><span className="text-[12px] text-[#cccccc]">Word Wrap</span><button onClick={() => setWordWrap(!wordWrap)} className={`w-10 h-5 rounded-full ${wordWrap ? 'bg-[#007acc]' : 'bg-[#3c3c3c]'} relative`}><span className={`absolute top-0.5 ${wordWrap ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all`}></span></button></div>
         <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5 mt-3">Titan AI</div>
         <div className="flex items-center justify-between px-2 py-1.5"><span className="text-[12px] text-[#cccccc]">Default Model</span><select value={activeModel} onChange={(e) => setActiveModel(e.target.value)} className="bg-[#2d2d2d] border border-[#3c3c3c] rounded px-2 py-0.5 text-[12px] text-[#cccccc]">{models.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
+        {isCreator && (
+          <>
+            <div className="text-[11px] font-semibold text-amber-400 uppercase px-2 py-1.5 mt-3 flex items-center gap-2">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-amber-400"><path d="M12 15l-2 5l9-11h-5l2-5L7 15h5z" stroke="currentColor" strokeWidth="1.5" fill={creatorModeOn ? 'currentColor' : 'none'}/></svg>
+              Creator Mode
+            </div>
+            <div className="flex items-center justify-between px-2 py-1.5">
+              <div>
+                <span className="text-[12px] text-[#cccccc]">Dev Mode</span>
+                <div className="text-[10px] text-[#666] mt-0.5">Open internal architecture discussion</div>
+              </div>
+              <button
+                onClick={handleToggleCreatorMode}
+                disabled={togglingCreatorMode}
+                className={`w-10 h-5 rounded-full ${creatorModeOn ? 'bg-amber-500' : 'bg-[#3c3c3c]'} relative transition-colors`}
+              >
+                <span className={`absolute top-0.5 ${creatorModeOn ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all`} />
+              </button>
+            </div>
+          </>
+        )}
         <div className="text-[11px] font-semibold text-purple-400 uppercase px-2 py-1.5 mt-3 flex items-center gap-2">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" className="text-purple-400"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" stroke="currentColor" strokeWidth="1.5" fill={midnightActive ? 'currentColor' : 'none'}/></svg>
           Project Midnight

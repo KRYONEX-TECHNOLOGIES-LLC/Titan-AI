@@ -592,8 +592,54 @@ TITAN PROTOCOL IS THE HIGHEST QUALITY MODE. It is slower because it is thorough.
 
 // ── Build the full system prompt with dynamic context ──
 
-function buildSystemPrompt(body: ContinueRequest): string {
-  let prompt = BASE_SYSTEM_PROMPT;
+async function getCreatorContext(workspacePath?: string): Promise<{ creatorContext: string; selfWorkContext: string }> {
+  let creatorContext = '';
+  let selfWorkContext = '';
+
+  try {
+    const { getCurrentUser } = await import('@/lib/auth');
+    const user = await getCurrentUser();
+
+    if (user?.isCreator && user?.creatorModeOn) {
+      const { CREATOR_IDENTITY_CONTEXT, SELF_WORK_CONTEXT } = await import('@/lib/creator');
+      creatorContext = CREATOR_IDENTITY_CONTEXT;
+      console.log('[chat] Creator Mode active: injecting Creator Identity Context');
+
+      if (workspacePath) {
+        const fs = await import('fs');
+        const path = await import('path');
+        const markerPath = path.join(workspacePath, '.titan-identity.json');
+        try {
+          if (fs.existsSync(markerPath)) {
+            const content = fs.readFileSync(markerPath, 'utf-8');
+            const marker = JSON.parse(content);
+            if (marker.is_self === true || marker.project === 'titan-ai') {
+              selfWorkContext = SELF_WORK_CONTEXT;
+              console.log('[chat] Self-Work Context active: workspace is Titan AI repo');
+            }
+          }
+        } catch { /* marker file doesn't exist or is invalid */ }
+      }
+    }
+  } catch (err) {
+    console.error('[chat] Creator context check failed:', err);
+  }
+
+  return { creatorContext, selfWorkContext };
+}
+
+function buildSystemPrompt(body: ContinueRequest, creatorContext?: string, selfWorkContext?: string): string {
+  let prompt = '';
+
+  if (creatorContext) {
+    prompt += creatorContext + '\n\n';
+  }
+
+  prompt += BASE_SYSTEM_PROMPT;
+
+  if (selfWorkContext) {
+    prompt += '\n\n' + selfWorkContext;
+  }
 
   // Workspace context
   if (body.workspacePath) {
@@ -735,12 +781,13 @@ If the user asks how to see their app, tell them to check their hosting platform
 interface ContinueRequest {
   messages: Array<{
     role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string | null;
+    content: string | null | Array<{ type: string; text?: string; image_url?: { url: string } }>;
     tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>;
     tool_call_id?: string;
     name?: string;
   }>;
   model: string;
+  attachments?: Array<{ mediaType: string; base64: string }>;
   codeContext?: { file: string; content: string; selection?: string; language: string };
   repoMap?: string;
   workspacePath?: string;
@@ -806,13 +853,37 @@ export async function POST(request: NextRequest) {
     }), { status: 400 });
   }
 
-  // Build and inject system prompt with full context
+  // Build and inject system prompt with full context (including creator/self-work context)
   if (messages[0]?.role !== 'system') {
-    let systemPrompt = buildSystemPrompt(body);
+    const { creatorContext, selfWorkContext } = await getCreatorContext(body.workspacePath);
+    let systemPrompt = buildSystemPrompt(body, creatorContext, selfWorkContext);
     if (isTitanProtocol) {
       systemPrompt = `[TITAN PROTOCOL MODE ACTIVE — Full Governance Architecture v2.0 Engaged]\n\n` + systemPrompt;
     }
     messages = [{ role: 'system', content: systemPrompt }, ...messages];
+  }
+
+  // Build multimodal content for user messages with image attachments
+  if (body.attachments && body.attachments.length > 0) {
+    const lastUserIdx = messages.length - 1 - [...messages].reverse().findIndex(m => m.role === 'user');
+    if (lastUserIdx >= 0 && lastUserIdx < messages.length) {
+      const lastUser = messages[lastUserIdx];
+      const textContent = typeof lastUser.content === 'string' ? lastUser.content : '';
+      const contentParts: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+
+      if (textContent) {
+        contentParts.push({ type: 'text', text: textContent });
+      }
+
+      for (const att of body.attachments) {
+        contentParts.push({
+          type: 'image_url',
+          image_url: { url: att.base64 },
+        });
+      }
+
+      messages[lastUserIdx] = { ...lastUser, content: contentParts as any };
+    }
   }
 
   // Resolve LLM provider

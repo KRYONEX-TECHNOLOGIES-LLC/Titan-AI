@@ -1,13 +1,16 @@
 /**
- * NextAuth v5 Route Handler
- * Handles all /api/auth/* routes automatically:
- *   GET  /api/auth/session
- *   GET  /api/auth/signin
- *   GET  /api/auth/signout
- *   GET  /api/auth/callback/github
- *   GET  /api/auth/csrf
- *   GET  /api/auth/providers
+ * Legacy NextAuth route -- redirects to Supabase Auth.
+ * Kept for backwards compatibility with any stale bookmarks or links.
  */
-import { handlers } from '@/lib/auth';
 
-export const { GET, POST } = handlers;
+import { NextResponse } from 'next/server';
+
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  return NextResponse.redirect(new URL('/auth/signin', url.origin));
+}
+
+export async function POST(request: Request) {
+  const url = new URL(request.url);
+  return NextResponse.redirect(new URL('/auth/signin', url.origin));
+}

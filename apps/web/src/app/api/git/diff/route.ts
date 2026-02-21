@@ -3,13 +3,13 @@
  * Returns unified diff for a file or all changes.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { simpleGit } from 'simple-git';
 import path from 'path';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const workspacePath = searchParams.get('path');

@@ -2,7 +2,7 @@
  * POST /api/repos/clone — Clone a GitHub repository to the server workspace
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getCurrentUser, getGithubToken } from '@/lib/auth';
 import { buildAuthenticatedCloneUrl } from '@/lib/github-client';
 import { upsertWorkspace } from '@/lib/db/client';
 import simpleGit from 'simple-git';
@@ -13,13 +13,13 @@ import { randomUUID } from 'crypto';
 const WORKSPACES_DIR = process.env.WORKSPACES_DIR ?? path.resolve(process.cwd(), '.titan', 'workspaces');
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const token = (session.user as { githubToken?: string }).githubToken;
-  const userId = session.user.id;
+  const token = await getGithubToken();
+  const userId = user.id;
 
   if (!token) {
     return NextResponse.json({ error: 'No GitHub token in session' }, { status: 401 });

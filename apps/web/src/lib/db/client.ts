@@ -29,34 +29,70 @@ export function getSupabase(): SupabaseClient {
 // ── User management ──
 
 interface UpsertUserParams {
-  githubId: number;
+  githubId?: number;
   username: string;
   name: string | null;
   email: string | null;
   avatarUrl: string | null;
   profileUrl?: string | null;
+  provider?: string;
+  providerUserId?: string;
+  isCreator?: boolean;
+  role?: string;
+  emailVerified?: boolean;
 }
 
 export async function upsertUser(params: UpsertUserParams) {
   try {
     const sb = getSupabase();
-    const { error } = await sb
-      .from('users')
-      .upsert(
-        {
-          github_id: params.githubId,
-          username: params.username,
-          name: params.name,
-          email: params.email,
-          avatar_url: params.avatarUrl,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'github_id' }
-      );
 
-    if (error) throw error;
+    const row: Record<string, unknown> = {
+      username: params.username,
+      name: params.name,
+      email: params.email,
+      avatar_url: params.avatarUrl,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (params.provider) row.provider = params.provider;
+    if (params.providerUserId) row.provider_user_id = params.providerUserId;
+    if (params.emailVerified !== undefined) row.email_verified = params.emailVerified;
+    if (params.isCreator !== undefined) row.is_creator = params.isCreator;
+    if (params.role) row.role = params.role;
+
+    if (params.githubId) {
+      row.github_id = params.githubId;
+      const { error } = await sb
+        .from('users')
+        .upsert(row, { onConflict: 'github_id' });
+      if (error) throw error;
+    } else {
+      const { error } = await sb
+        .from('users')
+        .upsert(row, { onConflict: 'provider,provider_user_id' });
+      if (error) throw error;
+    }
   } catch (e) {
     console.warn('[db] upsertUser failed (non-blocking):', (e as Error).message);
+  }
+}
+
+/**
+ * Get a user row by their Supabase auth provider user ID.
+ */
+export async function getUserByProviderId(provider: string, providerUserId: string) {
+  try {
+    const sb = getSupabase();
+    const { data, error } = await sb
+      .from('users')
+      .select('*')
+      .eq('provider', provider)
+      .eq('provider_user_id', providerUserId)
+      .single();
+    if (error || !data) return null;
+    return data;
+  } catch {
+    return null;
   }
 }
 

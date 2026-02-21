@@ -4,13 +4,13 @@
  * DELETE /api/git/branches         — Delete a branch
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { simpleGit } from 'simple-git';
 import path from 'path';
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const workspacePath = searchParams.get('path');
@@ -52,8 +52,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json() as {
     path: string;
@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json() as {
     path: string;
@@ -112,8 +112,8 @@ export async function DELETE(req: NextRequest) {
 
 // PATCH — checkout existing branch
 export async function PATCH(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json() as { path: string; name: string };
   const { path: workspacePath, name: branchName } = body;

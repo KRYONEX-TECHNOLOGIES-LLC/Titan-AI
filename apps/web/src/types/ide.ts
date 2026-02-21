@@ -40,10 +40,20 @@ export interface ChangedFile {
   color: string;
 }
 
+export interface FileAttachment {
+  id: string;
+  file: File;
+  previewUrl: string;
+  base64?: string;
+  mediaType: string;
+  status: 'pending' | 'ready' | 'error';
+}
+
 export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'tool';
   content: string;
+  attachments?: { mediaType: string; base64: string }[];
   time?: string;
   streaming?: boolean;
   streamingModel?: string;

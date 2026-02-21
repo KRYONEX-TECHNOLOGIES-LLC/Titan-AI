@@ -5,13 +5,13 @@
  * If files is omitted, stages all changes.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { simpleGit } from 'simple-git';
 import path from 'path';
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
@@ -31,9 +31,9 @@ export async function POST(req: NextRequest) {
   try {
     const git = simpleGit(path.resolve(workspacePath));
 
-    // Configure git identity from session if not already set
-    const username = (session.user as { username?: string }).username ?? session.user.name ?? 'Titan AI User';
-    const email = session.user.email ?? `${username}@titan.ai`;
+    // Configure git identity from user if not already set
+    const username = user.username ?? user.name ?? 'Titan AI User';
+    const email = user.email ?? `${username}@titan.ai`;
     await git.addConfig('user.name', username, false, 'local');
     await git.addConfig('user.email', email, false, 'local');
 

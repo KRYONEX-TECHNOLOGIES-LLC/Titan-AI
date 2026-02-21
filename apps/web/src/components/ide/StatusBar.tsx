@@ -25,6 +25,7 @@ interface StatusBarProps {
   activeModelLabel: string;
   onGitClick: () => void;
   onSettingsClick: () => void;
+  creatorModeActive?: boolean;
 }
 
 export default function StatusBar({
@@ -40,6 +41,7 @@ export default function StatusBar({
   activeModelLabel,
   onGitClick,
   onSettingsClick,
+  creatorModeActive,
 }: StatusBarProps) {
   return (
     <div className={`h-[22px] ${midnightActive ? 'bg-purple-600' : 'bg-[#007acc]'} flex items-center justify-between px-3 text-[11px] text-white shrink-0 transition-colors`}>
@@ -47,7 +49,13 @@ export default function StatusBar({
         <span className="flex items-center gap-1 cursor-pointer hover:bg-[#0098ff] px-1 rounded" onClick={onGitClick}>
           <GitIcon size={12} /> {gitBranch}
         </span>
-        <span>{unsavedCount > 0 ? `${unsavedCount} unsaved` : '✓'}</span>
+        <span>{unsavedCount > 0 ? `${unsavedCount} unsaved` : '\u2713'}</span>
+        {creatorModeActive && (
+          <span className="flex items-center gap-1 bg-amber-500/30 text-amber-200 px-1.5 rounded font-medium text-[10px]">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 15l-2 5l9-11h-5l2-5L7 15h5z"/></svg>
+            Creator Mode
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-4">
         <MidnightToggle isActive={midnightActive} onToggle={onMidnightToggle} />

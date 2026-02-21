@@ -1,81 +1,82 @@
 /**
- * Titan AI - NextAuth v5 Configuration (Server-side)
- * GitHub OAuth with JWT sessions + SQLite persistence
- * This file is for SERVER-SIDE use only (not Edge Runtime).
+ * Titan AI - Auth helpers (Supabase Auth)
+ * Server-side session and user helpers.
  */
 
-import NextAuth, { type DefaultSession } from 'next-auth';
-import { authConfig } from './auth.config';
-import { upsertUser } from '@/lib/db/client';
+import { createServerSupabase, createAdminSupabase } from '@/lib/supabase/server';
 
-// ── Type augmentation so TypeScript knows about our extra session fields ──
-declare module 'next-auth' {
-  interface Session {
-    user: {
-      id: string;
-      username: string;
-      githubToken: string;
-      avatarUrl: string;
-    } & DefaultSession['user'];
+export interface TitanUser {
+  id: string;
+  email: string | null;
+  username: string;
+  name: string | null;
+  avatarUrl: string | null;
+  isCreator: boolean;
+  role: string;
+  creatorModeOn: boolean;
+  provider: string;
+}
+
+/**
+ * Get the current authenticated user from Supabase session.
+ * Returns null if not authenticated.
+ */
+export async function getCurrentUser(): Promise<TitanUser | null> {
+  try {
+    const supabase = await createServerSupabase();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) return null;
+
+    const adminSb = createAdminSupabase();
+    const { data: dbUser } = await adminSb
+      .from('users')
+      .select('*')
+      .eq('provider_user_id', user.id)
+      .single();
+
+    if (dbUser) {
+      return {
+        id: String(dbUser.id),
+        email: dbUser.email,
+        username: dbUser.username || user.email?.split('@')[0] || 'user',
+        name: dbUser.name,
+        avatarUrl: dbUser.avatar_url,
+        isCreator: dbUser.is_creator || false,
+        role: dbUser.role || 'user',
+        creatorModeOn: dbUser.creator_mode_on || false,
+        provider: dbUser.provider || 'unknown',
+      };
+    }
+
+    // Fallback: return basic info from Supabase auth if DB row not found
+    return {
+      id: user.id,
+      email: user.email || null,
+      username: user.user_metadata?.user_name || user.email?.split('@')[0] || 'user',
+      name: user.user_metadata?.full_name || null,
+      avatarUrl: user.user_metadata?.avatar_url || null,
+      isCreator: false,
+      role: 'user',
+      creatorModeOn: false,
+      provider: user.app_metadata?.provider || 'unknown',
+    };
+  } catch (err) {
+    console.error('[auth] getCurrentUser failed:', err);
+    return null;
   }
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  ...authConfig,
-  callbacks: {
-    ...authConfig.callbacks,
-    /**
-     * Called when a user signs in.
-     * Upserts the user in our database (server-side only).
-     */
-    async signIn({ user, account, profile }) {
-      if (account?.provider !== 'github') return false;
-      if (!profile || !account?.access_token) return false;
-
-      // Try to persist user to database, but don't block sign-in if it fails
-      // (JWT sessions work independently of database)
-      try {
-        const githubProfile = profile as unknown as {
-          id: number;
-          login: string;
-          name?: string;
-          email?: string;
-          avatar_url?: string;
-          html_url?: string;
-        };
-
-        await upsertUser({
-          githubId: githubProfile.id,
-          username: githubProfile.login,
-          name: githubProfile.name ?? null,
-          email: githubProfile.email ?? user.email ?? null,
-          avatarUrl: githubProfile.avatar_url ?? null,
-          profileUrl: githubProfile.html_url ?? null,
-        });
-      } catch (err) {
-        // Log but don't fail sign-in - database is optional
-        console.error('[Auth] Failed to persist user to database:', err);
-      }
-
-      return true;
-    },
-  },
-});
-
 /**
- * Server-side helper: get the current session's GitHub token.
- * Use this in API routes to make authenticated GitHub API calls.
+ * Get the GitHub access token for the current user (if they signed in with GitHub).
+ * Used for GitHub API calls (repos, commits, etc.).
  */
 export async function getGithubToken(): Promise<string | null> {
-  const session = await auth();
-  return (session?.user?.githubToken as string) ?? null;
-}
-
-/**
- * Server-side helper: get full user from the current session.
- */
-export async function getCurrentUser() {
-  const session = await auth();
-  if (!session?.user) return null;
-  return session.user;
+  try {
+    const supabase = await createServerSupabase();
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.provider_token || null;
+  } catch {
+    return null;
+  }
 }

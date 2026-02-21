@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/providers/session-provider';
 
 interface GitHubRepo {
   id: number;
@@ -31,7 +31,8 @@ const LANG_COLORS: Record<string, string> = {
 };
 
 export default function CloneRepoDialog({ isOpen, onClose, onCloneComplete }: Props) {
-  const { data: session } = useSession();
+  const { user: sessionUser } = useSession();
+  const session = sessionUser ? { user: sessionUser } : null;
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [filtered, setFiltered] = useState<GitHubRepo[]>([]);
   const [search, setSearch] = useState('');
@@ -151,7 +152,7 @@ export default function CloneRepoDialog({ isOpen, onClose, onCloneComplete }: Pr
             {session?.user && (
               <p className="text-[12px] text-[#808080] mt-0.5">
                 Signed in as{' '}
-                <span className="text-[#cccccc]">@{(session.user as { username?: string }).username}</span>
+                <span className="text-[#cccccc]">@{session?.user?.username}</span>
                 {' '}— {repos.length} repositories
               </p>
             )}

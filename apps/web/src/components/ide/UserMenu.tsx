@@ -1,14 +1,13 @@
 'use client';
 
-import { useSession, signOut } from 'next-auth/react';
+import { useSession } from '@/providers/session-provider';
 import { useState, useRef, useEffect } from 'react';
 
 export default function UserMenu() {
-  const { data: session, status } = useSession();
+  const { user, status, signOut } = useSession();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -25,23 +24,22 @@ export default function UserMenu() {
     );
   }
 
-  if (!session?.user) {
+  if (!user) {
     return (
       <a
         href="/auth/signin"
         className="flex items-center gap-1.5 px-2.5 py-1 bg-[#007acc] hover:bg-[#005a99] text-white rounded-full text-[12px] font-medium transition-colors"
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/>
         </svg>
         Sign in
       </a>
     );
   }
 
-  const user = session.user;
-  const username = (user as { username?: string }).username || user.name || 'User';
-  const avatarUrl = (user as { avatarUrl?: string }).avatarUrl || user.image || '';
+  const username = user.username || user.name || 'User';
+  const avatarUrl = user.avatarUrl || '';
 
   return (
     <div ref={ref} className="relative">
@@ -71,7 +69,6 @@ export default function UserMenu() {
 
       {open && (
         <div className="absolute top-full right-0 mt-1.5 w-[220px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-2xl z-[9999] overflow-hidden">
-          {/* User info header */}
           <div className="px-4 py-3 border-b border-[#3c3c3c] flex items-center gap-3">
             {avatarUrl ? (
               <img src={avatarUrl} alt={username} className="w-9 h-9 rounded-full" />
@@ -82,34 +79,35 @@ export default function UserMenu() {
             )}
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-medium text-white truncate">{user.name || username}</div>
-              <div className="text-[11px] text-[#808080] truncate">@{username}</div>
+              <div className="text-[11px] text-[#808080] truncate">{user.email || `@${username}`}</div>
             </div>
           </div>
 
-          {/* Menu items */}
           <div className="py-1">
-            <a
-              href={`https://github.com/${username}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-[#cccccc] hover:bg-[#3c3c3c] transition-colors"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-              </svg>
-              GitHub Profile
-              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="ml-auto text-[#555]">
-                <path d="M3 3h8v2H5.5l7.5 7.5-1.5 1.5L4 6.5V9H2V3z"/>
-              </svg>
-            </a>
+            {user.provider === 'github' && (
+              <a
+                href={`https://github.com/${username}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-[#cccccc] hover:bg-[#3c3c3c] transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+                </svg>
+                GitHub Profile
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="ml-auto text-[#555]">
+                  <path d="M3 3h8v2H5.5l7.5 7.5-1.5 1.5L4 6.5V9H2V3z"/>
+                </svg>
+              </a>
+            )}
 
             <div className="h-px bg-[#3c3c3c] my-1" />
 
             <button
               onClick={() => {
                 setOpen(false);
-                signOut({ callbackUrl: '/auth/signin' });
+                signOut();
               }}
               className="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] text-[#f85149] hover:bg-[#3c3c3c] transition-colors"
             >

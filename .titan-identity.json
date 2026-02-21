@@ -1,0 +1,6 @@
+{
+  "project": "titan-ai",
+  "version": "current",
+  "is_self": true,
+  "description": "Titan AI IDE -- marker file for self-work context detection"
+}

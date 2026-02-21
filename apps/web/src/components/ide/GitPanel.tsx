@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/providers/session-provider';
 import { isElectron, electronAPI } from '@/lib/electron';
 
 interface GitStatus {
@@ -46,7 +46,7 @@ interface Props {
 const POLL_INTERVAL = 5000;
 
 export default function GitPanel({ workspacePath }: Props) {
-  const { data: session } = useSession();
+  const { user: _sessionUser } = useSession();
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [commitMessage, setCommitMessage] = useState('');
@@ -309,14 +309,14 @@ export default function GitPanel({ workspacePath }: Props) {
     );
   }
 
-  if (!session) {
+  if (!_sessionUser) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-[#666] px-4 text-center">
         <div className="text-4xl mb-3 opacity-20">🔒</div>
         <div className="text-[13px]">Sign in required</div>
-        <div className="text-[11px] text-[#555] mt-1 mb-4">Sign in with GitHub to use git features</div>
+        <div className="text-[11px] text-[#555] mt-1 mb-4">Sign in to use git features</div>
         <a href="/auth/signin" className="px-3 py-1.5 bg-[#007acc] text-white rounded text-[12px] hover:bg-[#005a99]">
-          Sign in with GitHub
+          Sign in
         </a>
       </div>
     );

@@ -1,18 +1,18 @@
 /**
  * Server-side API route auth helper.
- * Wraps NextAuth session check for API routes that execute dangerous operations.
+ * Validates Supabase session for API routes that execute operations.
  */
 
-import { auth } from '@/lib/auth';
+import { getCurrentUser, type TitanUser } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 
-export async function requireAuth(): Promise<{ authorized: true; userId: string } | NextResponse> {
+export async function requireAuth(): Promise<{ authorized: true; userId: string; user: TitanUser } | NextResponse> {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
+    const user = await getCurrentUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    return { authorized: true, userId: session.user.id };
+    return { authorized: true, userId: user.id, user };
   } catch {
     return NextResponse.json({ error: 'Auth check failed' }, { status: 401 });
   }

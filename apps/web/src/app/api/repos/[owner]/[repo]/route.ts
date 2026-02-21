@@ -2,19 +2,19 @@
  * GET /api/repos/[owner]/[repo] — Get repo details and branches
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
+import { getCurrentUser, getGithubToken } from '@/lib/auth';
 import { getRepo, listBranches } from '@/lib/github-client';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ owner: string; repo: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const token = (session.user as { githubToken?: string }).githubToken;
+  const token = await getGithubToken();
   if (!token) {
     return NextResponse.json({ error: 'No GitHub token' }, { status: 401 });
   }

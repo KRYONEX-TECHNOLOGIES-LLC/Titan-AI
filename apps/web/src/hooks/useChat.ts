@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock } from '@/types/ide';
+import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock, FileAttachment } from '@/types/ide';
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
 import { useAgentTools, toolCallSummary } from './useAgentTools';
 import { useParallelChat } from './useParallelChat';
@@ -98,6 +98,7 @@ export function useChat({
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const thinkingStartRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
@@ -193,6 +194,50 @@ export function useChat({
     } catch { return ''; }
   }
 
+  const addAttachments = useCallback((files: File[]) => {
+    const imageFiles = files.filter(f => f.type.startsWith('image/'));
+    const newAttachments: FileAttachment[] = imageFiles.map(file => ({
+      id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      mediaType: file.type,
+      status: 'pending' as const,
+    }));
+
+    for (const att of newAttachments) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        setAttachments(prev => prev.map(a =>
+          a.id === att.id ? { ...a, base64, status: 'ready' as const } : a
+        ));
+      };
+      reader.onerror = () => {
+        setAttachments(prev => prev.map(a =>
+          a.id === att.id ? { ...a, status: 'error' as const } : a
+        ));
+      };
+      reader.readAsDataURL(att.file);
+    }
+
+    setAttachments(prev => [...prev, ...newAttachments]);
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments(prev => {
+      const att = prev.find(a => a.id === id);
+      if (att) URL.revokeObjectURL(att.previewUrl);
+      return prev.filter(a => a.id !== id);
+    });
+  }, []);
+
+  const clearAttachments = useCallback(() => {
+    setAttachments(prev => {
+      prev.forEach(a => URL.revokeObjectURL(a.previewUrl));
+      return [];
+    });
+  }, []);
+
   async function fetchGitStatus(): Promise<{ branch?: string; modified?: string[]; untracked?: string[]; staged?: string[] } | undefined> {
     try {
       const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
@@ -233,6 +278,7 @@ export function useChat({
     sessionId: string,
     messageId: string,
     abortSignal: AbortSignal,
+    messageAttachments?: { mediaType: string; base64: string }[],
   ): Promise<{ content: string; toolCalls: StreamToolCall[] }> {
     const gitStatus = await fetchGitStatus();
     const fileTree = serializeFileTree();
@@ -247,6 +293,7 @@ export function useChat({
       body: JSON.stringify({
         messages: trimmedHistory,
         model: activeModel,
+        attachments: messageAttachments,
         codeContext: {
           file: activeTab,
           content: (editorInstance?.getValue() || fileContents[activeTab] || '').slice(0, 8000),
@@ -371,11 +418,17 @@ export function useChat({
   }
 
   const handleSend = useCallback(async () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() && attachments.length === 0) return;
     const msg = chatInput.trim();
     setChatInput('');
     abortedRef.current = false;
     agentTools.reset();
+
+    // Collect ready attachments before clearing
+    const readyAttachments = attachments
+      .filter(a => a.status === 'ready' && a.base64)
+      .map(a => ({ mediaType: a.mediaType, base64: a.base64! }));
+    clearAttachments();
 
     const sessionId = activeSessionId;
     const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -392,6 +445,7 @@ export function useChat({
     const userMessage: ChatMessage = {
       role: 'user',
       content: userContent,
+      attachments: readyAttachments.length > 0 ? readyAttachments : undefined,
       time: 'just now',
     };
 
@@ -449,6 +503,7 @@ export function useChat({
             sessionId,
             streamMessageId,
             controller.signal,
+            loopIterations === 1 ? readyAttachments : undefined,
           );
         } catch (err) {
           if (abortedRef.current || controller.signal.aborted) break;
@@ -648,7 +703,7 @@ export function useChat({
       abortControllerRef.current = null;
     }
   }, [
-    chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel,
+    chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, attachments, clearAttachments,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
     appendCodeDiffToMessage, agentTools, flushTokens, workspacePath, openTabs, terminalHistory,
     cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop, osPlatform,
@@ -721,5 +776,9 @@ export function useChat({
     handleSend,
     handleStop,
     handleKeyDown,
+    attachments,
+    addAttachments,
+    removeAttachment,
+    clearAttachments,
   };
 }
