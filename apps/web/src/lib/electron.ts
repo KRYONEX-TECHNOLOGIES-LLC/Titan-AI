@@ -58,6 +58,17 @@ export interface ElectronAPI {
   };
   auth: {
     signInWithGithub: () => Promise<{ token: string; user: unknown }>;
+    startDeviceFlow: () => Promise<{
+      deviceCode: string; userCode: string; verificationUri: string;
+      expiresIn: number; interval: number;
+    }>;
+    pollDeviceFlow: (deviceCode: string) => Promise<
+      | { status: 'pending' }
+      | { status: 'slow_down' }
+      | { status: 'expired' }
+      | { status: 'error'; error: string }
+      | { status: 'success'; session: { token: string; user: unknown } }
+    >;
     getSession: () => Promise<{ token: string; user: unknown } | null>;
     signOut: () => Promise<void>;
   };

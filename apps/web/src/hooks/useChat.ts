@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock, FileAttachment } from '@/types/ide';
+import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock, GeneratedImage, FileAttachment } from '@/types/ide';
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
 import { useAgentTools, toolCallSummary } from './useAgentTools';
 import { useParallelChat } from './useParallelChat';
@@ -176,6 +176,17 @@ export function useChat({
     updateMessage(sessionId, messageId, (msg) => ({
       ...msg,
       codeDiffs: [...(msg.codeDiffs || []), diff],
+    }));
+  }, [updateMessage]);
+
+  const appendGeneratedImageToMessage = useCallback((
+    sessionId: string,
+    messageId: string,
+    image: GeneratedImage
+  ) => {
+    updateMessage(sessionId, messageId, (msg) => ({
+      ...msg,
+      generatedImages: [...(msg.generatedImages || []), image],
     }));
   }, [updateMessage]);
 
@@ -598,6 +609,14 @@ export function useChat({
               code: tc.args.content as string,
               status: 'applied',
             });
+          } else if (tc.tool === 'generate_image' && result.success && result.metadata?.b64_json) {
+            appendGeneratedImageToMessage(sessionId, streamMessageId, {
+              id: `img-${tc.id}`,
+              prompt: result.metadata.prompt as string || tc.args.prompt as string,
+              revisedPrompt: result.metadata.revised_prompt as string || '',
+              b64: result.metadata.b64_json as string,
+              size: result.metadata.size as string || '1024x1024',
+            });
           }
 
           const resultOutput = result.success
@@ -707,7 +726,7 @@ export function useChat({
   }, [
     chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, attachments, clearAttachments,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
-    appendCodeDiffToMessage, agentTools, flushTokens, workspacePath, openTabs, terminalHistory,
+    appendCodeDiffToMessage, appendGeneratedImageToMessage, agentTools, flushTokens, workspacePath, openTabs, terminalHistory,
     cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop, osPlatform,
   ]);
 

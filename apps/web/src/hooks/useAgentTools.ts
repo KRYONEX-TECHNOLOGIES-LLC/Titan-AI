@@ -182,6 +182,36 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           return { success: true, output };
         }
 
+        case 'generate_image': {
+          const prompt = args.prompt as string;
+          if (!prompt) return { success: false, output: '', error: 'prompt is required' };
+          const res = await fetch('/api/image/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt,
+              size: args.size || '1024x1024',
+              quality: args.quality || 'standard',
+              style: args.style || 'vivid',
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: 'Failed' }));
+            return { success: false, output: '', error: (err as { error: string }).error || 'Image generation failed' };
+          }
+          const imgData = await res.json() as { b64_json: string; revised_prompt: string; size: string };
+          return {
+            success: true,
+            output: `Image generated successfully. Revised prompt: ${imgData.revised_prompt}`,
+            metadata: {
+              b64_json: imgData.b64_json,
+              revised_prompt: imgData.revised_prompt,
+              size: imgData.size || args.size || '1024x1024',
+              prompt,
+            },
+          };
+        }
+
         default:
           return { success: false, output: '', error: `Unknown tool: ${tool}` };
       }
@@ -231,6 +261,8 @@ export function toolCallSummary(tool: string, args: Record<string, unknown>): st
       return `Lint check ${args.path}`;
     case 'semantic_search':
       return `Semantic search "${args.query}"`;
+    case 'generate_image':
+      return `Generate image: "${(args.prompt as string || '').slice(0, 60)}"`;
     default:
       return tool;
   }

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ToolCallBlock as ToolCallBlockType, CodeDiffBlock as CodeDiffBlockType } from '@/types/ide';
+import type { ToolCallBlock as ToolCallBlockType, CodeDiffBlock as CodeDiffBlockType, GeneratedImage } from '@/types/ide';
 
 interface MessageAttachment {
   mediaType: string;
@@ -25,6 +25,7 @@ interface ChatMessageProps {
   activeModel: string;
   toolCalls?: ToolCallBlockType[];
   codeDiffs?: CodeDiffBlockType[];
+  generatedImages?: GeneratedImage[];
   onRetry?: (message: string) => void;
   onApplyCode?: (code: string, filename?: string) => void;
   onApplyDiff?: (diffId: string) => void;
@@ -612,10 +613,85 @@ function ImageAttachments({ attachments }: { attachments: MessageAttachment[] })
   );
 }
 
+/* ═══ GENERATED IMAGES (assistant output) ═══ */
+function GeneratedImagesDisplay({ images }: { images: GeneratedImage[] }) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  const downloadImage = (b64: string, prompt: string) => {
+    const a = document.createElement('a');
+    a.href = `data:image/png;base64,${b64}`;
+    a.download = `titan-${prompt.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+    a.click();
+  };
+
+  return (
+    <>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '8px 0' }}>
+        {images.map((img) => (
+          <div key={img.id} style={{
+            background: '#161616', border: '1px solid #2a2a2a', borderRadius: 10,
+            overflow: 'hidden', maxWidth: 420,
+          }}>
+            <div
+              style={{ cursor: 'pointer', position: 'relative' }}
+              onClick={() => setLightboxSrc(`data:image/png;base64,${img.b64}`)}
+            >
+              <img
+                src={`data:image/png;base64,${img.b64}`}
+                alt={img.revisedPrompt || img.prompt}
+                style={{ width: '100%', display: 'block', borderRadius: '10px 10px 0 0' }}
+              />
+              <div style={{
+                position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4,
+              }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); downloadImage(img.b64, img.prompt); }}
+                  style={{
+                    width: 28, height: 28, borderRadius: 6, background: 'rgba(0,0,0,0.7)',
+                    border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', cursor: 'pointer', color: '#ccc',
+                  }}
+                  title="Download image"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setLightboxSrc(`data:image/png;base64,${img.b64}`); }}
+                  style={{
+                    width: 28, height: 28, borderRadius: 6, background: 'rgba(0,0,0,0.7)',
+                    border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', cursor: 'pointer', color: '#ccc',
+                  }}
+                  title="View full size"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div style={{ padding: '8px 12px' }}>
+              <div style={{ fontSize: 11, color: '#808080', lineHeight: 1.4 }}>
+                {img.revisedPrompt || img.prompt}
+              </div>
+              <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>
+                DALL-E 3 -- {img.size}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 /* ═══ MAIN COMPONENT ═══ */
 export default function ChatMessage({
   role, content, attachments, thinking, thinkingTime, streaming,
-  isError, retryMessage, activeModel, toolCalls, codeDiffs,
+  isError, retryMessage, activeModel, toolCalls, codeDiffs, generatedImages,
   onRetry, onApplyCode, onApplyDiff, onRejectDiff,
 }: ChatMessageProps) {
 
@@ -712,6 +788,11 @@ export default function ChatMessage({
             <CodeDiffCard key={diff.id} diff={diff} onApply={onApplyDiff} onReject={onRejectDiff} />
           ))}
         </div>
+      )}
+
+      {/* ── Generated images ── */}
+      {generatedImages && generatedImages.length > 0 && (
+        <GeneratedImagesDisplay images={generatedImages} />
       )}
 
       {/* ── Text content ── */}

@@ -728,7 +728,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="px-3 py-3">
           {currentSession.messages.map((msg, i) => (
-            <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} attachments={msg.attachments} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} onRetry={onRetry} onApplyCode={onApplyCode} />
+            <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} attachments={msg.attachments} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} generatedImages={msg.generatedImages} onRetry={onRetry} onApplyCode={onApplyCode} />
           ))}
           {isThinking && !currentSession.messages.some(m => m.streaming) && (
             <div className="mb-4 flex items-center gap-2 px-1">

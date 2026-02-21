@@ -36,7 +36,9 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
   const [isListening, setIsListening] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [isSupported, setIsSupported] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const restartCountRef = useRef(0);
 
   useEffect(() => {
     const SpeechRecognition = typeof window !== 'undefined'
@@ -45,13 +47,26 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     setIsSupported(!!SpeechRecognition);
   }, []);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch { /* ignore */ }
+        recognitionRef.current = null;
+      }
+    };
+  }, []);
+
   const startListening = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     if (recognitionRef.current) {
-      recognitionRef.current.abort();
+      try { recognitionRef.current.abort(); } catch { /* ignore */ }
     }
+
+    setErrorMessage(null);
+    restartCountRef.current = 0;
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
@@ -61,6 +76,7 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     recognition.onstart = () => {
       setIsListening(true);
       setInterimText('');
+      setErrorMessage(null);
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -78,19 +94,54 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
 
       if (final) {
         onTranscript(final);
+        restartCountRef.current = 0;
       }
       setInterimText(interim);
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       console.warn('[voice] Speech recognition error:', event.error);
-      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        setIsListening(false);
-        setInterimText('');
+
+      switch (event.error) {
+        case 'not-allowed':
+        case 'service-not-allowed':
+          setIsListening(false);
+          setInterimText('');
+          setErrorMessage('Microphone access denied. Check your system permissions.');
+          break;
+        case 'network':
+          setIsListening(false);
+          setInterimText('');
+          setErrorMessage('Network error. Speech recognition requires an internet connection.');
+          break;
+        case 'no-speech':
+          // Auto-restart if user just hasn't spoken yet
+          if (restartCountRef.current < 3) {
+            restartCountRef.current++;
+          } else {
+            setIsListening(false);
+            setInterimText('');
+          }
+          break;
+        case 'aborted':
+          break;
+        default:
+          setIsListening(false);
+          setInterimText('');
+          setErrorMessage(`Speech error: ${event.error}`);
       }
     };
 
     recognition.onend = () => {
+      // Auto-restart for continuous listening (unless manually stopped)
+      if (recognitionRef.current === recognition && restartCountRef.current < 3) {
+        try {
+          recognition.start();
+          return;
+        } catch {
+          // Fall through to stop
+        }
+      }
       setIsListening(false);
       setInterimText('');
     };
@@ -102,13 +153,15 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     } catch (err) {
       console.error('[voice] Failed to start recognition:', err);
       setIsListening(false);
+      setErrorMessage('Failed to start speech recognition.');
     }
   }, [onTranscript]);
 
   const stopListening = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
+    const rec = recognitionRef.current;
+    recognitionRef.current = null;
+    if (rec) {
+      try { rec.stop(); } catch { /* ignore */ }
     }
     setIsListening(false);
     setInterimText('');
@@ -126,6 +179,7 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     isListening,
     interimText,
     isSupported,
+    errorMessage,
     startListening,
     stopListening,
     toggleListening,

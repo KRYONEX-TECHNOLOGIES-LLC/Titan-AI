@@ -215,8 +215,9 @@ export default function TitleBar(props: TitleBarProps) {
 }
 
 function GitHubConnectButton() {
-  const { user, isConnected, isLoading, signIn, signOut } = useGitHubAuth();
+  const { user, isConnected, isLoading, deviceFlow, signIn, signOut, cancelDeviceFlow } = useGitHubAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -227,10 +228,66 @@ function GitHubConnectButton() {
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
-  if (isLoading) {
+  const copyCode = () => {
+    if (deviceFlow?.userCode) {
+      navigator.clipboard.writeText(deviceFlow.userCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  if (isLoading && !deviceFlow) {
     return <div className="w-6 h-6 rounded-full bg-[#3c3c3c] animate-pulse" />;
   }
 
+  // Device flow in progress -- show code entry UI
+  if (deviceFlow) {
+    return (
+      <div ref={ref} className="relative">
+        <button
+          onClick={(e) => { e.stopPropagation(); setDropdownOpen(!dropdownOpen); }}
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1a3a1a] hover:bg-[#1f4a1f] text-[#3fb950] rounded-full text-[12px] font-medium transition-colors border border-[#3fb950]/30 animate-pulse"
+          title="Waiting for GitHub authorization..."
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+          </svg>
+          {deviceFlow.userCode}
+        </button>
+
+        {dropdownOpen && (
+          <div className="absolute top-full right-0 mt-1.5 w-[280px] bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg shadow-2xl z-[9999] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[#3c3c3c] text-center">
+              <div className="text-[10px] text-[#808080] uppercase tracking-wider mb-2">Enter this code on GitHub</div>
+              <button onClick={copyCode} className="px-4 py-2 bg-[#0d1117] border border-[#30363d] rounded-md hover:border-[#3fb950] transition-colors">
+                <span className="text-[20px] font-mono font-bold tracking-[6px] text-white">{deviceFlow.userCode}</span>
+              </button>
+              <div className="mt-2 text-[11px] text-[#3fb950]">
+                {copied ? 'Copied!' : 'Click to copy'}
+              </div>
+            </div>
+            <div className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-[#f0883e] animate-pulse" />
+                <span className="text-[12px] text-[#f0883e]">Waiting for authorization...</span>
+              </div>
+              <div className="text-[11px] text-[#666] leading-relaxed">
+                A browser tab opened at github.com/login/device. Paste the code above and click Authorize.
+              </div>
+              <button
+                onClick={() => { cancelDeviceFlow(); setDropdownOpen(false); }}
+                className="mt-3 w-full px-3 py-1.5 text-[12px] text-[#f85149] bg-[#f8514910] hover:bg-[#f8514920] rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Not connected
   if (!isConnected) {
     return (
       <button
@@ -246,40 +303,40 @@ function GitHubConnectButton() {
     );
   }
 
+  // Connected -- show avatar + dropdown
   return (
     <div ref={ref} className="relative">
       <button
         onClick={(e) => { e.stopPropagation(); setDropdownOpen(!dropdownOpen); }}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-full hover:bg-[#3c3c3c] transition-colors border border-transparent hover:border-[#3c3c3c]"
-        title={`GitHub: ${user?.login}`}
+        className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-full hover:bg-[#3c3c3c] transition-colors border border-transparent hover:border-[#3c3c3c]"
+        title={`GitHub: @${user?.login}`}
       >
         {user?.avatar_url ? (
-          <img src={user.avatar_url} alt={user.login} className="w-5 h-5 rounded-full" />
+          <img src={user.avatar_url} alt={user.login} className="w-6 h-6 rounded-full ring-2 ring-[#3fb950]/40" />
         ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-[#e0e0e0]">
-            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-          </svg>
+          <div className="w-6 h-6 rounded-full bg-[#24292f] flex items-center justify-center text-white text-[10px] font-bold ring-2 ring-[#3fb950]/40">
+            {user?.login?.[0]?.toUpperCase() || 'G'}
+          </div>
         )}
-        <span className="text-[12px] text-[#3fb950] max-w-[80px] truncate hidden sm:block">@{user?.login}</span>
       </button>
 
       {dropdownOpen && (
-        <div className="absolute top-full right-0 mt-1.5 w-[220px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-2xl z-[9999] overflow-hidden">
+        <div className="absolute top-full right-0 mt-1.5 w-[240px] bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg shadow-2xl z-[9999] overflow-hidden">
           <div className="px-4 py-3 border-b border-[#3c3c3c]">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               {user?.avatar_url ? (
-                <img src={user.avatar_url} alt={user.login} className="w-8 h-8 rounded-full" />
+                <img src={user.avatar_url} alt={user.login} className="w-10 h-10 rounded-full ring-2 ring-[#3fb950]/30" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-[#24292f] flex items-center justify-center text-white text-sm font-bold">
+                <div className="w-10 h-10 rounded-full bg-[#24292f] flex items-center justify-center text-white text-sm font-bold">
                   {user?.login?.[0]?.toUpperCase() || 'G'}
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium text-white truncate">{user?.name || user?.login}</div>
+                <div className="text-[13px] font-semibold text-white truncate">{user?.name || user?.login}</div>
                 <div className="text-[11px] text-[#3fb950] truncate">@{user?.login}</div>
               </div>
+              <div className="w-2 h-2 rounded-full bg-[#3fb950]" title="Connected" />
             </div>
-            <div className="mt-2 text-[10px] text-[#666] uppercase tracking-wide">Git Connection</div>
           </div>
 
           <div className="py-1">
@@ -288,21 +345,17 @@ function GitHubConnectButton() {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setDropdownOpen(false)}
-              className="flex items-center gap-2.5 px-4 py-2 text-[13px] text-[#cccccc] hover:bg-[#3c3c3c] transition-colors"
+              className="flex items-center gap-2.5 px-4 py-2 text-[12px] text-[#cccccc] hover:bg-[#2a2a2a] transition-colors"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M3 3h8v2H5.5l7.5 7.5-1.5 1.5L4 6.5V9H2V3z"/>
-              </svg>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M3 3h8v2H5.5l7.5 7.5-1.5 1.5L4 6.5V9H2V3z"/></svg>
               View Profile
             </a>
-            <div className="h-px bg-[#3c3c3c] my-1" />
+            <div className="h-px bg-[#2a2a2a] my-0.5" />
             <button
               onClick={() => { setDropdownOpen(false); signOut(); }}
-              className="w-full flex items-center gap-2.5 px-4 py-2 text-[13px] text-[#f85149] hover:bg-[#3c3c3c] transition-colors"
+              className="w-full flex items-center gap-2.5 px-4 py-2 text-[12px] text-[#f85149] hover:bg-[#2a2a2a] transition-colors"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
-              </svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
               Disconnect GitHub
             </button>
           </div>

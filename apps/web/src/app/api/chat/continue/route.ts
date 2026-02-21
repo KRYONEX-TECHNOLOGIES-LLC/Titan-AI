@@ -185,6 +185,23 @@ const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'generate_image',
+      description: 'Generate an image using DALL-E 3. Use when the user explicitly asks for an image, diagram, icon, mockup, illustration, or visual asset. The generated image will be displayed inline in the chat. Provide a detailed, descriptive prompt for best results.',
+      parameters: {
+        type: 'object',
+        properties: {
+          prompt: { type: 'string', description: 'Detailed description of the image to generate. Be specific about subject, style, colors, composition.' },
+          size: { type: 'string', enum: ['1024x1024', '1792x1024', '1024x1792'], description: 'Image dimensions. 1024x1024 (square, default), 1792x1024 (landscape), 1024x1792 (portrait).' },
+          quality: { type: 'string', enum: ['standard', 'hd'], description: 'Image quality. "hd" produces finer details (costs more).' },
+          style: { type: 'string', enum: ['vivid', 'natural'], description: '"vivid" for hyper-real/dramatic, "natural" for more realistic/subdued.' },
+        },
+        required: ['prompt'],
+      },
+    },
+  },
 ];
 
 // ── The System Prompt ──

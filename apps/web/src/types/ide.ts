@@ -65,7 +65,16 @@ export interface ChatMessage {
   retryMessage?: string;
   toolCalls?: ToolCallBlock[];
   codeDiffs?: CodeDiffBlock[];
+  generatedImages?: GeneratedImage[];
   toolResultFor?: string;
+}
+
+export interface GeneratedImage {
+  id: string;
+  prompt: string;
+  revisedPrompt: string;
+  b64: string;
+  size: string;
 }
 
 export interface SearchResult {

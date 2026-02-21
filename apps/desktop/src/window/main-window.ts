@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, session } from 'electron';
 import * as path from 'path';
 
 interface WindowState {
@@ -13,6 +13,17 @@ interface WindowState {
 type AnyStore = { get: (key: string, fallback?: any) => any; set: (key: string, value: any) => void };
 
 export function createMainWindow(state: WindowState): BrowserWindow {
+  // Grant microphone/media permissions for speech recognition and audio input
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    const allowed = ['media', 'microphone', 'audio-capture', 'clipboard-read', 'clipboard-sanitized-write'];
+    callback(allowed.includes(permission));
+  });
+
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    const allowed = ['media', 'microphone', 'audio-capture', 'clipboard-read', 'clipboard-sanitized-write'];
+    return allowed.includes(permission);
+  });
+
   const win = new BrowserWindow({
     width: state.width,
     height: state.height,
