@@ -25,7 +25,7 @@ interface DeviceCodeResponse {
   interval: number;
 }
 
-const CLIENT_ID = process.env.GITHUB_CLIENT_ID || '';
+const CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23li34gxKFR3F8129J';
 
 function httpsPost(hostname: string, path: string, body: string, headers: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -65,13 +65,18 @@ export function registerAuthHandlers(ipcMain: IpcMain, _win: BrowserWindow): voi
       throw new Error('GITHUB_CLIENT_ID is not configured');
     }
 
-    const body = JSON.stringify({ client_id: CLIENT_ID, scope: 'user:email,repo' });
+    const body = `client_id=${encodeURIComponent(CLIENT_ID)}&scope=${encodeURIComponent('user:email,repo')}`;
     const raw = await httpsPost('github.com', '/login/oauth/device/code', body, {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',
     });
 
-    const parsed = JSON.parse(raw) as DeviceCodeResponse & { error?: string; error_description?: string };
+    let parsed: DeviceCodeResponse & { error?: string; error_description?: string };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error('GitHub returned invalid response. Make sure Device Flow is enabled in your GitHub OAuth App settings (github.com/settings/developers).');
+    }
     if (parsed.error) {
       throw new Error(parsed.error_description || parsed.error);
     }
@@ -91,18 +96,19 @@ export function registerAuthHandlers(ipcMain: IpcMain, _win: BrowserWindow): voi
   ipcMain.handle('auth:pollDeviceFlow', async (_e, deviceCode: string) => {
     if (!CLIENT_ID) throw new Error('GITHUB_CLIENT_ID is not configured');
 
-    const body = JSON.stringify({
-      client_id: CLIENT_ID,
-      device_code: deviceCode,
-      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-    });
+    const body = `client_id=${encodeURIComponent(CLIENT_ID)}&device_code=${encodeURIComponent(deviceCode)}&grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:device_code')}`;
 
     const raw = await httpsPost('github.com', '/login/oauth/access_token', body, {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',
     });
 
-    const parsed = JSON.parse(raw);
+    let parsed: Record<string, string>;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { status: 'error' as const, error: 'Invalid response from GitHub' };
+    }
 
     if (parsed.error === 'authorization_pending') {
       return { status: 'pending' as const };
