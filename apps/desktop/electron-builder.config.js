@@ -77,8 +77,10 @@ module.exports = {
 
   publish: [
     {
-      provider: 'generic',
-      url: process.env.TITAN_RELEASE_BASE_URL || 'https://download.titan.kryonextech.com',
+      provider: 'github',
+      owner: process.env.TITAN_GITHUB_OWNER || 'KRYONEX-TECHNOLOGIES-LLC',
+      repo: process.env.TITAN_GITHUB_REPO || 'Titan-AI',
+      releaseType: 'release',
     },
   ],
 };

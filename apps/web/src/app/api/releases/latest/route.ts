@@ -2,8 +2,12 @@ import { NextResponse } from 'next/server';
 import manifest from './manifest.json';
 
 export async function GET() {
-  const base = process.env.TITAN_RELEASE_BASE_URL || 'https://download.titan.kryonextech.com';
+  const owner = process.env.TITAN_GITHUB_OWNER || 'KRYONEX-TECHNOLOGIES-LLC';
+  const repo = process.env.TITAN_GITHUB_REPO || 'Titan-AI';
   const version = process.env.TITAN_DESKTOP_VERSION || manifest.version || '0.1.0';
+  const base =
+    process.env.TITAN_RELEASE_BASE_URL ||
+    `https://github.com/${owner}/${repo}/releases/download/v${version}`;
 
   const payload = {
     ...manifest,
@@ -11,8 +15,14 @@ export async function GET() {
     downloads: {
       windows: {
         ...manifest.downloads.windows,
-        url: process.env.TITAN_WINDOWS_URL || manifest.downloads.windows.url || `${base}/windows/Titan-Desktop-${version}-win-x64.exe`,
-        checksumUrl: process.env.TITAN_WINDOWS_CHECKSUM_URL || manifest.downloads.windows.checksumUrl || `${base}/windows/checksums.txt`,
+        url:
+          process.env.TITAN_WINDOWS_URL ||
+          manifest.downloads.windows.url ||
+          `${base}/Titan-Desktop-${version}-win-x64.exe`,
+        checksumUrl:
+          process.env.TITAN_WINDOWS_CHECKSUM_URL ||
+          manifest.downloads.windows.checksumUrl ||
+          `${base}/latest.yml`,
         releaseNotesUrl: process.env.TITAN_RELEASE_NOTES_URL || manifest.downloads.windows.releaseNotesUrl || '/release-notes',
       },
       macos: {

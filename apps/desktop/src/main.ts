@@ -1,7 +1,8 @@
-import { app, BrowserWindow, protocol, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, protocol, ipcMain, shell, dialog } from 'electron';
 import * as path from 'path';
 import * as http from 'http';
 import Store from 'electron-store';
+import { autoUpdater } from 'electron-updater';
 import { registerToolHandlers, killAllBackground } from './ipc/tools.js';
 import { registerTerminalHandlers, killAllTerminals } from './ipc/terminal.js';
 import { registerFilesystemHandlers } from './ipc/filesystem.js';
@@ -38,6 +39,69 @@ const store = new Store({
 let mainWindow: BrowserWindow | null = null;
 let nextServerProcess: ReturnType<typeof import('child_process').spawn> | null = null;
 const DESKTOP_PORT = 3100;
+let updatePromptOpen = false;
+
+function setupAutoUpdater(): void {
+  if (!app.isPackaged) {
+    console.log('[Updater] Skipping update checks in development mode.');
+    return;
+  }
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', async (info) => {
+    if (updatePromptOpen || !mainWindow) return;
+    updatePromptOpen = true;
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Available',
+      message: `Titan AI ${info.version} is available.`,
+      detail: 'Update now to get the latest fixes and improvements.',
+      buttons: ['Update Now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    updatePromptOpen = false;
+
+    if (response === 0) {
+      try {
+        await autoUpdater.downloadUpdate();
+      } catch (error) {
+        console.error('[Updater] Failed to download update:', error);
+      }
+    }
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    if (updatePromptOpen || !mainWindow) return;
+    updatePromptOpen = true;
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update Ready',
+      message: `Titan AI ${info.version} is ready to install.`,
+      detail: 'Restart now to finish installing the update.',
+      buttons: ['Restart and Install', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    updatePromptOpen = false;
+
+    if (response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on('error', (error) => {
+    console.error('[Updater] Update check failed:', error);
+  });
+
+  autoUpdater.checkForUpdatesAndNotify().catch((error) => {
+    console.error('[Updater] checkForUpdatesAndNotify failed:', error);
+  });
+}
 
 async function startNextServer(port: number): Promise<void> {
   const { spawn } = await import('child_process');
@@ -274,6 +338,7 @@ app.whenReady().then(async () => {
     await startNextServer(DESKTOP_PORT);
     console.log('Next.js server ready');
     await createWindow();
+    setupAutoUpdater();
   } catch (err) {
     console.error('Failed to start:', err);
     app.quit();

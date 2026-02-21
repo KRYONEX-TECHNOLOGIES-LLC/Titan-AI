@@ -6,8 +6,8 @@
   "downloads": {
     "windows": {
       "available": true,
-      "url": "https://download.titan.kryonextech.com/windows/Titan-Desktop-0.1.0-win-x64.exe",
-      "checksumUrl": "https://download.titan.kryonextech.com/windows/checksums.txt",
+      "url": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI/releases/download/v0.1.0/Titan-Desktop-0.1.0-win-x64.exe",
+      "checksumUrl": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI/releases/download/v0.1.0/latest.yml",
       "releaseNotesUrl": "/release-notes"
     },
     "macos": {

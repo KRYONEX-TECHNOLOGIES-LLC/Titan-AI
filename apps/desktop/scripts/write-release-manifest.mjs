@@ -7,7 +7,9 @@ const desktopPkg = JSON.parse(
 );
 
 const version = desktopPkg.version || '0.1.0';
-const releaseBase = process.env.TITAN_RELEASE_BASE_URL || 'https://download.titan.kryonextech.com';
+const githubOwner = process.env.TITAN_GITHUB_OWNER || 'KRYONEX-TECHNOLOGIES-LLC';
+const githubRepo = process.env.TITAN_GITHUB_REPO || 'Titan-AI';
+const releaseBase = process.env.TITAN_RELEASE_BASE_URL || `https://github.com/${githubOwner}/${githubRepo}/releases/download/v${version}`;
 const channel = process.env.TITAN_RELEASE_CHANNEL || 'stable';
 
 const manifest = {
@@ -18,8 +20,8 @@ const manifest = {
   downloads: {
     windows: {
       available: true,
-      url: `${releaseBase}/windows/Titan-Desktop-${version}-win-x64.exe`,
-      checksumUrl: `${releaseBase}/windows/checksums.txt`,
+      url: `${releaseBase}/Titan-Desktop-${version}-win-x64.exe`,
+      checksumUrl: `${releaseBase}/latest.yml`,
       releaseNotesUrl: '/release-notes',
     },
     macos: {
