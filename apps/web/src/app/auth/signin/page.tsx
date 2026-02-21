@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useState, useRef, Suspense } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 function GoogleIcon() {
@@ -61,6 +61,17 @@ function SignInContent() {
 
   const supabase = createClient();
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      setEmailError(detail?.message || 'OAuth sign-in failed. Check Supabase configuration.');
+      setOauthLoading(null);
+    };
+
+    window.addEventListener('titan-oauth-error', handler);
+    return () => window.removeEventListener('titan-oauth-error', handler);
+  }, []);
+
   const handleOAuthSignIn = async (provider: 'google' | 'apple') => {
     if (!supabase) {
       setEmailError('Authentication service not configured.');
@@ -68,18 +79,29 @@ function SignInContent() {
     }
     setOauthLoading(provider);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
+          skipBrowserRedirect: true,
           queryParams: provider === 'google' ? { access_type: 'offline', prompt: 'consent' } : undefined,
         },
       });
       if (error) {
         console.error(`[signin] ${provider} OAuth failed:`, error.message);
+        setEmailError(error.message);
+        setOauthLoading(null);
+        return;
+      }
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        setEmailError('OAuth provider did not return a redirect URL.');
         setOauthLoading(null);
       }
     } catch {
+      setEmailError('Failed to start OAuth sign-in. Please try again.');
       setOauthLoading(null);
     }
   };

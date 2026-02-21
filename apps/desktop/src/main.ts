@@ -118,6 +118,12 @@ function openAuthPopup(authUrl: string, parent: BrowserWindow): void {
   popup.setMenuBarVisibility(false);
   popup.loadURL(authUrl);
 
+  const emitOAuthError = (message: string) => {
+    const safeMessage = JSON.stringify(message || 'OAuth sign-in failed.');
+    const script = `window.dispatchEvent(new CustomEvent('titan-oauth-error', { detail: { message: ${safeMessage} } }));`;
+    parent.webContents.executeJavaScript(script).catch(() => {});
+  };
+
   const interceptCallback = (event: Electron.Event, navUrl: string) => {
     if (navUrl.startsWith(`http://localhost:${DESKTOP_PORT}/auth/callback`)) {
       event.preventDefault();
@@ -129,8 +135,35 @@ function openAuthPopup(authUrl: string, parent: BrowserWindow): void {
   popup.webContents.on('will-navigate', interceptCallback);
   popup.webContents.on('will-redirect', interceptCallback);
 
+  popup.webContents.on('did-finish-load', async () => {
+    const currentUrl = popup.webContents.getURL();
+    if (!currentUrl.includes('.supabase.co/auth')) return;
+
+    try {
+      const bodyText = await popup.webContents.executeJavaScript('document.body?.innerText || ""');
+      const raw = typeof bodyText === 'string' ? bodyText.trim() : '';
+      if (!raw.startsWith('{') || !raw.endsWith('}')) return;
+
+      const parsed = JSON.parse(raw) as {
+        error_description?: string;
+        msg?: string;
+        error?: string;
+      };
+      const errMsg =
+        parsed.error_description ||
+        parsed.msg ||
+        parsed.error ||
+        'OAuth provider is not configured correctly.';
+      popup.close();
+      emitOAuthError(errMsg);
+    } catch {
+      // Non-JSON body or cross-origin read error means the provider page loaded normally.
+    }
+  });
+
   popup.webContents.on('did-fail-load', () => {
     popup.close();
+    emitOAuthError('OAuth sign-in failed to load. Please try again.');
   });
 }
 

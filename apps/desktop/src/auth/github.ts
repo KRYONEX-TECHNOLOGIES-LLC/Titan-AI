@@ -78,6 +78,9 @@ export function registerAuthHandlers(ipcMain: IpcMain, _win: BrowserWindow): voi
       throw new Error('GitHub returned invalid response. Make sure Device Flow is enabled in your GitHub OAuth App settings (github.com/settings/developers).');
     }
     if (parsed.error) {
+      if (parsed.error === 'unauthorized_client') {
+        throw new Error('Device Flow is not enabled on this GitHub OAuth App. Go to github.com/settings/developers, open this OAuth App, and enable Device Flow.');
+      }
       throw new Error(parsed.error_description || parsed.error);
     }
 

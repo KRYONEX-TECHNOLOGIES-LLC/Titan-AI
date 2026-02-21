@@ -113,8 +113,18 @@ export default function GitHubAuthProvider({ children }: { children: ReactNode }
             pollingRef.current = false;
             return;
           }
-          if (poll.status === 'expired' || poll.status === 'error') {
-            console.error('[GitHubAuth] Device flow failed:', poll.status);
+          if (poll.status === 'expired') {
+            console.error('[GitHubAuth] Device flow failed: expired');
+            setError('GitHub verification code expired. Please try again.');
+            setIsLoading(false);
+            setDeviceFlow(null);
+            pollingRef.current = false;
+            return;
+          }
+          if (poll.status === 'error') {
+            console.error('[GitHubAuth] Device flow failed:', poll.error);
+            setError(poll.error || 'GitHub authorization failed.');
+            setIsLoading(false);
             setDeviceFlow(null);
             pollingRef.current = false;
             return;
