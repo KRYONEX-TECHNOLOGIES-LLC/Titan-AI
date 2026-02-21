@@ -215,7 +215,7 @@ export default function TitleBar(props: TitleBarProps) {
 }
 
 function GitHubConnectButton() {
-  const { user, isConnected, isLoading, deviceFlow, signIn, signOut, cancelDeviceFlow } = useGitHubAuth();
+  const { user, isConnected, isLoading, deviceFlow, signIn, signOut, cancelDeviceFlow, error, clearError } = useGitHubAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -228,6 +228,13 @@ function GitHubConnectButton() {
     return () => document.removeEventListener('mousedown', handle);
   }, []);
 
+  useEffect(() => {
+    if (error) {
+      const t = setTimeout(clearError, 8000);
+      return () => clearTimeout(t);
+    }
+  }, [error, clearError]);
+
   const copyCode = () => {
     if (deviceFlow?.userCode) {
       navigator.clipboard.writeText(deviceFlow.userCode);
@@ -238,6 +245,32 @@ function GitHubConnectButton() {
 
   if (isLoading && !deviceFlow) {
     return <div className="w-6 h-6 rounded-full bg-[#3c3c3c] animate-pulse" />;
+  }
+
+  if (error) {
+    return (
+      <div ref={ref} className="relative">
+        <button
+          onClick={(e) => { e.stopPropagation(); setDropdownOpen(!dropdownOpen); }}
+          className="flex items-center gap-1.5 px-2.5 py-1 bg-[#3a1a1a] text-[#f85149] rounded-full text-[12px] font-medium border border-[#f85149]/30"
+          title="GitHub connection error"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+          Error
+        </button>
+        {dropdownOpen && (
+          <div className="absolute top-full right-0 mt-1.5 w-[300px] bg-[#1e1e1e] border border-[#f85149]/30 rounded-lg shadow-2xl z-[9999] p-3">
+            <p className="text-[12px] text-[#f85149] mb-2">{error}</p>
+            <div className="flex gap-2">
+              <button onClick={() => { clearError(); signIn(); setDropdownOpen(false); }} className="flex-1 px-3 py-1.5 text-[11px] bg-[#24292f] hover:bg-[#32383f] text-white rounded-md transition-colors">Retry</button>
+              <button onClick={() => { clearError(); setDropdownOpen(false); }} className="px-3 py-1.5 text-[11px] text-[#666] hover:text-white rounded-md transition-colors">Dismiss</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   // Device flow in progress -- show code entry UI

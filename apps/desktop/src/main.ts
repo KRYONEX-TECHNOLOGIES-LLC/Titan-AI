@@ -102,6 +102,67 @@ async function startNextServer(port: number): Promise<void> {
   });
 }
 
+function openAuthPopup(authUrl: string, parent: BrowserWindow): void {
+  const popup = new BrowserWindow({
+    width: 520,
+    height: 720,
+    parent,
+    modal: true,
+    title: 'Sign In — Titan AI',
+    backgroundColor: '#0a0a14',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  popup.setMenuBarVisibility(false);
+  popup.loadURL(authUrl);
+
+  const interceptCallback = (event: Electron.Event, navUrl: string) => {
+    if (navUrl.startsWith(`http://localhost:${DESKTOP_PORT}/auth/callback`)) {
+      event.preventDefault();
+      popup.close();
+      parent.loadURL(navUrl);
+    }
+  };
+
+  popup.webContents.on('will-navigate', interceptCallback);
+  popup.webContents.on('will-redirect', interceptCallback);
+
+  popup.webContents.on('did-fail-load', () => {
+    popup.close();
+  });
+}
+
+function setupOAuthInterceptor(win: BrowserWindow): void {
+  win.webContents.on('will-navigate', (event, url) => {
+    if (
+      url.includes('.supabase.co/auth/v1/authorize') ||
+      url.includes('accounts.google.com/o/oauth2') ||
+      url.includes('appleid.apple.com/auth/authorize')
+    ) {
+      event.preventDefault();
+      openAuthPopup(url, win);
+    }
+  });
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (
+      url.includes('.supabase.co/auth') ||
+      url.includes('accounts.google.com') ||
+      url.includes('appleid.apple.com')
+    ) {
+      openAuthPopup(url, win);
+      return { action: 'deny' };
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    return { action: 'deny' };
+  });
+}
+
 async function createWindow(): Promise<void> {
   const windowState = restoreWindowState(store);
 
@@ -119,6 +180,7 @@ async function createWindow(): Promise<void> {
 
   registerAllIPC(mainWindow);
   createAppMenu(mainWindow);
+  setupOAuthInterceptor(mainWindow);
 
   mainWindow.loadURL(`http://localhost:${DESKTOP_PORT}/editor`);
 }

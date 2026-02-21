@@ -23,9 +23,11 @@ export interface GitHubAuth {
   isConnected: boolean;
   isLoading: boolean;
   deviceFlow: DeviceFlowState | null;
+  error: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   cancelDeviceFlow: () => void;
+  clearError: () => void;
 }
 
 const GitHubAuthContext = createContext<GitHubAuth>({
@@ -34,9 +36,11 @@ const GitHubAuthContext = createContext<GitHubAuth>({
   isConnected: false,
   isLoading: true,
   deviceFlow: null,
+  error: null,
   signIn: async () => {},
   signOut: async () => {},
   cancelDeviceFlow: () => {},
+  clearError: () => {},
 });
 
 export function useGitHubAuth(): GitHubAuth {
@@ -48,8 +52,11 @@ export default function GitHubAuthProvider({ children }: { children: ReactNode }
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [deviceFlow, setDeviceFlow] = useState<DeviceFlowState | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef(false);
   const cancelledRef = useRef(false);
+
+  const clearError = useCallback(() => setError(null), []);
 
   useEffect(() => {
     if (!isElectron || !electronAPI) {
@@ -62,17 +69,22 @@ export default function GitHubAuthProvider({ children }: { children: ReactNode }
         setUser(session.user as GitHubUser);
       }
       setIsLoading(false);
-    }).catch(() => {
+    }).catch((err) => {
+      console.error('[GitHubAuth] Session restore failed:', err);
       setIsLoading(false);
     });
   }, []);
 
   const signIn = useCallback(async () => {
-    if (!isElectron || !electronAPI) return;
+    if (!isElectron || !electronAPI) {
+      setError('GitHub connection requires the Titan AI desktop app.');
+      return;
+    }
     if (pollingRef.current) return;
 
     try {
       setIsLoading(true);
+      setError(null);
       cancelledRef.current = false;
 
       const result = await electronAPI.auth.startDeviceFlow();
@@ -116,7 +128,13 @@ export default function GitHubAuthProvider({ children }: { children: ReactNode }
       pollingRef.current = false;
       setDeviceFlow(null);
     } catch (err) {
-      console.error('[GitHubAuth] Device flow start failed:', err);
+      const msg = err instanceof Error ? err.message : 'GitHub Device Flow failed';
+      console.error('[GitHubAuth] Device flow start failed:', msg);
+      if (msg.includes('Device Flow')) {
+        setError('GitHub Device Flow is not enabled. Go to github.com/settings/developers → your OAuth App → enable "Device Flow".');
+      } else {
+        setError(`GitHub connection failed: ${msg}`);
+      }
       setIsLoading(false);
       setDeviceFlow(null);
     }
@@ -147,9 +165,11 @@ export default function GitHubAuthProvider({ children }: { children: ReactNode }
       isConnected: !!token && !!user,
       isLoading,
       deviceFlow,
+      error,
       signIn,
       signOut,
       cancelDeviceFlow,
+      clearError,
     }}>
       {children}
     </GitHubAuthContext.Provider>
