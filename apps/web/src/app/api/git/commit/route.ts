@@ -11,18 +11,16 @@ import path from 'path';
 
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
 
   const body = await req.json() as {
     path: string;
     message: string;
     files?: string[];
     amend?: boolean;
+    gitUser?: { name?: string; email?: string };
   };
 
-  const { path: workspacePath, message, files, amend } = body;
+  const { path: workspacePath, message, files, amend, gitUser } = body;
 
   if (!workspacePath || !message?.trim()) {
     return NextResponse.json({ error: 'path and message are required' }, { status: 400 });
@@ -31,9 +29,8 @@ export async function POST(req: NextRequest) {
   try {
     const git = simpleGit(path.resolve(workspacePath));
 
-    // Configure git identity from user if not already set
-    const username = user.username ?? user.name ?? 'Titan AI User';
-    const email = user.email ?? `${username}@titan.ai`;
+    const username = user?.username ?? user?.name ?? gitUser?.name ?? 'Titan AI User';
+    const email = user?.email ?? gitUser?.email ?? `${username}@titan.ai`;
     await git.addConfig('user.name', username, false, 'local');
     await git.addConfig('user.email', email, false, 'local');
 

@@ -4,20 +4,16 @@
  * Body: { path, remote?, branch? }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser, getGithubToken } from '@/lib/auth';
+import { getGithubToken } from '@/lib/auth';
 import { buildAuthenticatedCloneUrl } from '@/lib/github-client';
 import { simpleGit } from 'simple-git';
 import path from 'path';
 
 export async function POST(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  const token = await getGithubToken();
+  const headerToken = req.headers.get('X-GitHub-Token');
+  const token = headerToken || await getGithubToken();
   if (!token) {
-    return NextResponse.json({ error: 'No GitHub token in session' }, { status: 401 });
+    return NextResponse.json({ error: 'No GitHub token. Connect GitHub first.' }, { status: 401 });
   }
 
   const body = await req.json() as {

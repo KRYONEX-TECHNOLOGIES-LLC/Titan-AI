@@ -14,6 +14,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { useMidnight } from '@/hooks/useMidnight';
 import { useFileSystem } from '@/hooks/useFileSystem';
 import { useSession } from '@/providers/session-provider';
+import GitHubAuthProvider from '@/providers/github-auth-provider';
 
 // Utils
 import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
@@ -307,6 +308,7 @@ export default function TitanIDE() {
   }
 
   return (
+    <GitHubAuthProvider>
     <div suppressHydrationWarning className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden select-none" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       {mounted && <IDEMenuBar />}
       {mounted && <IDECommandPalette />}
@@ -472,6 +474,7 @@ export default function TitanIDE() {
         trustLevel={midnight.trustLevel}
       />
     </div>
+    </GitHubAuthProvider>
   );
 }
 

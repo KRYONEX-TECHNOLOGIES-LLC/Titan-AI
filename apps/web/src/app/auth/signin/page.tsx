@@ -1,16 +1,8 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useState, Suspense } from 'react';
+import { useState, useRef, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
-
-function GitHubIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-    </svg>
-  );
-}
 
 function GoogleIcon() {
   return (
@@ -31,6 +23,14 @@ function AppleIcon() {
   );
 }
 
+function MailIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+    </svg>
+  );
+}
+
 function TitanLogo() {
   return (
     <div className="flex items-center gap-3 mb-8">
@@ -45,20 +45,28 @@ function TitanLogo() {
   );
 }
 
+type AuthStep = 'email' | 'otp' | 'done';
+
 function SignInContent() {
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
-  const [loading, setLoading] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
+
+  const [step, setStep] = useState<AuthStep>('email');
+  const [email, setEmail] = useState('');
+  const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   const supabase = createClient();
 
-  const handleOAuthSignIn = async (provider: 'github' | 'google' | 'apple') => {
+  const handleOAuthSignIn = async (provider: 'google' | 'apple') => {
     if (!supabase) {
-      console.error('[signin] Supabase not configured');
-      setLoading(null);
+      setEmailError('Authentication service not configured.');
       return;
     }
-    setLoading(provider);
+    setOauthLoading(provider);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -69,10 +77,94 @@ function SignInContent() {
       });
       if (error) {
         console.error(`[signin] ${provider} OAuth failed:`, error.message);
-        setLoading(null);
+        setOauthLoading(null);
       }
     } catch {
-      setLoading(null);
+      setOauthLoading(null);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    if (!supabase) {
+      setEmailError('Authentication service not configured.');
+      return;
+    }
+    if (!email.trim() || !email.includes('@')) {
+      setEmailError('Please enter a valid email address.');
+      return;
+    }
+    setEmailLoading(true);
+    setEmailError(null);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
+      if (error) {
+        setEmailError(error.message);
+      } else {
+        setStep('otp');
+      }
+    } catch {
+      setEmailError('Failed to send verification code. Try again.');
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleOtpChange = (index: number, value: string) => {
+    if (value.length > 1) value = value.slice(-1);
+    if (value && !/^\d$/.test(value)) return;
+
+    const newCode = [...otpCode];
+    newCode[index] = value;
+    setOtpCode(newCode);
+
+    if (value && index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+
+    if (newCode.every(d => d !== '')) {
+      verifyOtp(newCode.join(''));
+    }
+  };
+
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !otpCode[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e: React.ClipboardEvent) => {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (pasted.length === 6) {
+      e.preventDefault();
+      const newCode = pasted.split('');
+      setOtpCode(newCode);
+      otpRefs.current[5]?.focus();
+      verifyOtp(pasted);
+    }
+  };
+
+  const verifyOtp = async (code: string) => {
+    if (!supabase) return;
+    setEmailLoading(true);
+    setEmailError(null);
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: code,
+        type: 'email',
+      });
+      if (error) {
+        setEmailError('Invalid code. Please try again.');
+        setOtpCode(['', '', '', '', '', '']);
+        otpRefs.current[0]?.focus();
+      } else {
+        setStep('done');
+        window.location.href = '/editor';
+      }
+    } catch {
+      setEmailError('Verification failed. Try again.');
+    } finally {
+      setEmailLoading(false);
     }
   };
 
@@ -81,6 +173,7 @@ function SignInContent() {
     OAuthCallback: 'Error during callback. Please try again.',
     OAuthCreateAccount: 'Could not create account. Please try again.',
     AccessDenied: 'Access was denied. Please try again.',
+    AuthNotConfigured: 'Authentication not configured. Contact support.',
     default: 'An error occurred. Please try again.',
   };
 
@@ -90,64 +183,158 @@ function SignInContent() {
     <div className="min-h-screen bg-[#0a0a14] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(0,122,204,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,122,204,0.03)_1px,transparent_1px)] bg-[size:50px_50px]" />
 
-      <div className="relative w-full max-w-[420px]">
+      <div className="relative w-full max-w-[440px]">
         <div className="bg-[#1a1a2e] border border-[#2d2d4e] rounded-2xl p-8 shadow-2xl">
           <TitanLogo />
 
           <h1 className="text-xl font-semibold text-white mb-2">Welcome to Titan AI</h1>
-          <p className="text-[#808080] text-sm mb-8">
-            Sign in to access your IDE, repositories, and start building with AI.
+          <p className="text-[#808080] text-sm mb-6">
+            Sign in to access your IDE and start building with AI.
           </p>
 
           {errorMessage && (
-            <div className="mb-6 p-3 bg-[#f85149]/10 border border-[#f85149]/30 rounded-lg text-[#f85149] text-sm">
+            <div className="mb-5 p-3 bg-[#f85149]/10 border border-[#f85149]/30 rounded-lg text-[#f85149] text-sm">
               {errorMessage}
             </div>
           )}
 
-          <div className="space-y-3">
-            {/* Continue with GitHub */}
-            <button
-              onClick={() => handleOAuthSignIn('github')}
-              disabled={loading !== null}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#24292f] hover:bg-[#32383f] disabled:opacity-60 text-white font-medium rounded-xl transition-all duration-150 border border-[#3c3c3c]"
-            >
-              {loading === 'github' ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <GitHubIcon />
+          {/* Email OTP Section */}
+          {step === 'email' && (
+            <div className="mb-6">
+              <label className="block text-[13px] text-[#999] mb-2 font-medium">Email address</label>
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-[#555]">
+                    <MailIcon />
+                  </div>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={e => { setEmail(e.target.value); setEmailError(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') handleSendOtp(); }}
+                    placeholder="you@example.com"
+                    className="w-full pl-11 pr-4 py-3 bg-[#12122a] border border-[#2d2d4e] focus:border-[#007acc] rounded-xl text-white text-[14px] outline-none transition-colors placeholder:text-[#444]"
+                    autoFocus
+                  />
+                </div>
+                <button
+                  onClick={handleSendOtp}
+                  disabled={emailLoading || !email.trim()}
+                  className="px-5 py-3 bg-[#007acc] hover:bg-[#0069b3] disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl text-[14px] transition-all whitespace-nowrap"
+                >
+                  {emailLoading ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    'Send Code'
+                  )}
+                </button>
+              </div>
+              {emailError && (
+                <p className="mt-2 text-[12px] text-[#f85149]">{emailError}</p>
               )}
-              <span>Continue with GitHub</span>
-            </button>
+            </div>
+          )}
 
-            {/* Continue with Google -- official branding: white bg, Google colors */}
-            <button
-              onClick={() => handleOAuthSignIn('google')}
-              disabled={loading !== null}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white hover:bg-gray-50 disabled:opacity-60 text-[#3c4043] font-medium rounded-xl transition-all duration-150 border border-[#dadce0]"
-            >
-              {loading === 'google' ? (
-                <div className="w-5 h-5 border-2 border-[#4285F4] border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <GoogleIcon />
-              )}
-              <span>Continue with Google</span>
-            </button>
+          {step === 'otp' && (
+            <div className="mb-6">
+              <p className="text-[13px] text-[#999] mb-1">
+                We sent a 6-digit code to <span className="text-white font-medium">{email}</span>
+              </p>
+              <button
+                onClick={() => { setStep('email'); setOtpCode(['', '', '', '', '', '']); setEmailError(null); }}
+                className="text-[12px] text-[#007acc] hover:underline mb-4 inline-block"
+              >
+                Change email
+              </button>
 
-            {/* Continue with Apple -- official branding: black bg, white text + Apple logo */}
-            <button
-              onClick={() => handleOAuthSignIn('apple')}
-              disabled={loading !== null}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white font-medium rounded-xl transition-all duration-150 border border-[#333]"
-            >
-              {loading === 'apple' ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <AppleIcon />
+              <div className="flex gap-2 justify-center mb-3" onPaste={handleOtpPaste}>
+                {otpCode.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={el => { otpRefs.current[i] = el; }}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={e => handleOtpChange(i, e.target.value)}
+                    onKeyDown={e => handleOtpKeyDown(i, e)}
+                    className="w-12 h-14 text-center text-xl font-bold bg-[#12122a] border border-[#2d2d4e] focus:border-[#007acc] rounded-xl text-white outline-none transition-colors"
+                    autoFocus={i === 0}
+                  />
+                ))}
+              </div>
+
+              {emailLoading && (
+                <div className="flex items-center justify-center gap-2 text-[13px] text-[#808080]">
+                  <div className="w-4 h-4 border-2 border-[#007acc] border-t-transparent rounded-full animate-spin" />
+                  Verifying...
+                </div>
               )}
-              <span>Continue with Apple</span>
-            </button>
-          </div>
+              {emailError && (
+                <p className="text-center text-[12px] text-[#f85149] mt-2">{emailError}</p>
+              )}
+
+              <button
+                onClick={handleSendOtp}
+                disabled={emailLoading}
+                className="mt-3 w-full text-center text-[12px] text-[#666] hover:text-[#007acc] transition-colors disabled:opacity-50"
+              >
+                Didn&#39;t receive it? Resend code
+              </button>
+            </div>
+          )}
+
+          {step === 'done' && (
+            <div className="mb-6 flex flex-col items-center gap-3 py-4">
+              <div className="w-12 h-12 rounded-full bg-[#3fb950]/20 flex items-center justify-center">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </div>
+              <p className="text-white font-medium">Signed in successfully</p>
+              <p className="text-[#808080] text-sm">Redirecting to IDE...</p>
+            </div>
+          )}
+
+          {/* Divider */}
+          {step === 'email' && (
+            <div className="flex items-center gap-4 mb-6">
+              <div className="flex-1 h-px bg-[#2d2d4e]" />
+              <span className="text-[12px] text-[#555] uppercase tracking-widest">or continue with</span>
+              <div className="flex-1 h-px bg-[#2d2d4e]" />
+            </div>
+          )}
+
+          {/* OAuth Buttons */}
+          {step === 'email' && (
+            <div className="space-y-3">
+              <button
+                onClick={() => handleOAuthSignIn('google')}
+                disabled={oauthLoading !== null}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white hover:bg-gray-50 disabled:opacity-60 text-[#3c4043] font-medium rounded-xl transition-all duration-150 border border-[#dadce0]"
+              >
+                {oauthLoading === 'google' ? (
+                  <div className="w-5 h-5 border-2 border-[#4285F4] border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <GoogleIcon />
+                )}
+                <span>Continue with Google</span>
+              </button>
+
+              <button
+                onClick={() => handleOAuthSignIn('apple')}
+                disabled={oauthLoading !== null}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-black hover:bg-[#1a1a1a] disabled:opacity-60 text-white font-medium rounded-xl transition-all duration-150 border border-[#333]"
+              >
+                {oauthLoading === 'apple' ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <AppleIcon />
+                )}
+                <span>Continue with Apple</span>
+              </button>
+            </div>
+          )}
 
           <div className="mt-6 pt-6 border-t border-[#2d2d4e]">
             <div className="flex items-start gap-2.5 text-[12px] text-[#666]">
