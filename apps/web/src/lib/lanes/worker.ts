@@ -379,8 +379,8 @@ export interface WorkerExecutionCallbacks {
   executeToolCall: (tool: string, args: Record<string, unknown>) => Promise<{ success: boolean; output: string; error?: string }>;
 }
 
-const MAX_WORKER_TOOL_CALLS = 80;
-const MAX_WORKER_ITERATIONS = 40;
+const MAX_WORKER_TOOL_CALLS = 30;
+const MAX_WORKER_ITERATIONS = 15;
 
 export async function executeWorkerLane(
   lane: Lane,

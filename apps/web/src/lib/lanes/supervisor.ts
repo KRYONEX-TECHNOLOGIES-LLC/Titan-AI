@@ -263,7 +263,7 @@ export async function orchestrate(
   try {
     // Step 3: Main orchestration loop
     let iterationCount = 0;
-    const maxIterations = 200;
+    const maxIterations = 50;
 
     while (iterationCount < maxIterations) {
       iterationCount++;

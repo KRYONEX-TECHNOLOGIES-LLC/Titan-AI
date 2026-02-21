@@ -8,13 +8,74 @@ import { useParallelChat } from './useParallelChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 
-const MAX_TOOL_CALLS = 220;
-const MAX_CONSECUTIVE_FAILURES = 10;
-const MAX_LOOP_ITERATIONS = 120;
-const MAX_TOTAL_FAILURES = 36;
-const MAX_HISTORY_ENTRIES = 120;
-const MAX_TOOL_RESULT_LEN = 12000;
+const MAX_TOOL_CALLS = 50;
+const MAX_CONSECUTIVE_FAILURES = 3;
+const MAX_LOOP_ITERATIONS = 25;
+const MAX_TOTAL_FAILURES = 8;
+const MAX_HISTORY_ENTRIES = 40;
+const MAX_TOOL_RESULT_LEN = 4000;
 const TOKEN_BATCH_MS = 80;
+const TOKEN_BUDGET_CHARS = 120000;
+
+const TITAN_PLANNER = 'claude-opus-4.6';
+const TITAN_TOOL_CALLER = 'gpt-5.3';
+const TITAN_WORKER = 'qwen3-coder';
+const TITAN_PROTOCOL_IDS = new Set(['titan-protocol']);
+const CODE_WRITE_TOOLS = new Set(['edit_file', 'create_file']);
+
+function getIterationModel(baseModel: string, iteration: number): string {
+  if (!TITAN_PROTOCOL_IDS.has(baseModel)) return baseModel;
+  if (iteration === 1) return TITAN_PLANNER;
+  return TITAN_TOOL_CALLER;
+}
+
+async function generateCodeWithQwen(
+  tool: string,
+  args: Record<string, unknown>,
+  abortSignal: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const filePath = args.path as string;
+  let prompt: string;
+
+  if (tool === 'edit_file') {
+    prompt = `You are a code worker. Return ONLY the replacement code. No explanation, no markdown fences.
+
+File: ${filePath}
+Code to replace:
+${args.old_string}
+
+Reference replacement:
+${args.new_string}
+
+Return ONLY the raw replacement code:`;
+  } else {
+    prompt = `You are a code worker. Return ONLY the file content. No explanation, no markdown fences.
+
+File: ${filePath}
+
+Reference content:
+${(args.content as string || '').slice(0, 6000)}
+
+Return ONLY the raw file content:`;
+  }
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abortSignal,
+      body: JSON.stringify({ message: prompt, model: TITAN_WORKER, stream: false }),
+    });
+    if (!res.ok) return args;
+    const data = await res.json();
+    let code = data.content || '';
+    code = code.replace(/^```[\w]*\n?/, '').replace(/\n?```\s*$/, '').trim();
+    if (!code || code.length < 5) return args;
+    return tool === 'edit_file' ? { ...args, new_string: code } : { ...args, content: code };
+  } catch {
+    return args;
+  }
+}
 
 interface TerminalHistoryEntry {
   command: string;
@@ -59,20 +120,38 @@ interface StreamToolCall {
   args: Record<string, unknown>;
 }
 
-function trimConversationHistory(history: LLMMessage[]): LLMMessage[] {
-  if (history.length <= MAX_HISTORY_ENTRIES) return history;
-
-  const trimmed: LLMMessage[] = [];
-  const keep = history.slice(-MAX_HISTORY_ENTRIES);
-
-  for (const msg of keep) {
-    if (msg.role === 'tool' && msg.content && msg.content.length > MAX_TOOL_RESULT_LEN) {
-      trimmed.push({ ...msg, content: msg.content.slice(0, MAX_TOOL_RESULT_LEN) + '\n[TRIMMED]' });
-    } else {
-      trimmed.push(msg);
-    }
+function compressConversationHistory(history: LLMMessage[]): LLMMessage[] {
+  if (history.length <= MAX_HISTORY_ENTRIES) {
+    return history.map(msg => {
+      if (msg.role === 'tool' && msg.content && msg.content.length > MAX_TOOL_RESULT_LEN) {
+        return { ...msg, content: msg.content.slice(0, MAX_TOOL_RESULT_LEN) + '\n[TRIMMED]' };
+      }
+      return msg;
+    });
   }
-  return trimmed;
+
+  const recentCount = 6;
+  const recent = history.slice(-recentCount);
+  const older = history.slice(0, -recentCount).slice(-MAX_HISTORY_ENTRIES);
+
+  const compressed = older.map(msg => {
+    if (msg.role === 'tool' && msg.content && msg.content.length > 200) {
+      const firstLine = msg.content.split('\n')[0]?.slice(0, 150) || '';
+      return { ...msg, content: `[Compressed] ${firstLine}...` };
+    }
+    if (msg.role === 'assistant' && msg.content && msg.content.length > 500 && !msg.tool_calls?.length) {
+      return { ...msg, content: msg.content.slice(0, 400) + '\n[TRIMMED]' };
+    }
+    return msg;
+  });
+
+  let totalChars = [...compressed, ...recent].reduce((sum, m) => sum + (m.content?.length || 0), 0);
+  while (totalChars > TOKEN_BUDGET_CHARS && compressed.length > 0) {
+    const dropped = compressed.shift();
+    totalChars -= dropped?.content?.length || 0;
+  }
+
+  return [...compressed, ...recent];
 }
 
 export function useChat({
@@ -292,20 +371,21 @@ export function useChat({
     messageId: string,
     abortSignal: AbortSignal,
     messageAttachments?: { mediaType: string; base64: string }[],
+    modelOverride?: string,
   ): Promise<{ content: string; toolCalls: StreamToolCall[] }> {
     const gitStatus = await fetchGitStatus();
     const fileTree = serializeFileTree();
     const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
 
-    const trimmedHistory = trimConversationHistory(conversationHistory);
+    const compressedHistory = compressConversationHistory(conversationHistory);
 
     const response = await fetch('/api/chat/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: abortSignal,
       body: JSON.stringify({
-        messages: trimmedHistory,
-        model: activeModel,
+        messages: compressedHistory,
+        model: modelOverride || activeModel,
         attachments: messageAttachments,
         codeContext: {
           file: activeTab,
@@ -492,6 +572,7 @@ export function useChat({
     let consecutiveFailures = 0;
     let totalFailures = 0;
     let loopIterations = 0;
+    const isTitanProtocol = TITAN_PROTOCOL_IDS.has(activeModel);
 
     try {
       while (true) {
@@ -509,6 +590,10 @@ export function useChat({
 
         setIsStreaming(true);
 
+        const iterationModel = isTitanProtocol
+          ? getIterationModel(activeModel, loopIterations)
+          : undefined;
+
         let streamResult: { content: string; toolCalls: StreamToolCall[] };
         try {
           streamResult = await streamFromContinue(
@@ -517,6 +602,7 @@ export function useChat({
             streamMessageId,
             controller.signal,
             loopIterations === 1 ? readyAttachments : undefined,
+            iterationModel,
           );
         } catch (err) {
           if (abortedRef.current || controller.signal.aborted) break;
@@ -569,16 +655,21 @@ export function useChat({
           totalToolCalls++;
           if (totalToolCalls > MAX_TOOL_CALLS) return 'circuit_break';
 
+          let finalArgs = tc.args;
+          if (isTitanProtocol && CODE_WRITE_TOOLS.has(tc.tool)) {
+            finalArgs = await generateCodeWithQwen(tc.tool, tc.args, controller.signal);
+          }
+
           const toolCallBlock: ToolCallBlock = {
             id: tc.id,
             tool: tc.tool,
-            args: tc.args,
+            args: finalArgs,
             status: 'running',
             startedAt: Date.now(),
           };
           appendToolCallToMessage(sessionId, streamMessageId, toolCallBlock);
 
-          const result = await agentTools.executeToolCall(tc.tool, tc.args);
+          const result = await agentTools.executeToolCall(tc.tool, finalArgs);
 
           updateToolCallInMessage(sessionId, streamMessageId, tc.id, {
             status: result.success ? 'done' : 'error',
@@ -595,18 +686,18 @@ export function useChat({
           }
 
           if (tc.tool === 'edit_file' && result.success) {
-            const newContent = result.metadata?.newContent as string || tc.args.new_string as string;
+            const newContent = result.metadata?.newContent as string || finalArgs.new_string as string;
             appendCodeDiffToMessage(sessionId, streamMessageId, {
               id: `diff-${tc.id}`,
-              file: tc.args.path as string,
+              file: finalArgs.path as string,
               code: newContent,
               status: 'applied',
             });
           } else if (tc.tool === 'create_file' && result.success) {
             appendCodeDiffToMessage(sessionId, streamMessageId, {
               id: `diff-${tc.id}`,
-              file: tc.args.path as string,
-              code: tc.args.content as string,
+              file: finalArgs.path as string,
+              code: finalArgs.content as string,
               status: 'applied',
             });
           } else if (tc.tool === 'generate_image' && result.success && result.metadata?.b64_json) {

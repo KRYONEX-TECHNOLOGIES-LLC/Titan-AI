@@ -266,12 +266,12 @@ export const DEFAULT_PROTOCOL_V2_CONFIG: ProtocolV2Config = {
   maxConcurrentWorkers: 4,
   maxConcurrentVerifiers: 4,
   laneTimeoutMs: 300_000,
-  maxReworkAttempts: 3,
+  maxReworkAttempts: 2,
   conflictResolution: 'supervisor_arbitrated',
   mergeStrategy: 'sequential_verified',
   supervisorModel: 'claude-opus-4.6',
   defaultWorkerModel: 'qwen3-coder',
-  defaultVerifierModel: 'claude-opus-4.6',
+  defaultVerifierModel: 'gpt-5.3',
   executorModel: 'gpt-5.3',
 };
 
