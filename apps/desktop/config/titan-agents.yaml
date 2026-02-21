@@ -138,3 +138,46 @@ protocol_v2:
     - "Memory remains append-only (ADR format)"
     - "FAILED lanes must be rewritten, not patched"
     - "3 failures per lane → HALT + escalate"
+
+# ═══ TITAN SUPREME PROTOCOL ═══
+# 4-role governance with strict permission proxy and adaptive budgeting.
+protocol_supreme:
+  mode: supreme
+  description: "Overseer/Operator/Primary Worker/Secondary Worker governance loop with zero-trust controls"
+
+  agents:
+    overseer_model: claude-opus-4.6
+    operator_model: gpt-5.3
+    primary_worker_model: qwen3-coder
+    secondary_worker_model: llama-4-maverick
+
+  limits:
+    max_overseer_iterations: 30
+    max_worker_iterations: 12
+    max_worker_tool_calls: 25
+    max_operator_tool_calls: 20
+    max_concurrent_workers: 4
+    max_concurrent_verifiers: 2
+    lane_timeout_ms: 300000
+    max_rework_attempts: 2
+    step_budget_warning: 70
+    step_budget_hard_limit: 100
+
+  token_budget:
+    per_request: 500000
+    daily: 10000000
+    allocation:
+      overseer_pct: 15
+      workers_pct: 70
+      operator_pct: 15
+
+  governance:
+    permission_proxy: overseer_only
+    workers_tool_scope: read_only
+    operator_scope: approved_steps_only
+    threat_scan_required: true
+    schema_validation_required: true
+    adversarial_debate_threshold: 7
+    consensus_quorum: 2
+    consensus_followers: [primary_worker, secondary_worker, operator]
+    worktree_isolation: true

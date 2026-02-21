@@ -34,6 +34,7 @@ const IDESemanticSearch = dynamic(() => import('@/components/ide/SemanticSearch'
 const IDEDebugPanel = dynamic(() => import('@/components/ide/DebugPanel'), { ssr: false });
 const IDEGitPanel = dynamic(() => import('@/components/ide/GitPanel'), { ssr: false });
 const LanePanel = dynamic(() => import('@/components/ide/LanePanel'), { ssr: false });
+const SupremePanel = dynamic(() => import('@/components/ide/SupremePanel'), { ssr: false });
 const IDECloneRepoDialog = dynamic(() => import('@/components/ide/CloneRepoDialog'), { ssr: false });
 const EditorArea = dynamic(() => import('@/components/ide/EditorArea'), { ssr: false });
 const TitleBar = dynamic(() => import('@/components/ide/TitleBar'), { ssr: false });
@@ -576,6 +577,15 @@ export default function TitanIDE() {
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div style={{ flex: '0 0 auto', maxHeight: '50%', overflow: 'auto', borderBottom: '1px solid #3c3c3c' }}>
                   <LanePanel />
+                </div>
+                <div style={{ flex: 1, overflow: 'auto' }}>
+                  <IDEFileExplorer />
+                </div>
+              </div>
+            ) : settings.activeModel === 'titan-supreme-protocol' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ flex: '0 0 auto', maxHeight: '55%', overflow: 'auto', borderBottom: '1px solid #3c3c3c' }}>
+                  <SupremePanel />
                 </div>
                 <div style={{ flex: 1, overflow: 'auto' }}>
                   <IDEFileExplorer />

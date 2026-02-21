@@ -26,6 +26,7 @@ export const MODEL_ID_ALIASES: Record<string, string> = {
   'claude-4.6-opus': 'claude-opus-4.6',
   'claude-4.6-sonnet': 'claude-sonnet-4.6',
   'gemini-2.0-pro': 'gemini-2.5-pro',
+  'titan-supreme': 'titan-supreme-protocol',
 };
 
 export function normalizeModelId(modelId: string): string {
@@ -39,6 +40,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   // Supervisor brain = Opus 4.6.  Worker/coder agent = Qwen 2.5 Coder 72B (see titan-agents.yaml).
   { id: 'titan-protocol', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.9, costPer1MOutput: 3, description: 'Multi-agent governance — Opus 4.6 planner, GPT-5.3 tool caller, Qwen3 Coder worker. Premium quality at economy cost.' },
   { id: 'titan-protocol-v2', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Protocol v2 (Parallel)', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.8, costPer1MOutput: 3, description: 'Parallel multi-lane governance — Opus 4.6 supervisor, Qwen3 Coder workers, GPT-5.3 verifiers. DAG-scheduled parallel execution.' },
+  { id: 'titan-supreme-protocol', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Supreme Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 1.2, costPer1MOutput: 4, description: 'Supreme 4-role governance — Overseer (Opus 4.6), Operator (GPT-5.3), Primary Worker (Qwen3), Secondary Worker (Llama 4 Maverick). Zero-trust, adversarial audit, Raft consensus.' },
 
   // ═══ ANTHROPIC (verified from OpenRouter /api/v1/models) ═══
   { id: 'claude-sonnet-4.6', providerModelId: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 64000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Latest and most capable Sonnet with 1M context' },

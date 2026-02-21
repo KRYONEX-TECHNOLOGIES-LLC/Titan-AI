@@ -152,3 +152,52 @@ export interface LaneEventUI {
   lane_id?: string;
   data: Record<string, unknown>;
 }
+
+// ─── Titan Supreme Protocol Types ───────────────────────────────────────────
+
+export interface SupremeLaneSummary {
+  lane_id: string;
+  node_id: string;
+  role: 'OVERSEER' | 'OPERATOR' | 'PRIMARY_WORKER' | 'SECONDARY_WORKER';
+  model: string;
+  status: 'ASSIGNED' | 'WORKING' | 'REVIEWING' | 'EXECUTING' | 'VERIFYING' | 'MERGED' | 'FAILED';
+  files_touched: string[];
+  updated_at: number;
+}
+
+export interface SupremeTaskManifestUI {
+  id: string;
+  goal: string;
+  nodeCount: number;
+  status: 'ACTIVE' | 'COMPLETE' | 'FAILED' | 'CANCELLED';
+  created_at: number;
+}
+
+export interface DebateResult {
+  nodeId: string;
+  winner: 'artifactA' | 'artifactB' | 'synthesized';
+  rationale: string;
+}
+
+export interface ConsensusVote {
+  nodeId: string;
+  voter: string;
+  approved: boolean;
+  rationale: string;
+}
+
+export interface BudgetStatus {
+  perRequestLimit: number;
+  perRequestUsed: number;
+  perRequestRemaining: number;
+  dailyLimit: number;
+  dailyUsed: number;
+  dailyRemaining: number;
+}
+
+export interface StallWarning {
+  totalSteps: number;
+  warningThreshold: number;
+  hardLimit: number;
+  reason?: string;
+}

@@ -5,6 +5,7 @@ import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock, GeneratedImage
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
 import { useAgentTools, toolCallSummary } from './useAgentTools';
 import { useParallelChat } from './useParallelChat';
+import { useSupremeChat } from './useSupremeChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 
@@ -866,7 +867,18 @@ export function useChat({
     osPlatform,
   });
 
+  const supremeChat = useSupremeChat({
+    sessions,
+    setSessions,
+    activeSessionId,
+    workspacePath,
+    openTabs,
+    isDesktop,
+    osPlatform,
+  });
+
   const isParallelMode = activeModel === 'titan-protocol-v2';
+  const isSupremeMode = activeModel === 'titan-supreme-protocol';
 
   if (isParallelMode) {
     return {
@@ -877,6 +889,18 @@ export function useChat({
       handleSend: parallelChat.handleSend,
       handleStop: parallelChat.handleStop,
       handleKeyDown: parallelChat.handleKeyDown,
+    };
+  }
+
+  if (isSupremeMode) {
+    return {
+      chatInput: supremeChat.chatInput,
+      setChatInput: supremeChat.setChatInput,
+      isThinking: supremeChat.isThinking,
+      isStreaming: supremeChat.isStreaming,
+      handleSend: supremeChat.handleSend,
+      handleStop: supremeChat.handleStop,
+      handleKeyDown: supremeChat.handleKeyDown,
     };
   }
 
