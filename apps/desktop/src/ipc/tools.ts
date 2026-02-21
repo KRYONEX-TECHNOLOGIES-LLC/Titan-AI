@@ -1,9 +1,32 @@
-import { IpcMain } from 'electron';
+import { IpcMain, BrowserWindow } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 
-export function registerToolHandlers(ipcMain: IpcMain): void {
+const backgroundProcs = new Map<string, ChildProcess>();
+
+const SERVER_PATTERNS = [
+  /\bpython\b.*\.py\b/i,
+  /\buvicorn\b/i,
+  /\bgunicorn\b/i,
+  /\bflask\s+run\b/i,
+  /\bnpm\s+(start|run\s+(dev|start|serve))\b/i,
+  /\bnpx\s+(vite|next\s+dev|serve|react-scripts\s+start|webpack\s+serve)\b/i,
+  /\bnode\b.*\.(js|mjs|ts)\b/i,
+  /\byarn\s+(start|dev)\b/i,
+  /\bpnpm\s+(start|dev|run\s+(dev|start))\b/i,
+  /\brails\s+server\b/i,
+  /\bcargo\s+run\b/i,
+  /\bgo\s+run\b/i,
+  /\bjava\s+-jar\b/i,
+  /\bdocker\s+compose\s+up\b/i,
+];
+
+function looksLikeServer(command: string): boolean {
+  return SERVER_PATTERNS.some(p => p.test(command));
+}
+
+export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): void {
 
   ipcMain.handle('tools:readFile', async (_e, filePath: string, opts?: { lineOffset?: number; lineLimit?: number }) => {
     const resolved = path.resolve(filePath);
@@ -63,11 +86,12 @@ export function registerToolHandlers(ipcMain: IpcMain): void {
     const items = fs.readdirSync(resolved, { withFileTypes: true });
     const entries = items.map(item => {
       const fullPath = path.join(resolved, item.name);
-      const stat = fs.statSync(fullPath);
+      let size = 0;
+      try { size = fs.statSync(fullPath).size; } catch {}
       return {
         name: item.name,
         type: item.isDirectory() ? 'directory' : 'file',
-        size: stat.size,
+        size,
       };
     });
     return { entries };
@@ -105,9 +129,7 @@ export function registerToolHandlers(ipcMain: IpcMain): void {
                 content: parsed.data.lines.text.trimEnd(),
               });
             }
-          } catch {
-            // ripgrep JSON parse failure -- fall back to regex
-          }
+          } catch {}
         }
 
         if (matches.length === 0 && stderr) {
@@ -137,12 +159,22 @@ export function registerToolHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('tools:runCommand', async (_e, command: string, cwd?: string) => {
     const resolved = cwd ? path.resolve(cwd) : process.cwd();
+    const isWindows = process.platform === 'win32';
+    const shellPath = isWindows ? 'powershell.exe' : '/bin/bash';
+    const isServer = looksLikeServer(command);
+    const timeout = isServer ? 15000 : 120000;
+
+    if (win && !win.isDestroyed()) {
+      try { win.webContents.send('tools:commandStarted', { command, cwd: resolved }); } catch {}
+    }
 
     return new Promise((resolve) => {
-      const proc = spawn(command, {
+      const args = isWindows
+        ? ['-NoProfile', '-NonInteractive', '-Command', command]
+        : ['-c', command];
+
+      const proc = spawn(shellPath, args, {
         cwd: resolved,
-        shell: true,
-        timeout: 120000,
         env: { ...process.env, FORCE_COLOR: '0' },
       });
 
@@ -150,30 +182,74 @@ export function registerToolHandlers(ipcMain: IpcMain): void {
       let stderr = '';
       let finished = false;
 
+      const finish = (exitCode: number, extra?: string) => {
+        if (finished) return;
+        finished = true;
+
+        if (stdout.length > 50000) stdout = stdout.slice(-40000);
+        if (stderr.length > 20000) stderr = stderr.slice(-15000);
+
+        const output = extra ? stdout + '\n' + extra : stdout;
+
+        if (win && !win.isDestroyed()) {
+          try {
+            win.webContents.send('tools:commandOutput', {
+              command,
+              stdout: output.slice(0, 2000),
+              stderr: stderr.slice(0, 500),
+              exitCode,
+            });
+          } catch {}
+        }
+
+        resolve({ stdout: output, stderr, exitCode });
+      };
+
       proc.stdout.on('data', (d: Buffer) => {
         stdout += d.toString();
-        if (stdout.length > 50000) {
-          stdout = stdout.slice(-40000);
-        }
       });
       proc.stderr.on('data', (d: Buffer) => {
         stderr += d.toString();
-        if (stderr.length > 20000) {
-          stderr = stderr.slice(-15000);
-        }
       });
 
       proc.on('close', (code) => {
-        if (finished) return;
-        finished = true;
-        resolve({ stdout, stderr, exitCode: code ?? 0 });
+        finish(code ?? 0);
       });
       proc.on('error', (err) => {
-        if (finished) return;
-        finished = true;
-        resolve({ stdout, stderr: stderr + '\n' + err.message, exitCode: 1 });
+        stderr += '\n' + err.message;
+        finish(1);
       });
+
+      const timer = setTimeout(() => {
+        if (finished) return;
+
+        if (isServer && stdout.length > 0) {
+          const procId = `bg-${Date.now()}`;
+          backgroundProcs.set(procId, proc);
+          finish(0, `[Server started and running in background (pid: ${proc.pid}). Output above shows startup logs.]`);
+        } else {
+          try { proc.kill(); } catch {}
+          finish(124, isServer
+            ? `[Command timed out after ${timeout / 1000}s. If this is a server, it may need manual startup from the terminal.]`
+            : `[Command timed out after ${timeout / 1000}s]`);
+        }
+      }, timeout);
+
+      proc.on('close', () => clearTimeout(timer));
     });
+  });
+
+  ipcMain.handle('tools:killBackground', async (_e, pid?: number) => {
+    if (pid) {
+      for (const [id, proc] of backgroundProcs) {
+        if (proc.pid === pid) {
+          try { proc.kill(); } catch {}
+          backgroundProcs.delete(id);
+          return { killed: true };
+        }
+      }
+    }
+    return { killed: false };
   });
 
   ipcMain.handle('tools:readLints', async (_e, filePath: string) => {
@@ -252,12 +328,19 @@ function grepFallback(pattern: string, dirPath: string, maxResults: number): { m
               }
               regex.lastIndex = 0;
             }
-          } catch { /* binary file or permission error */ }
+          } catch {}
         }
       }
-    } catch { /* permission error */ }
+    } catch {}
   }
 
   walk(dirPath);
   return { matches };
+}
+
+export function killAllBackground(): void {
+  for (const [id, proc] of backgroundProcs) {
+    try { proc.kill(); } catch {}
+    backgroundProcs.delete(id);
+  }
 }

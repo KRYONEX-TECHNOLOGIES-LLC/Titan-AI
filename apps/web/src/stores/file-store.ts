@@ -82,14 +82,27 @@ export const useFileStore = create<FileState>()(
       clipboardPath: '',
       clipboardOp: null,
 
-      openFolder: (path, name, tree) =>
+      openFolder: (path, name, tree) => {
+        // Auto-expand root + first 2 levels so files are immediately visible
+        const autoExpand = new Set<string>([path]);
+        const expand = (nodes: FileNode[], depth: number) => {
+          if (depth > 1) return;
+          for (const n of nodes) {
+            if (n.type === 'folder') {
+              autoExpand.add(n.path);
+              if (n.children) expand(n.children, depth + 1);
+            }
+          }
+        };
+        expand(tree, 0);
         set({
           workspacePath: path,
           workspaceName: name,
           workspaceOpen: true,
           fileTree: tree,
-          expandedPaths: new Set([path]),
-        }),
+          expandedPaths: autoExpand,
+        });
+      },
 
       closeFolder: () =>
         set({

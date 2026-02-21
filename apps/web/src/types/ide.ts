@@ -83,3 +83,53 @@ export interface PendingDiff {
   newContent: string;
   decorationIds: string[];
 }
+
+// ─── Titan Protocol v2: Lane Types (Frontend) ──────────────────────────────
+
+export type LaneStatusUI =
+  | 'QUEUED' | 'PROVISIONING' | 'ASSIGNED' | 'WORKING'
+  | 'PENDING_VERIFY' | 'VERIFYING' | 'VERIFIED' | 'REJECTED'
+  | 'PENDING_REWORK' | 'MERGE_CONFLICT' | 'PENDING_RECONCILIATION'
+  | 'MERGED' | 'FAILED' | 'ARCHIVED';
+
+export interface LaneSummary {
+  lane_id: string;
+  task_manifest_id: string;
+  subtask_node_id: string;
+  status: LaneStatusUI;
+  title: string;
+  worker_model_id: string;
+  verifier_model_id: string;
+  files_touched: string[];
+  failure_count: number;
+  created_at: number;
+  updated_at: number;
+  completed_at?: number;
+  verifierVerdict?: 'PASS' | 'FAIL';
+  elapsedMs: number;
+  totalCost: number;
+}
+
+export interface DAGNodeUI {
+  id: string;
+  title: string;
+  dependencies: string[];
+  lane_id?: string;
+  status: 'PENDING' | 'DISPATCHED' | 'COMPLETE' | 'FAILED';
+}
+
+export interface TaskManifestUI {
+  id: string;
+  goal: string;
+  nodes: DAGNodeUI[];
+  status: 'ACTIVE' | 'COMPLETE' | 'FAILED' | 'CANCELLED';
+  created_at: number;
+}
+
+export interface LaneEventUI {
+  type: string;
+  timestamp: number;
+  manifest_id: string;
+  lane_id?: string;
+  data: Record<string, unknown>;
+}

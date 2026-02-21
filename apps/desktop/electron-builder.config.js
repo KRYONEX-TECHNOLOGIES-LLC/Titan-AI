@@ -31,6 +31,7 @@ module.exports = {
   ],
 
   win: {
+    icon: 'resources/icon.ico',
     target: [{ target: 'nsis', arch: ['x64'] }],
     publisherName: 'KRYONEX TECHNOLOGIES LLC',
     verifyUpdateCodeSignature: false,
@@ -46,6 +47,7 @@ module.exports = {
   },
 
   mac: {
+    icon: 'resources/icon.png',
     target: [{ target: 'dmg', arch: ['x64', 'arm64'] }],
     category: 'public.app-category.developer-tools',
     hardenedRuntime: true,
@@ -60,6 +62,7 @@ module.exports = {
   },
 
   linux: {
+    icon: 'resources/icon.png',
     target: [{ target: 'AppImage', arch: ['x64'] }, { target: 'deb', arch: ['x64'] }],
     category: 'Development',
     maintainer: 'Kryonex Technologies LLC',

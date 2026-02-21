@@ -9,9 +9,8 @@ import { EditorLoading } from '@/components/editor-loading';
 
 export const dynamic = 'force-dynamic';
 
-// Dynamically import the editor to avoid SSR issues with Monaco
-const EditorWorkspace = nextDynamic(
-  () => import('@/components/editor-workspace').then((mod) => mod.EditorWorkspace),
+const TitanIDE = nextDynamic(
+  () => import('@/components/titan-ide'),
   {
     ssr: false,
     loading: () => <EditorLoading />,
@@ -21,7 +20,7 @@ const EditorWorkspace = nextDynamic(
 export default function EditorPage() {
   return (
     <Suspense fallback={<EditorLoading />}>
-      <EditorWorkspace />
+      <TitanIDE />
     </Suspense>
   );
 }

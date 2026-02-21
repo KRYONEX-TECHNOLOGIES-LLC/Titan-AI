@@ -22,7 +22,7 @@ agents:
     idempotency_check: required
 
   coder:
-    model: qwen3-coder
+    model: qwen-2.5-coder-72b
     fallback: claude-sonnet-4.6
     role: Technical Implementation Worker
     reads: []  # Receives only what Supervisor sends
@@ -72,6 +72,69 @@ logging:
   violation_log: logs/violation.log
 
 cost_optimization:
-  cheap_models: [qwen3-coder, gpt-5.3]
+  cheap_models: [qwen-2.5-coder-72b, qwen3-coder, gpt-5.3]
   expensive_models: [claude-opus-4.6]
   compute_split: "80-90% cheap workers, 10-20% planning + verification"
+
+# ═══ TITAN PROTOCOL v2: PARALLEL LANE CONFIGURATION ═══
+# Extends the sequential protocol to parallel, DAG-scheduled execution.
+# The original Titan Protocol (sequential) remains unchanged.
+# This section configures the v2 parallel mode only.
+
+protocol_v2:
+  mode: parallel
+  description: "Parallel multi-lane governance with DAG-scheduled execution"
+
+  concurrency:
+    max_concurrent_workers: 4
+    max_concurrent_verifiers: 4
+    max_lanes_per_manifest: 20
+    lane_timeout_ms: 300000  # 5 minutes per lane
+
+  agents:
+    supervisor_model: claude-opus-4.6
+    default_worker_model: qwen3-coder
+    default_verifier_model: claude-opus-4.6
+    executor_model: gpt-5.3
+    worker_fallback: claude-sonnet-4.6
+    verifier_fallback: claude-sonnet-4.6
+
+  lane_lifecycle:
+    statuses:
+      - QUEUED
+      - PROVISIONING
+      - ASSIGNED
+      - WORKING
+      - PENDING_VERIFY
+      - VERIFYING
+      - VERIFIED
+      - REJECTED
+      - PENDING_REWORK
+      - MERGE_CONFLICT
+      - PENDING_RECONCILIATION
+      - MERGED
+      - FAILED
+      - ARCHIVED
+    terminal_statuses: [MERGED, FAILED, ARCHIVED]
+
+  fail_gate:
+    max_rework_attempts: 3
+    on_max_rework: escalate_to_human
+    on_fail: discard_artifact_completely
+    patch_stacking: forbidden
+    artifact_reuse: forbidden
+
+  merge:
+    strategy: sequential_verified
+    conflict_resolution: supervisor_arbitrated
+    integration_validation: build_and_lint
+    merge_authority: supervisor_only
+
+  safety_invariants:
+    - "Exactly ONE Supervisor per manifest"
+    - "Workers never communicate with each other"
+    - "Verifiers never suggest fixes"
+    - "No merge without: Coder output + Verifier PASS + Supervisor approval"
+    - "Memory remains append-only (ADR format)"
+    - "FAILED lanes must be rewritten, not patched"
+    - "3 failures per lane → HALT + escalate"

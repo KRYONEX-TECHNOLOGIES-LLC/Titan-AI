@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ModelInfo, MODEL_REGISTRY } from '@/lib/model-registry';
+import { ModelInfo, MODEL_REGISTRY, normalizeModelId } from '@/lib/model-registry';
 import { scanForThreats, isHighSeverityThreat, PathObfuscator } from '@/lib/security';
 
 const pathObfuscator = new PathObfuscator();
@@ -560,7 +560,8 @@ function extractSuggestedEdits(
 }
 
 function lookupProviderModelId(displayModelId: string): { providerModelId: string; displayName: string } {
-  if (!displayModelId?.trim()) {
+  const normalizedId = normalizeModelId(displayModelId);
+  if (!normalizedId?.trim()) {
     const defaultModel = MODEL_REGISTRY[0];
     return {
       providerModelId: defaultModel?.providerModelId || 'anthropic/claude-sonnet-4.6',
@@ -568,7 +569,7 @@ function lookupProviderModelId(displayModelId: string): { providerModelId: strin
     };
   }
   
-  const model = MODEL_REGISTRY.find(m => m.id === displayModelId);
+  const model = MODEL_REGISTRY.find(m => m.id === normalizedId);
   if (model) {
     return {
       providerModelId: model.providerModelId,
@@ -577,18 +578,18 @@ function lookupProviderModelId(displayModelId: string): { providerModelId: strin
   }
   
   // If not found in registry but has a provider prefix, use as-is
-  if (displayModelId.includes('/')) {
+  if (normalizedId.includes('/')) {
     return {
-      providerModelId: displayModelId,
-      displayName: displayModelId.split('/').pop() || displayModelId,
+      providerModelId: normalizedId,
+      displayName: normalizedId.split('/').pop() || normalizedId,
     };
   }
   
   // Fallback to first model in registry
   const fallback = MODEL_REGISTRY[0];
   return {
-    providerModelId: fallback?.providerModelId || displayModelId,
-    displayName: fallback?.name || displayModelId,
+    providerModelId: fallback?.providerModelId || normalizedId,
+    displayName: fallback?.name || normalizedId,
   };
 }
 

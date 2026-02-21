@@ -4,11 +4,17 @@ import { useState, useRef, useCallback } from 'react';
 import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock } from '@/types/ide';
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
 import { useAgentTools, toolCallSummary } from './useAgentTools';
+import { useParallelChat } from './useParallelChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 
-const MAX_TOOL_CALLS = 25;
-const MAX_CONSECUTIVE_FAILURES = 3;
+const MAX_TOOL_CALLS = 220;
+const MAX_CONSECUTIVE_FAILURES = 10;
+const MAX_LOOP_ITERATIONS = 120;
+const MAX_TOTAL_FAILURES = 36;
+const MAX_HISTORY_ENTRIES = 120;
+const MAX_TOOL_RESULT_LEN = 12000;
+const TOKEN_BATCH_MS = 80;
 
 interface TerminalHistoryEntry {
   command: string;
@@ -52,6 +58,22 @@ interface StreamToolCall {
   args: Record<string, unknown>;
 }
 
+function trimConversationHistory(history: LLMMessage[]): LLMMessage[] {
+  if (history.length <= MAX_HISTORY_ENTRIES) return history;
+
+  const trimmed: LLMMessage[] = [];
+  const keep = history.slice(-MAX_HISTORY_ENTRIES);
+
+  for (const msg of keep) {
+    if (msg.role === 'tool' && msg.content && msg.content.length > MAX_TOOL_RESULT_LEN) {
+      trimmed.push({ ...msg, content: msg.content.slice(0, MAX_TOOL_RESULT_LEN) + '\n[TRIMMED]' });
+    } else {
+      trimmed.push(msg);
+    }
+  }
+  return trimmed;
+}
+
 export function useChat({
   sessions,
   setSessions,
@@ -80,6 +102,9 @@ export function useChat({
   const abortControllerRef = useRef<AbortController | null>(null);
   const abortedRef = useRef(false);
 
+  const pendingContentRef = useRef('');
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath });
 
   const updateMessage = useCallback((
@@ -92,6 +117,28 @@ export function useChat({
       return { ...s, messages: s.messages.map(m => m.id === messageId ? updater(m) : m) };
     }));
   }, [setSessions]);
+
+  const flushTokens = useCallback((sessionId: string, messageId: string) => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    const content = pendingContentRef.current;
+    if (!content) return;
+
+    const { thinking, content: parsed } = parseThinkingTags(content);
+    const thinkingTime = thinkingStartRef.current > 0
+      ? Math.round((Date.now() - thinkingStartRef.current) / 1000)
+      : 0;
+
+    updateMessage(sessionId, messageId, (msg) => ({
+      ...msg,
+      content: parsed || content,
+      thinking: thinking || msg.thinking,
+      thinkingTime: thinking ? thinkingTime : msg.thinkingTime,
+      streaming: true,
+    }));
+  }, [updateMessage]);
 
   const appendToolCallToMessage = useCallback((
     sessionId: string,
@@ -191,16 +238,18 @@ export function useChat({
     const fileTree = serializeFileTree();
     const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
 
+    const trimmedHistory = trimConversationHistory(conversationHistory);
+
     const response = await fetch('/api/chat/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: abortSignal,
       body: JSON.stringify({
-        messages: conversationHistory,
+        messages: trimmedHistory,
         model: activeModel,
         codeContext: {
           file: activeTab,
-          content: editorInstance?.getValue() || fileContents[activeTab] || '',
+          content: (editorInstance?.getValue() || fileContents[activeTab] || '').slice(0, 8000),
           language: getLanguageFromFilename(activeTab),
         },
         repoMap: typeof window !== 'undefined' ? (window as any).__titanRepoMap : undefined,
@@ -232,7 +281,14 @@ export function useChat({
     let fullContent = '';
     let toolCalls: StreamToolCall[] = [];
 
+    pendingContentRef.current = '';
+
     while (true) {
+      if (abortedRef.current || abortSignal.aborted) {
+        try { reader.cancel(); } catch {}
+        break;
+      }
+
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -260,17 +316,14 @@ export function useChat({
             setIsStreaming(true);
           } else if (eventType === 'token' && payload.content) {
             fullContent += payload.content;
-            const { thinking, content } = parseThinkingTags(fullContent);
-            const thinkingTime = thinkingStartRef.current > 0
-              ? Math.round((Date.now() - thinkingStartRef.current) / 1000)
-              : 0;
-            updateMessage(sessionId, messageId, (msg) => ({
-              ...msg,
-              content: content || fullContent,
-              thinking: thinking || msg.thinking,
-              thinkingTime: thinking ? thinkingTime : msg.thinkingTime,
-              streaming: true,
-            }));
+            pendingContentRef.current = fullContent;
+
+            if (!flushTimerRef.current) {
+              flushTimerRef.current = setTimeout(() => {
+                flushTimerRef.current = null;
+                flushTokens(sessionId, messageId);
+              }, TOKEN_BATCH_MS);
+            }
           } else if (eventType === 'tool_call') {
             toolCalls.push({
               id: payload.id,
@@ -278,6 +331,10 @@ export function useChat({
               args: payload.args,
             });
           } else if (eventType === 'done') {
+            if (flushTimerRef.current) {
+              clearTimeout(flushTimerRef.current);
+              flushTimerRef.current = null;
+            }
             if (payload.content !== undefined && payload.content) {
               fullContent = payload.content;
             }
@@ -296,13 +353,19 @@ export function useChat({
           }
         } catch (e) {
           if (e instanceof Error && e.message !== 'Streaming error') {
-            // Skip JSON parse errors on individual chunks
+            // skip malformed JSON chunks
           } else {
             throw e;
           }
         }
       }
     }
+
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    flushTokens(sessionId, messageId);
 
     return { content: fullContent, toolCalls };
   }
@@ -354,31 +417,49 @@ export function useChat({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // Build the LLM conversation history
     const conversationHistory: LLMMessage[] = [
       { role: 'user', content: userContent },
     ];
 
     let totalToolCalls = 0;
     let consecutiveFailures = 0;
+    let totalFailures = 0;
+    let loopIterations = 0;
 
     try {
-      // ── The Tool-Calling Loop ──
-      // Keep streaming + executing tool calls until the LLM returns pure text
       while (true) {
         if (abortedRef.current || controller.signal.aborted) break;
 
-        setIsStreaming(true);
-        const { content, toolCalls } = await streamFromContinue(
-          conversationHistory,
-          sessionId,
-          streamMessageId,
-          controller.signal,
-        );
+        loopIterations++;
+        if (loopIterations > MAX_LOOP_ITERATIONS) {
+          updateMessage(sessionId, streamMessageId, (m) => ({
+            ...m,
+            content: (m.content ? m.content + '\n\n' : '') + `Stopped after ${MAX_LOOP_ITERATIONS} turns.`,
+            streaming: false,
+          }));
+          break;
+        }
 
-        // No tool calls => LLM is done, final text response
+        setIsStreaming(true);
+
+        let streamResult: { content: string; toolCalls: StreamToolCall[] };
+        try {
+          streamResult = await streamFromContinue(
+            conversationHistory,
+            sessionId,
+            streamMessageId,
+            controller.signal,
+          );
+        } catch (err) {
+          if (abortedRef.current || controller.signal.aborted) break;
+          throw err;
+        }
+
+        if (abortedRef.current || controller.signal.aborted) break;
+
+        const { content, toolCalls } = streamResult;
+
         if (toolCalls.length === 0) {
-          // Tool-nudge retry: detect when LLM describes actions without calling tools
           const actionPatterns = /\b(I'll|I will|Let me|I would|I can|I should|we can|we should|here's what|I'd)\b.*\b(create|edit|read|run|install|write|fix|modify|update|add|remove|delete|build|open|check)\b/i;
           const hasNoToolCalls = totalToolCalls === 0;
           const looksLikeActionDescription = actionPatterns.test(content) && hasNoToolCalls && content.length < 2000;
@@ -390,10 +471,7 @@ export function useChat({
               content: 'You described what you would do but did not call any tools. Stop describing and actually do it. Call the appropriate tools now.',
             });
             consecutiveFailures++;
-            updateMessage(sessionId, streamMessageId, (m) => ({
-              ...m,
-              streaming: true,
-            }));
+            updateMessage(sessionId, streamMessageId, (m) => ({ ...m, streaming: true }));
             continue;
           }
 
@@ -405,22 +483,17 @@ export function useChat({
           break;
         }
 
-        // Append the assistant message with tool_calls to conversation history
         conversationHistory.push({
           role: 'assistant',
           content: content || null,
           tool_calls: toolCalls.map(tc => ({
             id: tc.id,
             type: 'function' as const,
-            function: {
-              name: tc.tool,
-              arguments: JSON.stringify(tc.args),
-            },
+            function: { name: tc.tool, arguments: JSON.stringify(tc.args) },
           })),
         });
 
-        // Execute tool calls -- parallelize read-only tools, serialize mutating ones
-        const readOnlyTools = new Set(['read_file', 'list_directory', 'grep_search']);
+        const readOnlyTools = new Set(['read_file', 'list_directory', 'grep_search', 'glob_search', 'semantic_search']);
         const allReadOnly = toolCalls.every(tc => readOnlyTools.has(tc.tool));
 
         async function executeSingleTool(tc: StreamToolCall) {
@@ -441,13 +514,14 @@ export function useChat({
 
           updateToolCallInMessage(sessionId, streamMessageId, tc.id, {
             status: result.success ? 'done' : 'error',
-            result: result.output,
+            result: result.output?.slice(0, 3000),
             error: result.error,
             finishedAt: Date.now(),
           });
 
           if (!result.success) {
             consecutiveFailures++;
+            totalFailures++;
           } else {
             consecutiveFailures = 0;
           }
@@ -476,68 +550,38 @@ export function useChat({
           return { tc, resultOutput };
         }
 
+        let hitCircuitBreaker = false;
+
         if (allReadOnly && toolCalls.length > 1) {
-          // Parallel execution for read-only tools
           const results = await Promise.all(toolCalls.map(executeSingleTool));
           for (const r of results) {
-            if (r === 'circuit_break') {
-              const warnMsg = `Circuit breaker: stopped after ${MAX_TOOL_CALLS} tool calls to prevent infinite loops.`;
-              updateMessage(sessionId, streamMessageId, (m) => ({
-                ...m,
-                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
-                streaming: false,
-              }));
-              return;
-            }
+            if (r === 'circuit_break') { hitCircuitBreaker = true; break; }
             if (r && typeof r === 'object') {
-              const maxLen = 10000;
-              const wasTruncated = r.resultOutput.length > maxLen;
+              const capped = r.resultOutput.slice(0, MAX_TOOL_RESULT_LEN);
+              const wasTruncated = r.resultOutput.length > MAX_TOOL_RESULT_LEN;
               conversationHistory.push({
                 role: 'tool',
-                content: r.resultOutput.slice(0, maxLen) + (wasTruncated ? '\n[OUTPUT TRUNCATED - request specific line ranges if needed]' : ''),
+                content: capped + (wasTruncated ? '\n[OUTPUT TRUNCATED]' : ''),
                 tool_call_id: r.tc.id,
                 name: r.tc.tool,
               });
             }
           }
-          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-            const warnMsg = `Circuit breaker: ${MAX_CONSECUTIVE_FAILURES} consecutive tool failures.`;
-            updateMessage(sessionId, streamMessageId, (m) => ({
-              ...m,
-              content: (m.content ? m.content + '\n\n' : '') + warnMsg,
-              streaming: false,
-            }));
-            return;
-          }
         } else {
-          // Sequential execution for mutating tools
           for (const tc of toolCalls) {
             if (abortedRef.current || controller.signal.aborted) break;
             const r = await executeSingleTool(tc);
-            if (r === 'circuit_break') {
-              const warnMsg = `Circuit breaker: stopped after ${MAX_TOOL_CALLS} tool calls to prevent infinite loops.`;
-              updateMessage(sessionId, streamMessageId, (m) => ({
-                ...m,
-                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
-                streaming: false,
-              }));
-              return;
-            }
-            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-              const warnMsg = `Circuit breaker: ${MAX_CONSECUTIVE_FAILURES} consecutive tool failures.`;
-              updateMessage(sessionId, streamMessageId, (m) => ({
-                ...m,
-                content: (m.content ? m.content + '\n\n' : '') + warnMsg,
-                streaming: false,
-              }));
-              return;
+            if (r === 'circuit_break') { hitCircuitBreaker = true; break; }
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || totalFailures >= MAX_TOTAL_FAILURES) {
+              hitCircuitBreaker = true;
+              break;
             }
             if (r && typeof r === 'object') {
-              const maxLen = 10000;
-              const wasTruncated = r.resultOutput.length > maxLen;
+              const capped = r.resultOutput.slice(0, MAX_TOOL_RESULT_LEN);
+              const wasTruncated = r.resultOutput.length > MAX_TOOL_RESULT_LEN;
               conversationHistory.push({
                 role: 'tool',
-                content: r.resultOutput.slice(0, maxLen) + (wasTruncated ? '\n[OUTPUT TRUNCATED - request specific line ranges if needed]' : ''),
+                content: capped + (wasTruncated ? '\n[OUTPUT TRUNCATED]' : ''),
                 tool_call_id: r.tc.id,
                 name: r.tc.tool,
               });
@@ -545,7 +589,20 @@ export function useChat({
           }
         }
 
-        // If aborted, stop the loop
+        if (hitCircuitBreaker || consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || totalFailures >= MAX_TOTAL_FAILURES) {
+          const reason = totalToolCalls > MAX_TOOL_CALLS
+            ? `${MAX_TOOL_CALLS} tool calls`
+            : consecutiveFailures >= MAX_CONSECUTIVE_FAILURES
+              ? `${MAX_CONSECUTIVE_FAILURES} consecutive failures`
+              : `${totalFailures} total failures`;
+          updateMessage(sessionId, streamMessageId, (m) => ({
+            ...m,
+            content: (m.content ? m.content + '\n\n' : '') + `Circuit breaker: ${reason}. Stopped.`,
+            streaming: false,
+          }));
+          break;
+        }
+
         if (abortedRef.current || controller.signal.aborted) {
           updateMessage(sessionId, streamMessageId, (m) => ({
             ...m,
@@ -555,11 +612,7 @@ export function useChat({
           break;
         }
 
-        // Clear the content for the next turn (the LLM will produce a new response)
-        updateMessage(sessionId, streamMessageId, (m) => ({
-          ...m,
-          streaming: true,
-        }));
+        updateMessage(sessionId, streamMessageId, (m) => ({ ...m, streaming: true }));
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -575,18 +628,21 @@ export function useChat({
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       const is401 = errorMessage.includes('401') || errorMessage.toLowerCase().includes('user not found');
       const troubleshooting = is401
-        ? `- Your OpenRouter API key is invalid or expired\n- Go to https://openrouter.ai/keys and create a new key\n- Update OPENROUTER_API_KEY in your Railway environment variables\n- Make sure your OpenRouter account has credits`
-        : `- Check your internet connection\n- Verify API keys are configured in your environment\n- Try a different model from the model selector`;
-      const errorContent = `⚠️ **Connection Error**\n\n${errorMessage}\n\n**Troubleshooting:**\n${troubleshooting}\n\n_Click the retry button below to try again._`;
+        ? `- Your OpenRouter API key is invalid or expired\n- Go to https://openrouter.ai/keys and create a new key\n- Update OPENROUTER_API_KEY in your environment\n- Make sure your OpenRouter account has credits`
+        : `- Check your internet connection\n- Verify API keys are configured\n- Try a different model`;
 
       updateMessage(sessionId, streamMessageId, (m) => ({
         ...m,
-        content: errorContent,
+        content: `**Error:** ${errorMessage}\n\n${troubleshooting}`,
         streaming: false,
         isError: true,
         retryMessage: msg,
       }));
     } finally {
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
       setIsThinking(false);
       setIsStreaming(false);
       abortControllerRef.current = null;
@@ -594,20 +650,34 @@ export function useChat({
   }, [
     chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
-    appendCodeDiffToMessage, agentTools, workspacePath, openTabs, terminalHistory,
+    appendCodeDiffToMessage, agentTools, flushTokens, workspacePath, openTabs, terminalHistory,
     cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop, osPlatform,
   ]);
 
   const handleStop = useCallback(() => {
     abortedRef.current = true;
     agentTools.abort();
+
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+
     setIsThinking(false);
     setIsStreaming(false);
-  }, [agentTools]);
+
+    setSessions(prev => prev.map(s => ({
+      ...s,
+      messages: s.messages.map(m =>
+        m.streaming ? { ...m, streaming: false, content: m.content || 'Stopped.' } : m
+      ),
+    })));
+  }, [agentTools, setSessions]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -615,6 +685,33 @@ export function useChat({
       handleSend();
     }
   };
+
+  // Titan Protocol v2 (Parallel) mode delegation
+  const parallelChat = useParallelChat({
+    sessions,
+    setSessions,
+    activeSessionId,
+    activeTab,
+    fileContents,
+    workspacePath,
+    openTabs,
+    isDesktop,
+    osPlatform,
+  });
+
+  const isParallelMode = activeModel === 'titan-protocol-v2';
+
+  if (isParallelMode) {
+    return {
+      chatInput: parallelChat.chatInput,
+      setChatInput: parallelChat.setChatInput,
+      isThinking: parallelChat.isThinking,
+      isStreaming: parallelChat.isStreaming,
+      handleSend: parallelChat.handleSend,
+      handleStop: parallelChat.handleStop,
+      handleKeyDown: parallelChat.handleKeyDown,
+    };
+  }
 
   return {
     chatInput,

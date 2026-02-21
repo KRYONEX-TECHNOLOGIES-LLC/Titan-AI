@@ -45,16 +45,34 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
 
       switch (tool) {
         case 'read_file': {
-          const filePath = resolveToWorkspace(args.path as string, workspacePath);
-          if (!filePath) return { success: false, output: '', error: 'path is required' };
-          const data = await api.tools.readFile(filePath, {
-            lineOffset: args.startLine as number | undefined,
-            lineLimit: args.endLine ? (args.endLine as number) - ((args.startLine as number) || 1) + 1 : undefined,
-          });
+          const rawPath = args.path as string;
+          if (!rawPath) return { success: false, output: '', error: 'path is required' };
+          const COMMON_EXTS = ['.py', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.md', '.txt', '.toml', '.cfg', '.env'];
+          // Try the exact path first, then fallback with common extensions
+          const candidatePaths: string[] = [resolveToWorkspace(rawPath, workspacePath)];
+          const hasExt = /\.[a-zA-Z0-9]+$/.test(rawPath);
+          if (!hasExt) {
+            for (const ext of COMMON_EXTS) {
+              candidatePaths.push(resolveToWorkspace(rawPath + ext, workspacePath));
+            }
+          }
+          let data: { content: string; lineCount: number } | null = null;
+          let usedPath = candidatePaths[0];
+          for (const candidate of candidatePaths) {
+            try {
+              data = await api.tools.readFile(candidate, {
+                lineOffset: args.startLine as number | undefined,
+                lineLimit: args.endLine ? (args.endLine as number) - ((args.startLine as number) || 1) + 1 : undefined,
+              });
+              usedPath = candidate;
+              break;
+            } catch { /* try next */ }
+          }
+          if (!data) return { success: false, output: '', error: `File not found: ${rawPath}` };
           const lines = data.content.split('\n');
           const start = (args.startLine as number) || 1;
           const numbered = lines.map((l, i) => `${String(start + i).padStart(6)}|${l}`).join('\n');
-          return { success: true, output: numbered, metadata: { lines: data.lineCount, size: data.content.length } };
+          return { success: true, output: numbered, metadata: { lines: data.lineCount, size: data.content.length, resolvedPath: usedPath } };
         }
 
         case 'edit_file': {

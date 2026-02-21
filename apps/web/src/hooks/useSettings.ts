@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { ModelInfo } from '@/types/ide';
+import { normalizeModelId } from '@/lib/model-registry';
 
 export function useSettings(mounted: boolean) {
   const [fontSize, setFontSize] = useState(13);
   const [tabSize, setTabSize] = useState(2);
   const [wordWrap, setWordWrap] = useState(true);
-  const [activeModel, setActiveModel] = useState('claude-sonnet-4.6');
+  const [activeModel, setActiveModelRaw] = useState('claude-sonnet-4.6');
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [modelRegistry, setModelRegistry] = useState<ModelInfo[]>([]);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
@@ -15,7 +16,9 @@ export function useSettings(mounted: boolean) {
   const modelSearchInputRef = useRef<HTMLInputElement>(null!);
 
 
-  const models = ['claude-4.6-opus', 'claude-4.6-sonnet', 'gpt-5.3', 'gpt-4o', 'gemini-2.0-pro'];
+  // Keep fallback model IDs aligned with MODEL_REGISTRY ids.
+  // Mismatched IDs cause selector changes to get auto-reset.
+  const models = ['titan-protocol', 'titan-protocol-v2', 'claude-opus-4.6', 'claude-sonnet-4.6', 'gpt-5.3', 'gpt-4o', 'gemini-2.5-pro'];
 
   const cappedModelRegistry = useMemo(() => modelRegistry.slice(0, 32), [modelRegistry]);
 
@@ -52,8 +55,13 @@ export function useSettings(mounted: boolean) {
   // Ensure active model exists in registry
   useEffect(() => {
     if (cappedModelRegistry.length === 0) return;
-    const exists = cappedModelRegistry.some(m => m.id === activeModel || m.name === activeModel);
-    if (!exists) setActiveModel(cappedModelRegistry[0].id);
+    const normalized = normalizeModelId(activeModel);
+    if (normalized !== activeModel) {
+      setActiveModelRaw(normalized);
+      return;
+    }
+    const exists = cappedModelRegistry.some(m => m.id === normalized || m.name === normalized);
+    if (!exists) setActiveModelRaw(cappedModelRegistry[0].id);
   }, [activeModel, cappedModelRegistry]);
 
   // Focus model search when dropdown opens
@@ -82,7 +90,7 @@ export function useSettings(mounted: boolean) {
       const saved = localStorage.getItem('titan-settings');
       if (saved) {
         const state = JSON.parse(saved);
-        if (state.activeModel) setActiveModel(state.activeModel);
+        if (state.activeModel) setActiveModelRaw(normalizeModelId(state.activeModel));
         if (state.fontSize) setFontSize(state.fontSize);
         if (state.tabSize) setTabSize(state.tabSize);
         if (state.wordWrap !== undefined) setWordWrap(state.wordWrap);
@@ -91,10 +99,14 @@ export function useSettings(mounted: boolean) {
   }, [mounted]);
 
   const selectActiveModel = useCallback((modelId: string) => {
-    setActiveModel(modelId);
+    setActiveModelRaw(normalizeModelId(modelId));
     setShowModelDropdown(false);
     setModelSearchQuery('');
     setHighlightedModelIndex(0);
+  }, []);
+
+  const setActiveModel = useCallback((modelId: string) => {
+    setActiveModelRaw(normalizeModelId(modelId));
   }, []);
 
   const handleModelSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {

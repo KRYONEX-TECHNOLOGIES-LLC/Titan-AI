@@ -36,7 +36,9 @@ export function normalizeModelId(modelId: string): string {
 
 export const MODEL_REGISTRY: ModelInfo[] = [
   // ═══ TITAN PROTOCOL (Multi-Agent Governance System) ═══
-  { id: 'titan-protocol', providerModelId: 'qwen/qwen-2.5-coder-72b-instruct', name: 'Titan Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 128000, maxOutputTokens: 32768, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.35, costPer1MOutput: 0.4, description: 'Multi-agent governance mode powered by Qwen 2.5 Coder 72B with mandatory verification and quality enforcement' },
+  // Supervisor brain = Opus 4.6.  Worker/coder agent = Qwen 2.5 Coder 72B (see titan-agents.yaml).
+  { id: 'titan-protocol', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 15, costPer1MOutput: 75, description: 'Multi-agent governance mode — Opus 4.6 supervisor with Qwen 2.5 Coder 72B worker agent, mandatory verification and quality enforcement' },
+  { id: 'titan-protocol-v2', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Protocol v2 (Parallel)', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 15, costPer1MOutput: 75, description: 'Parallel multi-lane governance — Opus 4.6 supervisor orchestrates parallel Qwen3 Coder workers and Opus 4.6 verifiers with DAG-scheduled execution and zero-trust merge arbitration' },
 
   // ═══ ANTHROPIC (verified from OpenRouter /api/v1/models) ═══
   { id: 'claude-sonnet-4.6', providerModelId: 'anthropic/claude-sonnet-4.6', name: 'Claude Sonnet 4.6', provider: 'Anthropic', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 64000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 3, costPer1MOutput: 15, description: 'Latest and most capable Sonnet with 1M context' },
@@ -85,6 +87,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
 
   // ═══ QWEN ═══
   { id: 'qwen-2.5-72b', providerModelId: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen 2.5 72B', provider: 'Qwen', tier: 'standard', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.35, costPer1MOutput: 0.4, description: 'Strong multilingual model' },
+  { id: 'qwen-2.5-coder-72b', providerModelId: 'qwen/qwen-2.5-coder-72b-instruct', name: 'Qwen 2.5 Coder 72B', provider: 'Qwen', tier: 'standard', contextWindow: 128000, maxOutputTokens: 32768, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.35, costPer1MOutput: 0.4, description: 'Titan Protocol worker agent — top-tier code generation' },
   { id: 'qwen-2.5-coder-32b', providerModelId: 'qwen/qwen-2.5-coder-32b-instruct', name: 'Qwen 2.5 Coder 32B', provider: 'Qwen', tier: 'standard', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.18, costPer1MOutput: 0.18, description: 'Excellent for coding' },
   { id: 'qwen3-coder', providerModelId: 'qwen/qwen3-coder', name: 'Qwen3 Coder', provider: 'Qwen', tier: 'frontier', contextWindow: 256000, maxOutputTokens: 65536, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.4, costPer1MOutput: 1.6, description: 'Top-tier open coding model' },
 

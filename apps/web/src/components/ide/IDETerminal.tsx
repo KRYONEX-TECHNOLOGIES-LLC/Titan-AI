@@ -15,18 +15,80 @@ function loadXtermCss() {
   document.head.appendChild(link);
 }
 
+// ── Icons ──────────────────────────────────────────────────
+function PlusIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M8 1a.75.75 0 01.75.75v5.5h5.5a.75.75 0 010 1.5h-5.5v5.5a.75.75 0 01-1.5 0v-5.5h-5.5a.75.75 0 010-1.5h5.5v-5.5A.75.75 0 018 1z" />
+    </svg>
+  );
+}
+function SplitIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M7.25 1H1.75A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h5.5V1zm1.5 0v14h5.5A1.75 1.75 0 0016 13.25V2.75A1.75 1.75 0 0014.25 1h-5.5z" />
+    </svg>
+  );
+}
+function MaximizeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M2.75 2h10.5c.414 0 .75.336.75.75v10.5a.75.75 0 01-.75.75H2.75a.75.75 0 01-.75-.75V2.75A.75.75 0 012.75 2zM1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 15H2.75A1.75 1.75 0 011 13.25V2.75z" />
+    </svg>
+  );
+}
+function CloseIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
+    </svg>
+  );
+}
+function ShellIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H1.75zm1.03 3.22a.75.75 0 011.06 0l1.97 1.97v.06l-1.97 1.97a.75.75 0 11-1.06-1.06L4.94 7.5 2.78 5.34a.75.75 0 010-1.06zm3.97 5.28a.75.75 0 000 1.5h5a.75.75 0 000-1.5h-5z" />
+    </svg>
+  );
+}
+function ChevronDownIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M4.427 7.427l3.396 3.396a.25.25 0 00.354 0l3.396-3.396A.25.25 0 0011.396 7H4.604a.25.25 0 00-.177.427z" />
+    </svg>
+  );
+}
+function TrashIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zm4.5 0V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675a.75.75 0 10-1.492.15l.66 6.6A1.75 1.75 0 005.405 15h5.19a1.75 1.75 0 001.741-1.575l.66-6.6a.75.75 0 00-1.492-.15l-.66 6.6a.25.25 0 01-.249.225h-5.19a.25.25 0 01-.249-.225l-.66-6.6z" />
+    </svg>
+  );
+}
+
+// ── Panel tab labels ───────────────────────────────────────
+type PanelTab = 'terminal' | 'problems' | 'output' | 'debug' | 'ports';
+
 export default function IDETerminal() {
   useEffect(() => { loadXtermCss(); }, []);
-  const { sessions, activeSessionId, addSession, removeSession, setActiveSession, fontSize, fontFamily, scrollback, cursorStyle, cursorBlink } = useTerminalStore();
-  const { panelVisible } = useLayoutStore();
+
+  const {
+    sessions, activeSessionId,
+    addSession, removeSession, setActiveSession,
+    fontSize, fontFamily, scrollback, cursorStyle, cursorBlink
+  } = useTerminalStore();
+  const { panelVisible, setPanelView } = useLayoutStore();
+
+  const [panelTab, setPanelTab] = useState<PanelTab>('terminal');
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const termRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const xtermInstances = useRef<Map<string, unknown>>(new Map());
 
-  // Ensure at least one session when panel becomes visible
   useEffect(() => {
     if (panelVisible && sessions.length === 0) {
-      addSession('bash', '~');
+      const isWin = typeof navigator !== 'undefined' && /win/i.test(navigator.platform);
+      addSession(isWin ? 'powershell' : 'bash', '~');
     }
   }, [panelVisible, sessions.length, addSession]);
 
@@ -46,11 +108,11 @@ export default function IDETerminal() {
         import('@xterm/addon-search'),
       ]);
 
-      const { useTerminalStore: store } = await import('@/stores/terminal-store');
-
       const term = new Terminal({
-        fontSize: 14,
-        fontFamily: "'JetBrains Mono', Consolas, 'Courier New', monospace",
+        fontSize: 13,
+        fontFamily: "'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace",
+        lineHeight: 1.2,
+        letterSpacing: 0,
         scrollback,
         cursorStyle: cursorStyle as 'block' | 'underline' | 'bar',
         cursorBlink,
@@ -87,19 +149,28 @@ export default function IDETerminal() {
       term.loadAddon(new SearchAddon());
 
       term.open(container);
-      fitAddon.fit();
       xtermInstances.current.set(sessionId, term);
 
-      // Resize observer
-      const ro = new ResizeObserver(() => {
-        try { fitAddon.fit(); } catch { /* ignore */ }
-      });
+      let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+      let ptyReady = false;
+
+      const debouncedFit = () => {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          try { fitAddon.fit(); } catch { /* ignore */ }
+        }, 80);
+      };
+
+      const ro = new ResizeObserver(() => { debouncedFit(); });
       ro.observe(container);
 
-      // ── Electron: real PTY via node-pty ──
       if (isElectron && electronAPI) {
         const cwd = (window as unknown as Record<string, unknown>).__titanWorkspacePath as string || undefined;
         await electronAPI.terminal.create(sessionId, undefined, cwd);
+
+        await new Promise(r => setTimeout(r, 200));
+        ptyReady = true;
+        fitAddon.fit();
 
         const unsubData = electronAPI.terminal.onData(sessionId, (data) => {
           term.write(data);
@@ -114,13 +185,13 @@ export default function IDETerminal() {
         });
 
         term.onResize(({ cols, rows }) => {
+          if (!ptyReady) return;
           electronAPI!.terminal.resize(sessionId, cols, rows);
         });
 
-        (container as HTMLDivElement & { _cleanup?: () => void; _unsubData?: () => void; _unsubExit?: () => void })._unsubData = unsubData;
+        (container as HTMLDivElement & { _unsubData?: () => void; _unsubExit?: () => void })._unsubData = unsubData;
         (container as HTMLDivElement & { _unsubData?: () => void; _unsubExit?: () => void })._unsubExit = unsubExit;
       } else {
-        // ── Web fallback: WebContainer or HTTP API ──
         let wcSession: { input: WritableStream; } | null = null;
         try {
           const wcModule = await import('@/lib/webcontainer').catch(() => null);
@@ -163,12 +234,8 @@ export default function IDETerminal() {
               if (data.error && !data.stdout && !data.stderr) {
                 term.writeln(`\x1b[31m${data.error}\x1b[0m`);
               } else {
-                if (data.stdout) {
-                  data.stdout.split('\n').forEach((line: string) => term.writeln(line));
-                }
-                if (data.stderr) {
-                  data.stderr.split('\n').forEach((line: string) => term.writeln(`\x1b[31m${line}\x1b[0m`));
-                }
+                if (data.stdout) data.stdout.split('\n').forEach((line: string) => term.writeln(line));
+                if (data.stderr) data.stderr.split('\n').forEach((line: string) => term.writeln(`\x1b[31m${line}\x1b[0m`));
                 if (data.exitCode !== 0 && data.exitCode !== undefined) {
                   term.writeln(`\x1b[90m[exit code: ${data.exitCode}]\x1b[0m`);
                 }
@@ -187,10 +254,7 @@ export default function IDETerminal() {
               executeCommand(lineBuffer.trim());
               lineBuffer = '';
             } else if (data === '\u007f') {
-              if (lineBuffer.length > 0) {
-                lineBuffer = lineBuffer.slice(0, -1);
-                term.write('\b \b');
-              }
+              if (lineBuffer.length > 0) { lineBuffer = lineBuffer.slice(0, -1); term.write('\b \b'); }
             } else if (data === '\u0003') {
               lineBuffer = '';
               term.write('^C\r\n');
@@ -203,7 +267,6 @@ export default function IDETerminal() {
         }
       }
 
-      // Global events
       const clearHandler = () => term.clear();
       const scrollHandler = (e: Event) => {
         const dir = (e as CustomEvent<string>).detail;
@@ -221,6 +284,7 @@ export default function IDETerminal() {
       window.addEventListener('titan:terminal:runText', runTextHandler);
 
       (container as HTMLDivElement & { _cleanup?: () => void })._cleanup = () => {
+        if (resizeTimer) clearTimeout(resizeTimer);
         ro.disconnect();
         window.removeEventListener('titan:terminal:clear', clearHandler);
         window.removeEventListener('titan:terminal:scroll', scrollHandler);
@@ -255,97 +319,300 @@ export default function IDETerminal() {
     [mountTerminal]
   );
 
+  const addNewSession = () => {
+    const isWin = typeof navigator !== 'undefined' && /win/i.test(navigator.platform);
+    addSession(isWin ? 'powershell' : 'bash', '~');
+  };
+
+  const PANEL_TABS: { id: PanelTab; label: string }[] = [
+    { id: 'problems', label: 'Problems' },
+    { id: 'output', label: 'Output' },
+    { id: 'debug', label: 'Debug Console' },
+    { id: 'terminal', label: 'Terminal' },
+    { id: 'ports', label: 'Ports' },
+  ];
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#1e1e1e' }}>
-      {/* Tab bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          background: '#252526',
-          borderBottom: '1px solid #3c3c3c',
-          height: 35,
-          flexShrink: 0,
-          overflowX: 'auto',
-        }}
-      >
-        <div style={{ padding: '0 12px', fontSize: 11, color: '#cccccc', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500, whiteSpace: 'nowrap' }}>
-          Terminal
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      height: '100%',
+      background: '#1e1e1e',
+      userSelect: 'none',
+    }}>
+      {/* ── Panel tab bar (Problems / Output / Terminal / Ports) ── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        background: '#252526',
+        borderBottom: '1px solid #3c3c3c',
+        height: 35,
+        flexShrink: 0,
+        paddingLeft: 8,
+      }}>
+        {/* Tab labels */}
+        <div style={{ display: 'flex', alignItems: 'stretch', height: '100%', flex: 1 }}>
+          {PANEL_TABS.map((tab) => {
+            const isActive = panelTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setPanelTab(tab.id)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 12px',
+                  height: '100%',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: isActive ? '1px solid #cccccc' : '1px solid transparent',
+                  color: isActive ? '#cccccc' : '#999999',
+                  fontSize: 12,
+                  fontFamily: "'Segoe UI', -apple-system, sans-serif",
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'color 0.1s',
+                  letterSpacing: '0.1px',
+                  position: 'relative',
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-        <div style={{ flex: 1 }} />
-        {sessions.map((session) => (
+
+        {/* Right controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 1, paddingRight: 6 }}>
+          {panelTab === 'terminal' && (
+            <>
+              {/* New terminal */}
+              <button
+                onClick={addNewSession}
+                title="New Terminal"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, background: 'transparent', border: 'none',
+                  color: '#cccccc', cursor: 'pointer', borderRadius: 4,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#3c3c3c')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <PlusIcon />
+              </button>
+              {/* Split */}
+              <button
+                title="Split Terminal"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, background: 'transparent', border: 'none',
+                  color: '#cccccc', cursor: 'pointer', borderRadius: 4,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#3c3c3c')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <SplitIcon />
+              </button>
+              {/* More actions ⋯ */}
+              <button
+                title="More Actions"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, background: 'transparent', border: 'none',
+                  color: '#cccccc', cursor: 'pointer', borderRadius: 4,
+                  fontSize: 16, letterSpacing: 1,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#3c3c3c')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                ···
+              </button>
+            </>
+          )}
+          {/* Maximize / Restore */}
           <button
-            key={session.id}
-            onClick={() => setActiveSession(session.id)}
+            onClick={() => setIsMaximized(!isMaximized)}
+            title={isMaximized ? 'Restore Panel Size' : 'Maximize Panel Size'}
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '0 10px',
-              height: '100%',
-              background: session.id === activeSessionId ? '#1e1e1e' : 'transparent',
-              border: 'none',
-              borderBottom: session.id === activeSessionId ? '1px solid #1e1e1e' : '1px solid transparent',
-              borderTop: session.id === activeSessionId ? '1px solid #007acc' : '1px solid transparent',
-              color: session.id === activeSessionId ? '#cccccc' : '#999999',
-              fontSize: 12,
-              fontFamily: "'Segoe UI', sans-serif",
-              cursor: 'pointer',
-              whiteSpace: 'nowrap',
-              transition: 'color 0.1s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, background: 'transparent', border: 'none',
+              color: '#cccccc', cursor: 'pointer', borderRadius: 4,
             }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#3c3c3c')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.8 }}>
-              <path d="M1 2.795l.783-.419L8.1 6.18V7.82L1.783 11.623 1 11.205V2.795zm1 .895v5.62L6.6 7 2 3.69zM8.1 2.795l.783-.419L15.2 6.18V7.82l-6.317 3.803-.783-.418V2.795zm1 .895v5.62L13.7 7 9.1 3.69z"/>
+            {/* ∧ chevron up */}
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.573 8.573l-3.396-3.396a.25.25 0 00-.354 0L4.427 8.573A.25.25 0 004.604 9h6.792a.25.25 0 00.177-.427z" />
             </svg>
-            {session.title}
-            <span
-              onClick={(e) => { e.stopPropagation(); removeSession(session.id); }}
-              style={{ marginLeft: 4, color: '#666', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}
-              title="Kill terminal"
-            >
-              ×
-            </span>
           </button>
-        ))}
-        <button
-          onClick={() => addSession('bash', '~')}
-          title="New Terminal"
-          style={{
-            padding: '0 8px',
-            height: '100%',
-            background: 'transparent',
-            border: 'none',
-            color: '#999',
-            cursor: 'pointer',
-            fontSize: 16,
-            lineHeight: 1,
-          }}
-        >
-          +
-        </button>
+          {/* Close */}
+          <button
+            onClick={() => useLayoutStore.setState({ panelVisible: false })}
+            title="Close Panel"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, background: 'transparent', border: 'none',
+              color: '#cccccc', cursor: 'pointer', borderRadius: 4,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#3c3c3c')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+          >
+            <CloseIcon />
+          </button>
+        </div>
       </div>
 
-      {/* Terminal instances */}
-      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        {sessions.map((session) => (
-          <div
-            key={session.id}
-            ref={handleContainerRef(session.id)}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              padding: 4,
-              display: session.id === activeSessionId ? 'block' : 'none',
-            }}
-          />
-        ))}
-        {sessions.length === 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#666', fontSize: 13, fontFamily: "'Segoe UI', sans-serif" }}>
-            No terminal sessions. Click + to create one.
+      {/* ── Terminal tab content ── */}
+      {panelTab === 'terminal' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+          {/* Shell session list row (below panel tabs, shows active sessions) */}
+          {sessions.length > 0 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: '#2d2d2d',
+              borderBottom: '1px solid #3c3c3c',
+              height: 28,
+              flexShrink: 0,
+              overflowX: 'auto',
+              paddingLeft: 4,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'stretch', height: '100%' }}>
+                {sessions.map((session) => {
+                  const isActive = session.id === activeSessionId;
+                  return (
+                    <div
+                      key={session.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        height: '100%',
+                        background: isActive ? '#1e1e1e' : 'transparent',
+                        borderRight: '1px solid #3c3c3c',
+                        position: 'relative',
+                      }}
+                    >
+                      <button
+                        onClick={() => setActiveSession(session.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 5,
+                          padding: '0 8px 0 10px',
+                          height: '100%',
+                          background: 'transparent', border: 'none',
+                          color: isActive ? '#cccccc' : '#888',
+                          fontSize: 11.5,
+                          fontFamily: "'Segoe UI', -apple-system, sans-serif",
+                          cursor: 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        <ShellIcon />
+                        <span>{session.title}</span>
+                      </button>
+                      {/* Kill session */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeSession(session.id); }}
+                        title="Kill Terminal"
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: 18, height: 18, background: 'transparent', border: 'none',
+                          color: '#777', cursor: 'pointer', marginRight: 4, borderRadius: 3,
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#4e4e4e'; e.currentTarget.style.color = '#cccccc'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#777'; }}
+                      >
+                        <CloseIcon />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Trash / Kill all */}
+              <button
+                onClick={() => sessions.forEach(s => removeSession(s.id))}
+                title="Kill All Terminals"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 26, height: 26, marginLeft: 4,
+                  background: 'transparent', border: 'none',
+                  color: '#777', cursor: 'pointer', borderRadius: 4,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#3c3c3c')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <TrashIcon />
+              </button>
+            </div>
+          )}
+
+          {/* xterm instances */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                ref={handleContainerRef(session.id)}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  padding: '4px 6px',
+                  display: session.id === activeSessionId ? 'block' : 'none',
+                  background: '#1e1e1e',
+                }}
+              />
+            ))}
+            {sessions.length === 0 && (
+              <div style={{
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                height: '100%', gap: 12,
+              }}>
+                <svg width="32" height="32" viewBox="0 0 16 16" fill="#555">
+                  <path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H1.75zm1.03 3.22a.75.75 0 011.06 0l1.97 1.97v.06l-1.97 1.97a.75.75 0 11-1.06-1.06L4.94 7.5 2.78 5.34a.75.75 0 010-1.06zm3.97 5.28a.75.75 0 000 1.5h5a.75.75 0 000-1.5h-5z" />
+                </svg>
+                <span style={{ color: '#666', fontSize: 12, fontFamily: "'Segoe UI', sans-serif" }}>
+                  No terminal sessions
+                </span>
+                <button
+                  onClick={addNewSession}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '5px 12px', background: '#2d2d2d',
+                    border: '1px solid #3c3c3c', borderRadius: 4,
+                    color: '#cccccc', fontSize: 12, cursor: 'pointer',
+                    fontFamily: "'Segoe UI', sans-serif",
+                  }}
+                >
+                  <PlusIcon />
+                  New Terminal
+                </button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* ── Other panel tabs placeholder content ── */}
+      {panelTab === 'problems' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12, fontFamily: "'Segoe UI', sans-serif" }}>
+          No problems detected in the workspace.
+        </div>
+      )}
+      {panelTab === 'output' && (
+        <div style={{ flex: 1, padding: '8px 12px', color: '#888', fontSize: 12, fontFamily: "'Cascadia Code', Consolas, monospace", overflowY: 'auto' }}>
+          <div style={{ color: '#569cd6' }}>[Titan AI] Output channel ready.</div>
+        </div>
+      )}
+      {panelTab === 'debug' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12, fontFamily: "'Segoe UI', sans-serif" }}>
+          No debugger attached.
+        </div>
+      )}
+      {panelTab === 'ports' && (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 12, fontFamily: "'Segoe UI', sans-serif" }}>
+          No forwarded ports.
+        </div>
+      )}
     </div>
   );
 }

@@ -116,6 +116,39 @@ code, pre, .font-mono {
   font-variant-ligatures: none;
 }
 
+/* Ensure text is selectable in chat */
+.select-text {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  cursor: text;
+}
+
+.titan-chat-scroll .select-text {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* ═══ LANDING PAGE ANIMATIONS ═══ */
+/* These classes are ONLY used by components in components/landing/ */
+.landing-fade-in {
+  animation: landingFadeIn 0.8s ease-out both;
+}
+
+.landing-fade-in:nth-child(2) { animation-delay: 0.1s; }
+.landing-fade-in:nth-child(3) { animation-delay: 0.2s; }
+.landing-fade-in:nth-child(4) { animation-delay: 0.3s; }
+
+@keyframes landingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ═══ BROWSER EXTENSION INTERFERENCE FIX ═══ */
 /* Hide any elements injected by browser extensions that cause hydration errors */
 .supplier-app-container,

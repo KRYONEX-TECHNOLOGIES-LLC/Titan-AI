@@ -63,7 +63,7 @@ async function ensureDefaultSession() {
     await saveSession({
       id: defaultSessionId,
       name: 'Titan AI Assistant',
-      model: 'claude-4.6-sonnet',
+      model: 'claude-sonnet-4.6',
       messages: [{
         id: 'welcome-1',
         role: 'assistant',
@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
       content: 'New session started. Your changes will be isolated until you click Apply. How can I help you?',
       timestamp: Date.now(),
     }],
-    model: model || 'claude-4.6-sonnet',
+    model: model || 'claude-sonnet-4.6',
     changedFiles: [],
     contextWindow: [],
   };
