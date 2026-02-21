@@ -7,6 +7,7 @@ import { createServerSupabase, createAdminSupabase } from '@/lib/supabase/server
 
 export interface TitanUser {
   id: string;
+  providerUserId: string;
   email: string | null;
   username: string;
   name: string | null;
@@ -40,6 +41,7 @@ export async function getCurrentUser(): Promise<TitanUser | null> {
     if (dbUser) {
       return {
         id: String(dbUser.id),
+        providerUserId: dbUser.provider_user_id || user.id,
         email: dbUser.email,
         username: dbUser.username || user.email?.split('@')[0] || 'user',
         name: dbUser.name,
@@ -54,6 +56,7 @@ export async function getCurrentUser(): Promise<TitanUser | null> {
     // Fallback: return basic info from Supabase auth if DB row not found
     return {
       id: user.id,
+      providerUserId: user.id,
       email: user.email || null,
       username: user.user_metadata?.user_name || user.email?.split('@')[0] || 'user',
       name: user.user_metadata?.full_name || null,

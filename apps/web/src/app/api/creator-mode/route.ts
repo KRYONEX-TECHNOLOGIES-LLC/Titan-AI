@@ -69,14 +69,13 @@ export async function POST(request: NextRequest) {
     const { error } = await adminSb
       .from('users')
       .update({ creator_mode_on: enabled, updated_at: new Date().toISOString() })
-      .eq('provider_user_id', user.id);
+      .eq('provider_user_id', user.providerUserId);
 
     if (error) {
-      // Try by id field as fallback
-      await adminSb
-        .from('users')
-        .update({ creator_mode_on: enabled, updated_at: new Date().toISOString() })
-        .eq('id', user.id);
+      console.error('[creator-mode] Failed to update creator mode:', error.message, {
+        providerUserId: user.providerUserId,
+      });
+      return NextResponse.json({ error: 'Failed to update creator mode' }, { status: 500 });
     }
 
     console.log(`[creator-mode] Creator mode toggled: enabled=${enabled}, user=${user.email}`);

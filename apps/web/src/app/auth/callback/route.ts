@@ -79,6 +79,13 @@ export async function GET(request: Request) {
       .single();
 
     const isCreator = isCreatorIdentity({ email, provider, emailVerified });
+    console.log('[auth/callback] Creator identity check:', {
+      email,
+      provider,
+      emailVerified,
+      isCreator,
+      providerUserId: user.id,
+    });
 
     if (existingUser) {
       // Update existing user
@@ -100,10 +107,13 @@ export async function GET(request: Request) {
         updates.role = 'creator';
       }
 
-      await adminSupabase
+      const { error: updateError } = await adminSupabase
         .from('users')
         .update(updates)
         .eq('id', existingUser.id);
+      if (updateError) {
+        console.error('[auth/callback] Failed to update existing user:', updateError.message);
+      }
 
       console.log(`[auth/callback] Updated user id=${existingUser.id}, isCreator=${isCreator}`);
     } else {
@@ -120,7 +130,7 @@ export async function GET(request: Request) {
 
       if (linkedUser) {
         // Link new provider to existing account
-        await adminSupabase
+        const { error: linkError } = await adminSupabase
           .from('users')
           .update({
             provider,
@@ -131,11 +141,14 @@ export async function GET(request: Request) {
             ...(isCreator ? { is_creator: true, role: 'creator' } : {}),
           })
           .eq('id', linkedUser.id);
+        if (linkError) {
+          console.error('[auth/callback] Failed to link provider identity:', linkError.message);
+        }
 
         console.log(`[auth/callback] Linked provider=${provider} to existing user id=${linkedUser.id}`);
       } else {
         // Create new user
-        await adminSupabase.from('users').insert({
+        const { error: insertError } = await adminSupabase.from('users').insert({
           username,
           name,
           email,
@@ -145,11 +158,14 @@ export async function GET(request: Request) {
           role: isCreator ? 'creator' : 'user',
           is_creator: isCreator,
           email_verified: emailVerified,
-          github_id: provider === 'github' ? (user.user_metadata?.provider_id || 0) : 0,
+          github_id: provider === 'github' ? (user.user_metadata?.provider_id || null) : null,
           last_login_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
+        if (insertError) {
+          console.error('[auth/callback] Failed to create user:', insertError.message);
+        }
 
         console.log(`[auth/callback] Created new user: provider=${provider}, email=${email}, isCreator=${isCreator}`);
       }
