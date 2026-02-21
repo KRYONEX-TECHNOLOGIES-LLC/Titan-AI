@@ -18,6 +18,7 @@ import GitHubAuthProvider from '@/providers/github-auth-provider';
 
 // Utils
 import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 // Components
 import ChatMessage from '@/components/ide/ChatMessage';
@@ -122,6 +123,84 @@ export default function TitanIDE() {
   const { sessions, setSessions, activeSessionId, setActiveSessionId, currentSession, handleNewAgent, handleRenameSession, handleDeleteSession } = useSessions(mounted);
   const fileSystem = useFileSystem(setTabs, setActiveTab, setFileContents, setActiveView, activeView);
 
+  // Terminal history for agent context
+  const [terminalHistory, setTerminalHistory] = useState<Array<{ command: string; output?: string; exitCode: number }>>([]);
+
+  // Debounced file tree refresh
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedRefreshTree = useCallback(() => {
+    if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => {
+      useFileStore.getState().refreshFileTree();
+      refreshTimerRef.current = null;
+    }, 400);
+  }, []);
+
+  // Agent callback: file edited on disk -> update editor + file tree
+  const handleAgentFileEdited = useCallback((path: string, newContent: string) => {
+    const fileName = path.includes('/') ? path : path;
+    setFileContents(prev => ({ ...prev, [path]: newContent, [fileName]: newContent }));
+    useEditorStore.getState().loadFileContents({ [path]: newContent, [fileName]: newContent });
+
+    if (activeTab === path || activeTab === fileName) {
+      if (editorInstance) {
+        const model = editorInstance.getModel();
+        if (model && model.getValue() !== newContent) {
+          model.setValue(newContent);
+        }
+      }
+    }
+
+    setTabs(prev => prev.map(t =>
+      (t.name === path || t.name === fileName) ? { ...t, modified: false } : t
+    ));
+
+    debouncedRefreshTree();
+  }, [activeTab, editorInstance, debouncedRefreshTree]);
+
+  // Agent callback: file created on disk -> update tree + optionally open
+  const handleAgentFileCreated = useCallback((path: string, content: string) => {
+    const fileName = path.includes('/') ? path : path;
+    setFileContents(prev => ({ ...prev, [path]: content, [fileName]: content }));
+    useEditorStore.getState().loadFileContents({ [path]: content, [fileName]: content });
+    debouncedRefreshTree();
+  }, [debouncedRefreshTree]);
+
+  // Agent callback: file deleted on disk -> close tab + update tree
+  const handleAgentFileDeleted = useCallback((path: string) => {
+    const fileName = path.includes('/') ? path : path;
+    setTabs(prev => {
+      const filtered = prev.filter(t => t.name !== path && t.name !== fileName);
+      if ((activeTab === path || activeTab === fileName) && filtered.length > 0) {
+        setActiveTab(filtered[filtered.length - 1].name);
+      } else if (filtered.length === 0) {
+        setActiveTab('');
+      }
+      return filtered;
+    });
+    setFileContents(prev => {
+      const next = { ...prev };
+      delete next[path];
+      delete next[fileName];
+      return next;
+    });
+    debouncedRefreshTree();
+  }, [activeTab, debouncedRefreshTree]);
+
+  // Agent callback: terminal command ran -> track history + refresh tree
+  const handleAgentTerminalCommand = useCallback((command: string, output: string, exitCode: number) => {
+    setTerminalHistory(prev => [...prev.slice(-19), { command, output: output.slice(0, 2000), exitCode }]);
+    debouncedRefreshTree();
+  }, [debouncedRefreshTree]);
+
+  // OS platform (cached)
+  const [osPlatform, setOsPlatform] = useState('');
+  useEffect(() => {
+    if (isElectron && electronAPI) {
+      electronAPI.app.getPlatform().then(p => setOsPlatform(p));
+    }
+  }, []);
+
   // Diff decorations
   const applyDiffDecorations = useCallback((oldContent: string, newContent: string) => {
     if (!editorInstance || !monacoInstance) return;
@@ -154,10 +233,20 @@ export default function TitanIDE() {
     setPendingDiff({ file: activeTab, oldContent, newContent, decorationIds });
   }, [editorInstance, monacoInstance, activeTab, pendingDiff]);
 
-  // Chat
+  // Chat -- wired up with all callbacks and context
   const chat = useChat({
     sessions, setSessions, activeSessionId,
     activeModel: settings.activeModel, activeTab, fileContents, editorInstance,
+    onFileEdited: handleAgentFileEdited,
+    onFileCreated: handleAgentFileCreated,
+    onFileDeleted: handleAgentFileDeleted,
+    onTerminalCommand: handleAgentTerminalCommand,
+    workspacePath: fileSystem.workspacePath,
+    openTabs: tabs.map(t => t.name),
+    terminalHistory,
+    cursorPosition: { line: cursorPosition.line, column: cursorPosition.column, file: activeTab },
+    isDesktop: isElectron,
+    osPlatform,
   });
 
   // Apply changes
@@ -257,6 +346,50 @@ export default function TitanIDE() {
     document.addEventListener('keydown', handleKeyboard);
     return () => document.removeEventListener('keydown', handleKeyboard);
   }, [executeCommand, fileSystem, settings, midnight]);
+
+  // File system watcher -- auto-refresh tree + editor when files change on disk
+  useEffect(() => {
+    if (!isElectron || !electronAPI || !fileSystem.workspacePath) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const pendingChanges = new Set<string>();
+
+    const cleanup = electronAPI.fs.watchFolder(fileSystem.workspacePath, (event: string, filePath: string) => {
+      if (event === 'change') {
+        pendingChanges.add(filePath);
+      }
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        useFileStore.getState().refreshFileTree();
+
+        for (const changedPath of pendingChanges) {
+          const relPath = changedPath.replace(fileSystem.workspacePath + '/', '').replace(fileSystem.workspacePath + '\\', '');
+          const fileName = relPath.replace(/\\/g, '/');
+          const isOpen = tabs.some(t => t.name === fileName || t.name === relPath);
+          if (isOpen && electronAPI) {
+            try {
+              const content = await electronAPI.fs.readFile(changedPath);
+              setFileContents(prev => ({ ...prev, [fileName]: content, [relPath]: content }));
+              useEditorStore.getState().loadFileContents({ [fileName]: content, [relPath]: content });
+              if ((activeTab === fileName || activeTab === relPath) && editorInstance) {
+                const model = editorInstance.getModel();
+                if (model && model.getValue() !== content) {
+                  model.setValue(content);
+                }
+              }
+            } catch { /* file may have been deleted */ }
+          }
+        }
+        pendingChanges.clear();
+      }, 300);
+    });
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      cleanup();
+    };
+  }, [fileSystem.workspacePath, tabs, activeTab, editorInstance]);
 
   // Close dropdowns
   useEffect(() => {

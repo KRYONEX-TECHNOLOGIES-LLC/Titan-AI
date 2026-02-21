@@ -33,6 +33,7 @@ interface UseChatOptions {
   onTerminalCommand?: (command: string, output: string, exitCode: number) => void;
   onFileEdited?: (path: string, newContent: string) => void;
   onFileCreated?: (path: string, content: string) => void;
+  onFileDeleted?: (path: string) => void;
   workspacePath?: string;
   openTabs?: string[];
   terminalHistory?: TerminalHistoryEntry[];
@@ -85,6 +86,7 @@ export function useChat({
   onTerminalCommand,
   onFileEdited,
   onFileCreated,
+  onFileDeleted,
   workspacePath,
   openTabs,
   terminalHistory,
@@ -106,7 +108,7 @@ export function useChat({
   const pendingContentRef = useRef('');
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath });
+  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath });
 
   const updateMessage = useCallback((
     sessionId: string,
@@ -587,14 +589,14 @@ export function useChat({
               id: `diff-${tc.id}`,
               file: tc.args.path as string,
               code: newContent,
-              status: 'pending',
+              status: 'applied',
             });
           } else if (tc.tool === 'create_file' && result.success) {
             appendCodeDiffToMessage(sessionId, streamMessageId, {
               id: `diff-${tc.id}`,
               file: tc.args.path as string,
               code: tc.args.content as string,
-              status: 'pending',
+              status: 'applied',
             });
           }
 

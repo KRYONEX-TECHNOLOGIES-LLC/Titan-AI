@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { isElectron, electronAPI } from '@/lib/electron';
 
 export interface FileNode {
   name: string;
@@ -50,6 +51,21 @@ export interface FileState {
   copyPath: (path: string) => void;
   cutPath: (path: string) => void;
   paste: (destDir: string) => void;
+}
+
+function convertNativeTree(nodes: Array<{ name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }>, prefix: string): FileNode[] {
+  return nodes.map(n => {
+    const relPath = prefix ? `${prefix}/${n.name}` : n.name;
+    const node: FileNode = {
+      name: n.name,
+      path: relPath,
+      type: n.type === 'directory' ? 'folder' : 'file',
+    };
+    if (n.type === 'directory' && n.children) {
+      node.children = convertNativeTree(n.children as typeof nodes, relPath);
+    }
+    return node;
+  });
 }
 
 function getAllPaths(nodes: FileNode[]): string[] {
@@ -118,12 +134,18 @@ export const useFileStore = create<FileState>()(
 
       refreshFileTree: async () => {
         const { workspacePath, workspaceOpen } = get();
-        if (!workspaceOpen) return;
+        if (!workspaceOpen || !workspacePath) return;
         try {
-          const res = await fetch(`/api/workspace?path=${encodeURIComponent(workspacePath)}`);
-          if (res.ok) {
-            const data = await res.json();
-            set({ fileTree: data.tree ?? [] });
+          if (isElectron && electronAPI) {
+            const nativeTree = await electronAPI.fs.readDir(workspacePath, { recursive: true });
+            const tree = convertNativeTree(nativeTree as Array<{ name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }>, '');
+            set({ fileTree: tree });
+          } else {
+            const res = await fetch(`/api/workspace?path=${encodeURIComponent(workspacePath)}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.tree) set({ fileTree: data.tree });
+            }
           }
         } catch {
           // silently fail — keep existing tree

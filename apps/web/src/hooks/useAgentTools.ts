@@ -14,6 +14,7 @@ interface UseAgentToolsOptions {
   onTerminalCommand?: (command: string, output: string, exitCode: number) => void;
   onFileEdited?: (path: string, newContent: string) => void;
   onFileCreated?: (path: string, content: string) => void;
+  onFileDeleted?: (path: string) => void;
   workspacePath?: string;
 }
 
@@ -25,7 +26,7 @@ function resolveToWorkspace(filePath: string, wsPath?: string): string {
   return base + '/' + rel;
 }
 
-export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, workspacePath }: UseAgentToolsOptions = {}) {
+export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath }: UseAgentToolsOptions = {}) {
   const abortRef = useRef(false);
 
   const executeToolCall = useCallback(async (
@@ -100,6 +101,7 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           const filePath = resolveToWorkspace(args.path as string, workspacePath);
           if (!filePath) return { success: false, output: '', error: 'path is required' };
           await api.tools.deleteFile(filePath);
+          onFileDeleted?.(args.path as string);
           return { success: true, output: `File deleted: ${args.path}` };
         }
 
@@ -190,7 +192,7 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
         error: e instanceof Error ? e.message : 'Tool execution failed',
       };
     }
-  }, [onTerminalCommand, onFileEdited, onFileCreated, workspacePath]);
+  }, [onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath]);
 
   const abort = useCallback(() => {
     abortRef.current = true;
