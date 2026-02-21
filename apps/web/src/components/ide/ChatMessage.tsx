@@ -5,9 +5,15 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ToolCallBlock as ToolCallBlockType, CodeDiffBlock as CodeDiffBlockType } from '@/types/ide';
 
+interface MessageAttachment {
+  mediaType: string;
+  base64: string;
+}
+
 interface ChatMessageProps {
   role: 'user' | 'assistant' | 'tool';
   content: string;
+  attachments?: MessageAttachment[];
   thinking?: string;
   thinkingTime?: number;
   streaming?: boolean;
@@ -474,9 +480,141 @@ function MarkdownContent({ content, onApplyCode }: {
   );
 }
 
+/* ═══ IMAGE LIGHTBOX ═══ */
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 99999,
+        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        animation: 'fadeIn 150ms ease',
+        cursor: 'zoom-out',
+      }}
+    >
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute', top: 16, right: 20, zIndex: 100000,
+          background: 'rgba(255,255,255,0.1)', border: 'none',
+          color: '#fff', fontSize: 20, width: 36, height: 36,
+          borderRadius: 8, cursor: 'pointer', display: 'flex',
+          alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1,
+        }}
+      >
+        ✕
+      </button>
+      <img
+        src={src}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '90vw', maxHeight: '90vh',
+          objectFit: 'contain', borderRadius: 6,
+          cursor: 'default', boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+        }}
+        alt=""
+      />
+      <style>{`@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }`}</style>
+    </div>
+  );
+}
+
+/* ═══ IMAGE ATTACHMENTS ═══ */
+function ImageAttachments({ attachments }: { attachments: MessageAttachment[] }) {
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [failedSet, setFailedSet] = useState<Set<number>>(() => new Set());
+  const [expanded, setExpanded] = useState(false);
+
+  const images = attachments.filter(a => a.mediaType.startsWith('image/'));
+  if (images.length === 0) return null;
+
+  const toSrc = (att: MessageAttachment) =>
+    att.base64.startsWith('data:') ? att.base64 : `data:${att.mediaType};base64,${att.base64}`;
+
+  const handleError = (idx: number) => {
+    setFailedSet(prev => { const next = new Set(prev); next.add(idx); return next; });
+  };
+
+  const visibleLimit = 4;
+  const showExpand = images.length > visibleLimit && !expanded;
+  const visible = expanded ? images : images.slice(0, visibleLimit);
+  const isSingle = images.length === 1;
+
+  return (
+    <>
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isSingle ? '1fr' : 'repeat(2, 1fr)',
+        gap: 6, marginBottom: 8, maxWidth: isSingle ? 360 : 420,
+      }}>
+        {visible.map((att, i) => {
+          if (failedSet.has(i)) {
+            return (
+              <div key={i} style={{
+                background: '#1a1a1a', border: '1px solid #333',
+                borderRadius: 8, height: isSingle ? 200 : 120,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#555', fontSize: 11,
+              }}>
+                Image failed to load
+              </div>
+            );
+          }
+          const src = toSrc(att);
+          return (
+            <div
+              key={i}
+              onClick={() => setLightboxSrc(src)}
+              style={{
+                cursor: 'zoom-in', borderRadius: 8, overflow: 'hidden',
+                border: '1px solid #2a2a2a', background: '#111',
+                height: isSingle ? 'auto' : 140,
+                maxHeight: isSingle ? 280 : 140,
+              }}
+            >
+              <img
+                src={src}
+                alt={`Attachment ${i + 1}`}
+                loading="lazy"
+                onError={() => handleError(i)}
+                style={{
+                  width: '100%', height: '100%',
+                  objectFit: isSingle ? 'contain' : 'cover',
+                  display: 'block',
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      {showExpand && (
+        <button
+          onClick={() => setExpanded(true)}
+          style={{
+            background: 'none', border: '1px solid #333', borderRadius: 6,
+            color: '#888', fontSize: 11, padding: '3px 10px', cursor: 'pointer',
+            marginBottom: 8,
+          }}
+        >
+          +{images.length - visibleLimit} more image{images.length - visibleLimit > 1 ? 's' : ''}
+        </button>
+      )}
+    </>
+  );
+}
+
 /* ═══ MAIN COMPONENT ═══ */
 export default function ChatMessage({
-  role, content, thinking, thinkingTime, streaming,
+  role, content, attachments, thinking, thinkingTime, streaming,
   isError, retryMessage, activeModel, toolCalls, codeDiffs,
   onRetry, onApplyCode, onApplyDiff, onRejectDiff,
 }: ChatMessageProps) {
@@ -484,6 +622,9 @@ export default function ChatMessage({
   if (role === 'user') {
     return (
       <div style={{ marginBottom: 16, marginTop: 4 }}>
+        {attachments && attachments.length > 0 && (
+          <ImageAttachments attachments={attachments} />
+        )}
         <div style={{ fontSize: 12.5, color: '#e0e0e0', whiteSpace: 'pre-wrap', lineHeight: 1.55, userSelect: 'text', cursor: 'text' }}>
           {content}
         </div>
