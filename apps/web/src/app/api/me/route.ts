@@ -9,6 +9,9 @@ import { createServerSupabase, createAdminSupabase } from '@/lib/supabase/server
 export async function GET() {
   try {
     const supabase = await createServerSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Auth not configured' }, { status: 503 });
+    }
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
@@ -16,6 +19,9 @@ export async function GET() {
     }
 
     const adminSb = createAdminSupabase();
+    if (!adminSb) {
+      return NextResponse.json({ error: 'Auth not configured' }, { status: 503 });
+    }
     const { data: dbUser } = await adminSb
       .from('users')
       .select('id, username, name, email, avatar_url, provider, provider_user_id, role, is_creator, creator_mode_on, email_verified')

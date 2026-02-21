@@ -53,6 +53,11 @@ function SignInContent() {
   const supabase = createClient();
 
   const handleOAuthSignIn = async (provider: 'github' | 'google' | 'apple') => {
+    if (!supabase) {
+      console.error('[signin] Supabase not configured');
+      setLoading(null);
+      return;
+    }
     setLoading(provider);
     try {
       const { error } = await supabase.auth.signInWithOAuth({

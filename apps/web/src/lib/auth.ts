@@ -24,11 +24,13 @@ export interface TitanUser {
 export async function getCurrentUser(): Promise<TitanUser | null> {
   try {
     const supabase = await createServerSupabase();
+    if (!supabase) return null;
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) return null;
 
     const adminSb = createAdminSupabase();
+    if (!adminSb) return null;
     const { data: dbUser } = await adminSb
       .from('users')
       .select('*')
@@ -74,6 +76,7 @@ export async function getCurrentUser(): Promise<TitanUser | null> {
 export async function getGithubToken(): Promise<string | null> {
   try {
     const supabase = await createServerSupabase();
+    if (!supabase) return null;
     const { data: { session } } = await supabase.auth.getSession();
     return session?.provider_token || null;
   } catch {

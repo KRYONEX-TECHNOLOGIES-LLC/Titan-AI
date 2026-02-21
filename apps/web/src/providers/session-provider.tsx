@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 
 export interface TitanSession {
@@ -68,7 +68,9 @@ async function fetchUserProfile(supabaseUser: User): Promise<TitanSession['user'
 
 export default function TitanSessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<TitanSession['user']>(null);
-  const [status, setStatus] = useState<TitanSession['status']>('loading');
+  const [status, setStatus] = useState<TitanSession['status']>(
+    isSupabaseConfigured ? 'loading' : 'unauthenticated'
+  );
   const supabase = createClient();
 
   const loadUser = useCallback(async (session: Session | null) => {
@@ -83,6 +85,8 @@ export default function TitanSessionProvider({ children }: { children: ReactNode
   }, []);
 
   useEffect(() => {
+    if (!supabase) return;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       loadUser(session);
     });
@@ -95,6 +99,7 @@ export default function TitanSessionProvider({ children }: { children: ReactNode
   }, [supabase, loadUser]);
 
   const handleSignOut = useCallback(async () => {
+    if (!supabase) return;
     await supabase.auth.signOut();
     setUser(null);
     setStatus('unauthenticated');
@@ -102,6 +107,7 @@ export default function TitanSessionProvider({ children }: { children: ReactNode
   }, [supabase]);
 
   const refreshUser = useCallback(async () => {
+    if (!supabase) return;
     const { data: { session } } = await supabase.auth.getSession();
     await loadUser(session);
   }, [supabase, loadUser]);

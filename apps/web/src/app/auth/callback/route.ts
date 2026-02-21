@@ -21,10 +21,15 @@ export async function GET(request: Request) {
 
   const cookieStore = await cookies();
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    console.error('[auth/callback] Supabase not configured');
+    return NextResponse.redirect(`${origin}/auth/signin?error=AuthNotConfigured`);
+  }
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -57,12 +62,13 @@ export async function GET(request: Request) {
 
   // Upsert user into our custom users table using the admin (service_role) client
   try {
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceKey) {
+      console.warn('[auth/callback] Service role key not configured, skipping user upsert');
+      throw new Error('Service role key not configured');
+    }
     const { createClient } = await import('@supabase/supabase-js');
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } }
-    );
+    const adminSupabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
     // Look up existing user by provider + supabase user id
     const { data: existingUser } = await adminSupabase

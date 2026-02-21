@@ -63,6 +63,9 @@ export async function POST(request: NextRequest) {
     const enabled = Boolean(body.enabled);
 
     const adminSb = createAdminSupabase();
+    if (!adminSb) {
+      return NextResponse.json({ error: 'Auth not configured' }, { status: 503 });
+    }
     const { error } = await adminSb
       .from('users')
       .update({ creator_mode_on: enabled, updated_at: new Date().toISOString() })
