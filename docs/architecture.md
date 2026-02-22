@@ -1,184 +1,96 @@
-# Titan AI Architecture
+# Titan AI Architecture (Current Runtime)
 
-## Overview
+This doc describes the **current runtime wiring**. For an exhaustive UI/API walkthrough, read:
 
-Titan AI is an AI-native Integrated Development Environment (IDE) built on a forked VS Code base. It deeply integrates AI capabilities throughout the development workflow, providing intelligent code assistance, autonomous agents, and advanced context management.
+- `docs/TITAN_AI_FULL_PROJECT_OVERVIEW.md`
 
-## High-Level Architecture
+For quick “where is X implemented”, use:
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Titan AI IDE                              │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
-│  │   Editor    │  │    Chat     │  │   Agents    │              │
-│  │   (Monaco)  │  │   Panel     │  │   Panel     │              │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘              │
-│         │                │                │                      │
-│  ┌──────┴────────────────┴────────────────┴──────┐              │
-│  │              AI Integration Layer              │              │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────────┐   │              │
-│  │  │ Context  │ │ Prompts  │ │  Speculative │   │              │
-│  │  │ Manager  │ │ Engine   │ │  Edit Engine │   │              │
-│  │  └──────────┘ └──────────┘ └──────────────┘   │              │
-│  └───────────────────────┬───────────────────────┘              │
-│                          │                                       │
-│  ┌───────────────────────┴───────────────────────┐              │
-│  │                AI Gateway                      │              │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────────┐   │              │
-│  │  │ LiteLLM  │ │OpenRouter│ │    Ollama    │   │              │
-│  │  │ Adapter  │ │ Adapter  │ │   Adapter    │   │              │
-│  │  └──────────┘ └──────────┘ └──────────────┘   │              │
-│  └───────────────────────────────────────────────┘              │
-│                                                                  │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                    Core Services                             ││
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐   ││
-│  │  │Workspace │ │ Terminal │ │Filesystem│ │   Security   │   ││
-│  │  │ Manager  │ │ Manager  │ │  Manager │ │   Manager    │   ││
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────────┘   ││
-│  └─────────────────────────────────────────────────────────────┘│
-│                                                                  │
-│  ┌─────────────────────────────────────────────────────────────┐│
-│  │                    Indexing Layer                            ││
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────┐   ││
-│  │  │ Native   │ │ Vector   │ │  Repo    │ │   Merkle     │   ││
-│  │  │ Indexer  │ │   DB     │ │   Map    │ │   Sync       │   ││
-│  │  └──────────┘ └──────────┘ └──────────┘ └──────────────┘   ││
-│  └─────────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────────┘
+- `docs/REPO_MAP.md`
+
+---
+
+## High-level architecture
+
+Titan AI runs as an Electron desktop app that hosts a Next.js UI and exposes native capabilities (filesystem, terminal, git, run_command) via IPC.
+
+```mermaid
+flowchart LR
+  UI[Next.js UI (apps/web)] -- IPC --> Main[Electron main (apps/desktop)]
+  Main --> Tools[IPC tools: run_command/read/edit/create]
+  Main --> FS[IPC filesystem]
+  Main --> PTY[IPC terminal/PTY]
+  Main --> Git[IPC git]
 ```
 
-## Package Structure
+Key separation:
 
-### Core Packages (`packages/core/`)
+- **UI + API routes** live in `apps/web`
+- **Native execution** lives in `apps/desktop`
 
-- **@titan/editor-core**: Monaco editor integration with AI hooks
-- **@titan/composer**: Diff engine and code change visualization
-- **@titan/workspace**: Workspace management and file operations
-- **@titan/terminal**: PTY management and terminal integration
-- **@titan/filesystem**: Virtual, native, and browser filesystem abstractions
+---
 
-### AI Packages (`packages/ai/`)
+## Key components
 
-- **@titan/ai-gateway**: Multi-provider LLM gateway (LiteLLM, OpenRouter, Ollama)
-- **@titan/ai-router**: Model routing, fallback, and cost optimization
-- **@titan/ai-speculative**: Speculative editing engine (EfficientEdit paradigm)
-- **@titan/ai-agents**: Multi-agent orchestration system
-- **@titan/ai-adaptive**: Context shaping and long-horizon reasoning
-- **@titan/ai-prompts**: System prompts and template engine
-- **@titan/ai-context**: Context management and relevance scoring
+### Web (Next.js)
 
-### Infrastructure Packages
+- **Editor route**: `apps/web/src/app/editor/page.tsx`
+- **IDE shell**: `apps/web/src/components/titan-ide.tsx`
+- **Chat orchestration loop**: `apps/web/src/hooks/useChat.ts`
+- **Tool execution layer**: `apps/web/src/hooks/useAgentTools.ts`
 
-- **@titan/indexer-native**: Rust-based Tree-sitter indexer with Merkle sync
-- **@titan/vectordb**: LanceDB vector database integration
-- **@titan/repo-map**: PageRank-based repository mapping
-- **@titan/mcp-client**: Model Context Protocol client
-- **@titan/mcp-host**: MCP host implementation
-- **@titan/mcp-servers**: MCP server implementations (filesystem, git, terminal, browser)
+API routes:
 
-### Security & Performance
+- `apps/web/src/app/api/chat/route.ts` (provider routing + security scan)
+- `apps/web/src/app/api/chat/continue/route.ts` (tool-calling + system prompt)
+- `apps/web/src/app/api/models/route.ts` (model list)
+- `apps/web/src/app/api/titan/omega/route.ts` (Omega protocol SSE)
 
-- **@titan/security-***: Obfuscation, injection detection, authorization
-- **@titan/performance**: Caching, GPU acceleration, quantization
+### Desktop (Electron)
 
-## Key Subsystems
+- **Main process**: `apps/desktop/src/main.ts`
+- **Preload bridge**: `apps/desktop/src/preload.ts`
+- **IPC handlers**: `apps/desktop/src/ipc/*`
+  - `tools.ts` (agent tools)
+  - `terminal.ts` (PTY)
+  - `filesystem.ts`
+  - `git.ts`
 
-### 1. AI Gateway
+---
 
-The AI Gateway provides a unified interface to multiple LLM providers:
+## Protocol modules (Omega / Supreme / Lanes)
 
-- **LiteLLM Adapter**: OpenAI-compatible API for multiple providers
-- **OpenRouter Adapter**: Access to frontier models
-- **Ollama Adapter**: Local model execution
+These modules live under `apps/web/src/lib/`:
 
-### 2. Speculative Editing Engine
+- **Omega protocol**: `apps/web/src/lib/omega/`
+- **Lanes runtime**: `apps/web/src/lib/lanes/`
+- **Supreme protocol**: `apps/web/src/lib/supreme/`
 
-Based on the EfficientEdit paradigm:
+These are orchestrated via API routes under:
 
-1. Draft model (StarCoder2-3B) generates initial predictions
-2. Target model (Claude 4) verifies and accepts/rejects
-3. Redundancy reuse for efficient token handling
+- `apps/web/src/app/api/titan/*`
 
-### 3. Multi-Agent Orchestration
+---
 
-Coordinated agent system:
+## Packages (library layer)
 
-- **Orchestrator**: Task decomposition and delegation
-- **Security Reviewer**: Vulnerability detection
-- **Refactor Specialist**: Code improvement
-- **Test Writer**: Test generation
-- **Doc Writer**: Documentation generation
+The repo contains many shared packages under `packages/` (ai/core/security/midnight/etc.). Some are currently used, some are foundations/roadmap.
 
-### 4. Shadow Workspaces
+When in doubt about what is wired into the running desktop app, treat the following as canonical:
 
-Isolated execution environments for AI agents:
+- `apps/web/src/**`
+- `apps/desktop/src/**`
 
-- Workspace forking via Git worktrees
-- Sandboxed execution (Docker, WASM)
-- Result merging with conflict resolution
+---
 
-### 5. Semantic Indexing
+## Path alias
 
-High-performance code understanding:
+The web app uses the `@/` alias for `apps/web/src/*`.
 
-- Tree-sitter AST parsing (Rust native)
-- Merkle tree incremental sync (O(log N))
-- Vector embeddings with LanceDB
-- PageRank symbol ranking
+`apps/web/tsconfig.json` must include:
 
-## Data Flow
+- `compilerOptions.baseUrl = "."`
+- `compilerOptions.paths["@/*"] = ["./src/*"]`
 
-```
-User Input
-    │
-    ▼
-┌─────────────────┐
-│ Context Manager │ ◄── Index, Files, History
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Prompt Builder  │ ◄── Templates, System Prompts
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   AI Gateway    │ ◄── Model Router, Cost Optimizer
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ LLM Provider    │ (Claude, GPT, Ollama, etc.)
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Response Parser │ ◄── Tool calls, Code extraction
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│ Action Executor │ ◄── File edits, Terminal commands
-└────────┬────────┘
-         │
-         ▼
-User Output
-```
+This avoids container-build failures resolving `@/…`.
 
-## Security Model
-
-1. **Zero Telemetry**: Enforced at source level
-2. **Secret Masking**: Automatic detection and obfuscation
-3. **Prompt Injection Detection**: Pattern-based and ML detection
-4. **Tool Authorization**: Explicit permission model
-5. **Trusted Workspaces**: Granular capability control
-
-## Deployment Options
-
-1. **Desktop**: Electron-based native application
-2. **Web**: Next.js with WebContainers
-3. **CLI**: Node.js command-line tool
-4. **Server**: Self-hosted API server
