@@ -44,6 +44,9 @@ module.exports = {
     shortcutName: 'Titan Desktop',
     uninstallDisplayName: 'Titan Desktop',
     displayLanguageSelector: false,
+    createDesktopShortcut: true,
+    createStartMenuShortcut: true,
+    runAfterFinish: true,
   },
 
   mac: {
