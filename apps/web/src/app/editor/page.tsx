@@ -10,7 +10,7 @@ import { EditorLoading } from '@/components/editor-loading';
 export const dynamic = 'force-dynamic';
 
 const TitanIDE = nextDynamic(
-  () => import('@/components/titan-ide'),
+  () => import('../../components/titan-ide'),
   {
     ssr: false,
     loading: () => <EditorLoading />,

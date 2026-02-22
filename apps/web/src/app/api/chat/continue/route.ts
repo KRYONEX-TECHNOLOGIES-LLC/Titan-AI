@@ -1030,7 +1030,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate/normalize model and resolve provider model id
-  const { MODEL_REGISTRY, normalizeModelId } = await import('@/lib/model-registry');
+  const { MODEL_REGISTRY, normalizeModelId } = await import('../../../../lib/model-registry');
   const normalizedModel = normalizeModelId(model);
   const isTitanProtocol = Boolean(body?.titanProtocol);
   const modelEntry = MODEL_REGISTRY.find((m: { id: string }) => m.id === normalizedModel);
