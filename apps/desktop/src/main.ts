@@ -309,6 +309,10 @@ function setupOAuthInterceptor(win: BrowserWindow): void {
   });
 }
 
+const LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Titan AI</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a14;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}.wrap{text-align:center}.logo{font-size:1.8rem;font-weight:700;margin-bottom:.75rem;letter-spacing:-.02em}.sub{color:#8b8ba8;font-size:.9rem;margin-bottom:2rem}.dots span{display:inline-block;width:8px;height:8px;border-radius:50%;background:#6c5ce7;margin:0 4px;animation:bounce 1.2s infinite}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-10px)}}</style></head><body><div class="wrap"><div class="logo">Titan AI</div><div class="sub">Starting up…</div><div class="dots"><span></span><span></span><span></span></div></div></body></html>`;
+
+const ERROR_HTML = (port: number) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Titan AI — Error</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a14;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}.wrap{text-align:center;max-width:440px;padding:0 1.5rem}.title{font-size:1.6rem;font-weight:700;margin-bottom:.75rem}.msg{color:#8b8ba8;font-size:.9rem;line-height:1.6;margin-bottom:2rem}button{background:#6c5ce7;color:#fff;border:none;padding:.7rem 2rem;border-radius:8px;font-size:.95rem;cursor:pointer}button:hover{background:#5a4bd1}</style></head><body><div class="wrap"><div class="title">Unable to start</div><div class="msg">Titan AI's internal server could not start on port ${port}.<br>Close any other copies of the app and try again.</div><button onclick="window.location.reload()">Restart</button></div></body></html>`;
+
 async function loadWithRetry(win: BrowserWindow, url: string, maxRetries = 5): Promise<void> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -322,7 +326,7 @@ async function loadWithRetry(win: BrowserWindow, url: string, maxRetries = 5): P
     }
   }
   console.error(`[Main] All ${maxRetries} loadURL attempts failed for ${url}`);
-  await win.loadURL(`data:text/html,${encodeURIComponent(`<html><body style="background:#0a0a14;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:2rem;margin-bottom:1rem">Titan AI</h1><p style="color:#aaa">Failed to connect to the internal server on port ${DESKTOP_PORT}.</p><p style="color:#aaa">Please restart the app with: <code style="background:#1a1a2e;padding:4px 8px;border-radius:4px">pnpm dev:desktop</code></p></div></body></html>`)}`);
+  await win.loadURL(`data:text/html,${encodeURIComponent(ERROR_HTML(DESKTOP_PORT))}`);
 }
 
 async function createWindow(): Promise<void> {
@@ -344,7 +348,9 @@ async function createWindow(): Promise<void> {
   createAppMenu(mainWindow);
   setupOAuthInterceptor(mainWindow);
 
-  await loadWithRetry(mainWindow, `http://localhost:${DESKTOP_PORT}/editor`);
+  // Show a loading screen immediately so the user sees the app right away
+  // instead of waiting up to 15 s with nothing on screen.
+  await mainWindow.loadURL(`data:text/html,${encodeURIComponent(LOADING_HTML)}`);
 }
 
 function registerAllIPC(win: BrowserWindow): void {
@@ -409,13 +415,27 @@ app.whenReady().then(async () => {
       // the taskbar icon, Start menu entry, and window grouping.
       app.setAppUserModelId('com.kryonex.titan-desktop');
     }
+
+    // Show the window immediately with a loading screen so the user
+    // always sees something — no more invisible 15-second wait.
+    await createWindow();
+
     console.log(`Starting Next.js on port ${DESKTOP_PORT}...`);
     await startNextServer(DESKTOP_PORT);
     console.log('Next.js server ready');
-    await createWindow();
+
+    // Navigate the already-visible window to the real app.
+    if (mainWindow) {
+      await loadWithRetry(mainWindow, `http://localhost:${DESKTOP_PORT}/editor`);
+    }
+
     setupAutoUpdater();
   } catch (err) {
     console.error('Failed to start:', err);
+    dialog.showErrorBox(
+      'Titan AI — Startup Failed',
+      `The internal server could not start.\n\nError: ${err instanceof Error ? err.message : String(err)}\n\nPlease close any other copies of Titan AI and try again.`
+    );
     app.quit();
   }
 });

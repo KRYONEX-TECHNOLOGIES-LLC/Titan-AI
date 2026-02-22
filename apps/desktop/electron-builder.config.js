@@ -26,12 +26,12 @@ module.exports = {
     },
     {
       from: '../web/.next/static',
-      to: 'web-server/.next/static',
+      to: 'web-server/apps/web/.next/static',
       filter: ['**/*'],
     },
     {
       from: '../web/public',
-      to: 'web-server/public',
+      to: 'web-server/apps/web/public',
       filter: ['**/*'],
     },
     // Make icon.ico available at runtime for BrowserWindow taskbar icon
@@ -53,6 +53,7 @@ module.exports = {
 
   nsis: {
     oneClick: false,
+    perMachine: true,
     allowToChangeInstallationDirectory: true,
     shortcutName: 'Titan Desktop',
     uninstallDisplayName: 'Titan Desktop',
