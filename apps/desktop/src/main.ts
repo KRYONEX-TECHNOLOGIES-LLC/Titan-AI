@@ -14,6 +14,13 @@ import { registerAuthHandlers } from './auth/github.js';
 import { createAppMenu } from './menu/app-menu.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
 
+// Enforce single instance — if another copy is already running, focus it and exit this one.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+  process.exit(0);
+}
+
 // Catch EPIPE and other non-fatal pipe errors so the app doesn't crash
 process.on('uncaughtException', (err) => {
   const msg = err?.message || '';
@@ -103,9 +110,30 @@ function setupAutoUpdater(): void {
   });
 }
 
+function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = http.createServer();
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      resolve(err.code === 'EADDRINUSE');
+    });
+    server.once('listening', () => {
+      server.close(() => resolve(false));
+    });
+    server.listen(port, '127.0.0.1');
+  });
+}
+
 async function startNextServer(port: number): Promise<void> {
   const { spawn } = await import('child_process');
   const isDev = !app.isPackaged;
+
+  // If something is already listening on this port (e.g. a stale server from a
+  // previous crash), skip spawning — the existing server will be reused.
+  const portOccupied = await isPortInUse(port);
+  if (portOccupied) {
+    console.log(`[Next.js] Port ${port} already in use — reusing existing server.`);
+    return;
+  }
 
   // Dev: apps/desktop/dist/../../web => apps/web/
   // Packaged: Next.js standalone copies the monorepo structure, so server.js lives at
@@ -135,11 +163,12 @@ async function startNextServer(port: number): Promise<void> {
       });
     } else {
       // Use Electron's own bundled Node (process.execPath) to run the standalone server.
-      // This means no system Node.js or npx is required on the end-user's machine.
+      // ELECTRON_RUN_AS_NODE=1 is critical: without it, process.execPath launches a full
+      // Electron window instead of behaving as Node, causing infinite window spawning.
       const serverJs = path.join(webDir, 'server.js');
       nextServerProcess = spawn(process.execPath, [serverJs], {
         cwd: webDir,
-        env,
+        env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     }
@@ -363,6 +392,14 @@ protocol.registerSchemesAsPrivileged([
     privileges: { secure: true, standard: true, supportFetchAPI: true },
   },
 ]);
+
+// When a second instance tries to launch, bring the existing window to front instead.
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
 
 app.whenReady().then(async () => {
   try {
