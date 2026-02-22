@@ -194,11 +194,13 @@ function FileTreeNode({
   depth,
   onContextMenu,
   gitStatus,
+  onFileOpen,
 }: {
   node: FileNode;
   depth: number;
   onContextMenu: (e: React.MouseEvent, node: FileNode) => void;
   gitStatus?: { modified: Set<string>; staged: Set<string>; untracked: Set<string>; deleted: Set<string> };
+  onFileOpen?: (name: string, path: string, content: string, language: string) => void;
 }) {
   const { expandedPaths, selectedPath, toggleExpand, selectPath, renamingPath, setRenamingPath, refreshFileTree } = useFileStore();
   const { openTab, fileContents } = useEditorStore();
@@ -209,6 +211,15 @@ function FileTreeNode({
   const isRenaming = renamingPath === node.path;
   const { icon, color } = getFileIcon(node.name);
   const indent = depth * 12 + 8;
+
+  const openFile = useCallback((content: string, language: string) => {
+    if (onFileOpen) {
+      onFileOpen(node.name, node.path, content, language);
+    } else {
+      openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+      useEditorStore.getState().loadFileContents({ [node.name]: content, [node.path]: content });
+    }
+  }, [node.name, node.path, icon, color, onFileOpen, openTab]);
 
   const handleClick = useCallback(() => {
     selectPath(node.path);
@@ -221,33 +232,19 @@ function FileTreeNode({
 
       const existingContent = fileContents[node.name] ?? fileContents[node.path];
       if (existingContent !== undefined) {
-        openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
+        openFile(existingContent, language);
       } else if (isElectron && electronAPI) {
         electronAPI.fs.readFile(node.path)
-          .then((content) => {
-            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
-            const store = require('@/stores/editor-store').useEditorStore;
-            store.getState().loadFileContents({ [node.name]: content, [node.path]: content });
-          })
-          .catch(() => {
-            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
-          });
+          .then((content) => { openFile(content, language); })
+          .catch(() => { openFile('', language); });
       } else {
         fetch(`/api/workspace?path=${encodeURIComponent(node.path)}`)
           .then((r) => r.json())
-          .then((data) => {
-            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
-            if (data.content !== undefined) {
-              const store = require('@/stores/editor-store').useEditorStore;
-              store.getState().loadFileContents({ [node.name]: data.content });
-            }
-          })
-          .catch(() => {
-            openTab({ name: node.name, path: node.path, icon, color, modified: false, language });
-          });
+          .then((data) => { openFile(data.content ?? '', language); })
+          .catch(() => { openFile('', language); });
       }
     }
-  }, [node, icon, color, selectPath, toggleExpand, openTab, fileContents]);
+  }, [node, selectPath, toggleExpand, openFile, fileContents]);
 
   const handleRenameSubmit = async () => {
     if (renameVal && renameVal !== node.name) {
@@ -345,14 +342,14 @@ function FileTreeNode({
 
       {/* Children */}
       {node.type === 'folder' && isExpanded && node.children?.map((child) => (
-        <FileTreeNode key={child.path} node={child} depth={depth + 1} onContextMenu={onContextMenu} gitStatus={gitStatus} />
+        <FileTreeNode key={child.path} node={child} depth={depth + 1} onContextMenu={onContextMenu} gitStatus={gitStatus} onFileOpen={onFileOpen} />
       ))}
     </>
   );
 }
 
 // ─── FileExplorer ─────────────────────────────────────────────────────────────
-export default function FileExplorer() {
+export default function FileExplorer({ onFileOpen }: { onFileOpen?: (name: string, path: string, content: string, language: string) => void } = {}) {
   const { fileTree, workspaceName, workspaceOpen, workspacePath, searchQuery, setSearchQuery, newItemParent, newItemType, setNewItemParent, refreshFileTree } = useFileStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [newItemName, setNewItemName] = useState('');
@@ -502,7 +499,7 @@ export default function FileExplorer() {
           </div>
         ) : (
           filteredTree.map((node) => (
-            <FileTreeNode key={node.path} node={node} depth={0} onContextMenu={handleContextMenu} gitStatus={gitStatus} />
+            <FileTreeNode key={node.path} node={node} depth={0} onContextMenu={handleContextMenu} gitStatus={gitStatus} onFileOpen={onFileOpen} />
           ))
         )}
       </div>

@@ -91,20 +91,26 @@ export default function TitanIDE() {
   const [pendingDiff, setPendingDiff] = useState<PendingDiff | null>(null);
   const pendingDiffRef = useRef<PendingDiff | null>(null);
   useEffect(() => { pendingDiffRef.current = pendingDiff; }, [pendingDiff]);
-  useEffect(() => {
-    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
-      if (state.tabs !== prevState.tabs) {
-        setTabs(state.tabs);
-      }
-      if (state.activeTab !== prevState.activeTab) {
-        setActiveTab(state.activeTab);
-      }
-      if (state.fileContents !== prevState.fileContents) {
-        setFileContents((prev) => ({ ...prev, ...state.fileContents }));
-      }
+
+  // Explorer file-open callback (same proven pattern as handleAgentFileEdited)
+  const handleExplorerFileOpen = useCallback((name: string, filePath: string, content: string, language: string) => {
+    setFileContents(prev => ({ ...prev, [name]: content, [filePath]: content }));
+    useEditorStore.getState().loadFileContents({ [name]: content, [filePath]: content });
+
+    setTabs(prev => {
+      if (prev.some(t => t.name === name)) return prev;
+      const info = getFileInfo(name);
+      return [...prev, { name, icon: info.icon, color: info.color, modified: false }];
     });
-    return unsubscribe;
-  }, []);
+    setActiveTab(name);
+
+    if (activeTab === name && editorInstance) {
+      const model = editorInstance.getModel();
+      if (model && model.getValue() !== content) {
+        model.setValue(content);
+      }
+    }
+  }, [activeTab, editorInstance]);
 
   // Menu state
   const [showPlusDropdown, setShowPlusDropdown] = useState(false);
@@ -515,7 +521,7 @@ export default function TitanIDE() {
   useEffect(() => {
     if (!mounted) return;
     try {
-      localStorage.setItem('titan-editor', JSON.stringify({
+      localStorage.setItem('titan-ide-state', JSON.stringify({
         tabs: tabs.map(t => ({ name: t.name, icon: t.icon, color: t.color, modified: t.modified })),
         activeTab, gitBranch,
       }));
@@ -525,7 +531,7 @@ export default function TitanIDE() {
   useEffect(() => {
     if (!mounted) return;
     try {
-      const saved = localStorage.getItem('titan-editor');
+      const saved = localStorage.getItem('titan-ide-state');
       if (saved) {
         const state = JSON.parse(saved);
         if (state.tabs?.length > 0) setTabs(state.tabs);
@@ -685,7 +691,7 @@ export default function TitanIDE() {
                   <LanePanel />
                 </div>
                 <div style={{ flex: 1, overflow: 'auto' }}>
-                  <IDEFileExplorer />
+                  <IDEFileExplorer onFileOpen={handleExplorerFileOpen} />
                 </div>
               </div>
             ) : settings.activeModel === 'titan-supreme-protocol' ? (
@@ -694,11 +700,11 @@ export default function TitanIDE() {
                   <SupremePanel />
                 </div>
                 <div style={{ flex: 1, overflow: 'auto' }}>
-                  <IDEFileExplorer />
+                  <IDEFileExplorer onFileOpen={handleExplorerFileOpen} />
                 </div>
               </div>
             ) : (
-              <IDEFileExplorer />
+              <IDEFileExplorer onFileOpen={handleExplorerFileOpen} />
             )}
           </div>
         )}
