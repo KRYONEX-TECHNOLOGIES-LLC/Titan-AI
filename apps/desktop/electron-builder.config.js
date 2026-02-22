@@ -1,3 +1,26 @@
+const fs = require('fs');
+const nodePath = require('path');
+
+function dereferenceSymlinks(dir) {
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const entry of entries) {
+    const fullPath = nodePath.join(dir, entry.name);
+    try {
+      const lstat = fs.lstatSync(fullPath);
+      if (lstat.isSymbolicLink()) {
+        const realTarget = fs.realpathSync(fullPath);
+        fs.rmSync(fullPath, { recursive: true, force: true });
+        fs.cpSync(realTarget, fullPath, { recursive: true });
+      } else if (lstat.isDirectory()) {
+        dereferenceSymlinks(fullPath);
+      }
+    } catch (err) {
+      console.warn(`[deref] skipped ${fullPath}: ${err.message}`);
+    }
+  }
+}
+
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: 'com.kryonex.titan-desktop',
@@ -102,4 +125,13 @@ module.exports = {
       releaseType: 'release',
     },
   ],
+
+  afterPack: async (context) => {
+    const webServer = nodePath.join(context.appOutDir, 'resources', 'web-server');
+    if (fs.existsSync(webServer)) {
+      console.log('[afterPack] Dereferencing pnpm symlinks in web-server...');
+      dereferenceSymlinks(webServer);
+      console.log('[afterPack] Done — all symlinks replaced with real copies.');
+    }
+  },
 };
