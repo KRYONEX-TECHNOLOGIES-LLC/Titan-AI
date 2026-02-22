@@ -34,6 +34,11 @@ module.exports = {
       to: 'web-server/public',
       filter: ['**/*'],
     },
+    // Make icon.ico available at runtime for BrowserWindow taskbar icon
+    {
+      from: 'resources/icon.ico',
+      to: 'icon.ico',
+    },
   ],
 
   win: {
@@ -41,7 +46,9 @@ module.exports = {
     target: [{ target: 'nsis', arch: ['x64'] }],
     publisherName: 'KRYONEX TECHNOLOGIES LLC',
     verifyUpdateCodeSignature: false,
-    signAndEditExecutable: false,
+    // signAndEditExecutable must NOT be false — electron-builder needs to rewrite the
+    // exe's resource table to embed the Titan icon, product name, and company metadata.
+    // Leaving it false means the exe ships as stock "Electron" with the default icon.
   },
 
   nsis: {
@@ -52,6 +59,8 @@ module.exports = {
     displayLanguageSelector: false,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
+    installerIcon: 'resources/icon.ico',
+    uninstallerIcon: 'resources/icon.ico',
     runAfterFinish: true,
   },
 

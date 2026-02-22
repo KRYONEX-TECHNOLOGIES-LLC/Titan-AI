@@ -15,10 +15,10 @@ import { createAppMenu } from './menu/app-menu.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
 
 // Enforce single instance — if another copy is already running, focus it and exit this one.
+// Use only app.quit() — process.exit() can conflict with elevated NSIS post-install launch.
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
-  process.exit(0);
 }
 
 // Catch EPIPE and other non-fatal pipe errors so the app doesn't crash
@@ -405,7 +405,9 @@ app.whenReady().then(async () => {
   try {
     app.setName('Titan AI');
     if (process.platform === 'win32') {
-      app.setAppUserModelId('com.kryonex.titan-ai');
+      // Must match electron-builder appId exactly — Windows uses this to associate
+      // the taskbar icon, Start menu entry, and window grouping.
+      app.setAppUserModelId('com.kryonex.titan-desktop');
     }
     console.log(`Starting Next.js on port ${DESKTOP_PORT}...`);
     await startNextServer(DESKTOP_PORT);

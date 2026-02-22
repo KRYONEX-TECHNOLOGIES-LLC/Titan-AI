@@ -1,4 +1,4 @@
-import { BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, session } from 'electron';
 import * as path from 'path';
 
 interface WindowState {
@@ -32,7 +32,11 @@ export function createMainWindow(state: WindowState): BrowserWindow {
     minWidth: 800,
     minHeight: 600,
     title: 'Titan AI',
-    icon: path.join(__dirname, '..', '..', 'resources', 'icon.png'),
+    // In packaged mode __dirname is inside the asar archive; resources live at process.resourcesPath.
+    // Windows also requires .ico (not .png) for proper taskbar and Start menu icon display.
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.ico')
+      : path.join(__dirname, '..', '..', 'resources', 'icon.ico'),
     show: false,
     backgroundColor: '#0a0a0a',
     webPreferences: {
