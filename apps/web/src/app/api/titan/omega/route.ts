@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { DEFAULT_OMEGA_CONFIG, orchestrateOmega } from '../../../../lib/omega';
+import { DEFAULT_OMEGA_CONFIG, orchestrateOmega } from '@/lib/omega';
 
 interface OmegaRequestBody {
   goal: string;
