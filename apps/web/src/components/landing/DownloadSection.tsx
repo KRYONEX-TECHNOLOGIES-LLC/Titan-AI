@@ -130,8 +130,19 @@ export function DownloadSection() {
           })}
         </div>
 
+        {/* SmartScreen notice */}
+        <div className="mt-6 mx-auto max-w-lg rounded-xl border border-[#f59e0b]/20 bg-[#f59e0b]/5 px-5 py-3 text-left">
+          <p className="text-xs font-semibold text-[#f59e0b] mb-1">Windows SmartScreen notice</p>
+          <p className="text-xs text-[#8888a0] leading-relaxed">
+            Windows may show a &ldquo;Windows protected your PC&rdquo; warning because the installer is not yet code-signed.
+            Click <span className="text-white font-medium">&ldquo;More info&rdquo;</span> then{' '}
+            <span className="text-white font-medium">&ldquo;Run anyway&rdquo;</span> to proceed.
+            Code signing is coming in a future release.
+          </p>
+        </div>
+
         {/* System requirements */}
-        <div className="mt-10 text-xs text-[#5f5f75]">
+        <div className="mt-6 text-xs text-[#5f5f75]">
           System Requirements: Windows 10+ (x64), 8 GB RAM, 500 MB disk space.
           macOS 12+ and Linux support coming soon.
         </div>

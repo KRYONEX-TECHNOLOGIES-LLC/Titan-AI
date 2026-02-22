@@ -17,6 +17,14 @@ const CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23li34gxKFR3F8129J';
 const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '5fd834a712aa7aeaf4acb85a13e8725b592b2d81';
 const SCOPES = 'user:email,repo';
 
+// IMPORTANT: In your GitHub OAuth App settings (github.com/settings/developers),
+// set the "Authorization callback URL" to:
+//   http://localhost:3100/auth/github/callback
+//
+// The Electron popup intercepts the redirect via will-redirect/did-navigate before
+// the callback URL actually loads, so the URL just needs to be one GitHub accepts.
+// Any localhost URL works. The app does NOT need a running server at that path.
+
 function httpsPost(hostname: string, path: string, body: string, headers: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
     const req = https.request({
@@ -148,11 +156,26 @@ export function registerAuthHandlers(ipcMain: IpcMain, parentWin: BrowserWindow)
         }
       };
 
-      popup.webContents.on('will-navigate', (_event, navUrl) => {
+      popup.webContents.on('will-navigate', (event, navUrl) => {
+        // Let GitHub's own pages load normally; intercept the callback redirect
+        if (!navUrl.startsWith('https://github.com')) {
+          event.preventDefault();
+        }
         handleRedirect(navUrl);
       });
 
-      popup.webContents.on('will-redirect', (_event, navUrl) => {
+      popup.webContents.on('will-redirect', (event, navUrl) => {
+        // Intercept the OAuth callback redirect before it loads anywhere
+        const hasCode = navUrl.includes('code=') && navUrl.includes('state=');
+        const hasError = navUrl.includes('error=');
+        if (hasCode || hasError) {
+          event.preventDefault();
+        }
+        handleRedirect(navUrl);
+      });
+
+      // Fallback: catch callback if it already navigated (e.g. some redirect chains)
+      popup.webContents.on('did-navigate', (_event, navUrl) => {
         handleRedirect(navUrl);
       });
 
