@@ -123,9 +123,41 @@ export default function TitanIDE() {
   const midnight = useMidnight(mounted, settings.activeModel);
   const { sessions, setSessions, activeSessionId, setActiveSessionId, currentSession, handleNewAgent, handleRenameSession, handleDeleteSession } = useSessions(mounted);
   const fileSystem = useFileSystem(setTabs, setActiveTab, setFileContents, setActiveView, activeView);
+  const setWorkspacePath = fileSystem.setWorkspacePath;
 
   // Terminal history for agent context
   const [terminalHistory, setTerminalHistory] = useState<Array<{ command: string; output?: string; exitCode: number }>>([]);
+
+  const normalizeFilePath = useCallback((path: string) => path.replace(/\\/g, '/').replace(/^\.\//, ''), []);
+  const isLikelyWorkspacePath = useCallback((path: string) => (
+    /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('/') || path.startsWith('\\\\')
+  ), []);
+  const deriveWorkspaceRoot = useCallback((relativePath: string, absolutePath: string) => {
+    if (!absolutePath) return '';
+    const normalizedRel = normalizeFilePath(relativePath);
+    const normalizedAbs = absolutePath.replace(/\\/g, '/');
+    if (!normalizedRel) return absolutePath;
+    const relLower = normalizedRel.toLowerCase();
+    const absLower = normalizedAbs.toLowerCase();
+    if (!absLower.endsWith(relLower)) {
+      return absolutePath;
+    }
+    const root = normalizedAbs.slice(0, normalizedAbs.length - normalizedRel.length).replace(/[/\\]+$/, '');
+    return root || absolutePath;
+  }, [normalizeFilePath]);
+
+  // Recover persisted workspace and clear stale state left by older path mapping bug
+  useEffect(() => {
+    if (!mounted) return;
+    const fileState = useFileStore.getState();
+    if (!fileState.workspaceOpen || !fileState.workspacePath) return;
+    if (!isLikelyWorkspacePath(fileState.workspacePath)) {
+      fileState.closeFolder();
+      return;
+    }
+    setWorkspacePath(fileState.workspacePath);
+    fileState.refreshFileTree();
+  }, [mounted, isLikelyWorkspacePath, setWorkspacePath]);
 
   // Debounced file tree refresh
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,16 +166,16 @@ export default function TitanIDE() {
     refreshTimerRef.current = setTimeout(() => {
       useFileStore.getState().refreshFileTree();
       refreshTimerRef.current = null;
-    }, 400);
+    }, 100);
   }, []);
 
   // Agent callback: file edited on disk -> update editor + file tree
   const handleAgentFileEdited = useCallback((path: string, newContent: string) => {
-    const fileName = path.includes('/') ? path : path;
-    setFileContents(prev => ({ ...prev, [path]: newContent, [fileName]: newContent }));
-    useEditorStore.getState().loadFileContents({ [path]: newContent, [fileName]: newContent });
+    const normalizedPath = normalizeFilePath(path);
+    setFileContents(prev => ({ ...prev, [normalizedPath]: newContent, [path]: newContent }));
+    useEditorStore.getState().loadFileContents({ [normalizedPath]: newContent, [path]: newContent });
 
-    if (activeTab === path || activeTab === fileName) {
+    if (activeTab === path || activeTab === normalizedPath) {
       if (editorInstance) {
         const model = editorInstance.getModel();
         if (model && model.getValue() !== newContent) {
@@ -152,20 +184,54 @@ export default function TitanIDE() {
       }
     }
 
-    setTabs(prev => prev.map(t =>
-      (t.name === path || t.name === fileName) ? { ...t, modified: false } : t
-    ));
+    setTabs(prev => {
+      const exists = prev.some(t => t.name === normalizedPath || t.name === path);
+      if (!exists) {
+        const info = getFileInfo(normalizedPath);
+        return [...prev, { name: normalizedPath, icon: info.icon, color: info.color, modified: false }];
+      }
+      return prev.map(t => (
+        (t.name === normalizedPath || t.name === path) ? { ...t, modified: false } : t
+      ));
+    });
+    setActiveTab(normalizedPath);
 
     debouncedRefreshTree();
-  }, [activeTab, editorInstance, debouncedRefreshTree]);
+  }, [activeTab, editorInstance, debouncedRefreshTree, normalizeFilePath]);
 
   // Agent callback: file created on disk -> update tree + optionally open
-  const handleAgentFileCreated = useCallback((path: string, content: string) => {
-    const fileName = path.includes('/') ? path : path;
-    setFileContents(prev => ({ ...prev, [path]: content, [fileName]: content }));
-    useEditorStore.getState().loadFileContents({ [path]: content, [fileName]: content });
+  const handleAgentFileCreated = useCallback((path: string, content: string, absolutePath?: string) => {
+    const normalizedPath = normalizeFilePath(path);
+    setFileContents(prev => ({ ...prev, [normalizedPath]: content, [path]: content }));
+    useEditorStore.getState().loadFileContents({ [normalizedPath]: content, [path]: content });
+
+    const activeWorkspacePath = fileSystem.workspacePath || useFileStore.getState().workspacePath;
+    if (!activeWorkspacePath && absolutePath) {
+      const derivedWorkspacePath = deriveWorkspaceRoot(normalizedPath, absolutePath);
+      if (derivedWorkspacePath && isLikelyWorkspacePath(derivedWorkspacePath)) {
+        const workspaceName = derivedWorkspacePath.split(/[\\/]/).filter(Boolean).pop() || 'Workspace';
+        useFileStore.getState().openFolder(derivedWorkspacePath, workspaceName, useFileStore.getState().fileTree);
+        setWorkspacePath(derivedWorkspacePath);
+      }
+    }
+
+    const parentSegments = normalizedPath.split('/').slice(0, -1);
+    let currentPath = '';
+    for (const segment of parentSegments) {
+      currentPath = currentPath ? `${currentPath}/${segment}` : segment;
+      useFileStore.getState().expandPath(currentPath);
+    }
+
+    setTabs(prev => {
+      if (prev.some(t => t.name === normalizedPath)) {
+        return prev;
+      }
+      const info = getFileInfo(normalizedPath);
+      return [...prev, { name: normalizedPath, icon: info.icon, color: info.color, modified: false }];
+    });
+    setActiveTab(normalizedPath);
     debouncedRefreshTree();
-  }, [debouncedRefreshTree]);
+  }, [debouncedRefreshTree, deriveWorkspaceRoot, fileSystem.workspacePath, isLikelyWorkspacePath, normalizeFilePath, setWorkspacePath]);
 
   // Agent callback: file deleted on disk -> close tab + update tree
   const handleAgentFileDeleted = useCallback((path: string) => {
@@ -242,7 +308,7 @@ export default function TitanIDE() {
     onFileCreated: handleAgentFileCreated,
     onFileDeleted: handleAgentFileDeleted,
     onTerminalCommand: handleAgentTerminalCommand,
-    workspacePath: fileSystem.workspacePath,
+    workspacePath: fileSystem.workspacePath || useFileStore.getState().workspacePath,
     openTabs: tabs.map(t => t.name),
     terminalHistory,
     cursorPosition: { line: cursorPosition.line, column: cursorPosition.column, file: activeTab },
