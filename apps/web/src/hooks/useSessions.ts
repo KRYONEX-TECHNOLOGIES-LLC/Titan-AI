@@ -66,7 +66,7 @@ export function useSessions(mounted: boolean) {
         if (state.sessions?.length > 0) {
           setSessions(state.sessions);
           const activeId = state.activeSessionId;
-          const sessionExists = state.sessions.some(s => s.id === activeId);
+          const sessionExists = state.sessions.some((s: Session) => s.id === activeId);
           if (activeId && sessionExists) {
             setActiveSessionId(activeId);
           } else {

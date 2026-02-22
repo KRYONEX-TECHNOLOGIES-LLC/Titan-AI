@@ -7,7 +7,7 @@ const SpeechRecognition =
     : null;
 
 class STTService {
-  private recognition: SpeechRecognition | null = null;
+  private recognition: any = null;
   private isStopping = false;
   private finalTranscript = '';
 
@@ -35,7 +35,7 @@ class STTService {
       useVoiceStore.getState().setIsListening(false);
     };
 
-    this.recognition.onerror = (event) => {
+    this.recognition.onerror = (event: any) => {
       console.error('SpeechRecognition error', event.error);
       if (this.onError) {
         this.onError(event.error);
@@ -43,7 +43,7 @@ class STTService {
       useVoiceStore.getState().setIsListening(false);
     };
 
-    this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+    this.recognition.onresult = (event: any) => {
       let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {

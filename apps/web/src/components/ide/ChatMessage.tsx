@@ -163,12 +163,12 @@ export default function ChatMessage(props: ChatMessageProps) {
       <div className="mt-2 text-xs">
         {props.codeDiffs.map((diff) => (
           <CodeDiffBlock
-            key={diff.diffId}
+            key={diff.id}
             {...diff}
-            isExpanded={isDiffExpanded[diff.diffId] ?? true}
-            onToggleExpand={() => setIsDiffExpanded(prev => ({ ...prev, [diff.diffId]: !(prev[diff.diffId] ?? true) }))}
-            onApply={() => props.onApplyDiff?.(diff.diffId)}
-            onReject={() => props.onRejectDiff?.(diff.diffId)}
+            isExpanded={isDiffExpanded[diff.id] ?? true}
+            onToggleExpand={() => setIsDiffExpanded(prev => ({ ...prev, [diff.id]: !(prev[diff.id] ?? true) }))}
+            onApply={() => props.onApplyDiff?.(diff.id)}
+            onReject={() => props.onRejectDiff?.(diff.id)}
           />
         ))}
       </div>
@@ -181,7 +181,7 @@ export default function ChatMessage(props: ChatMessageProps) {
       <div className="mt-2 grid grid-cols-2 gap-2">
         {props.generatedImages.map((image, index) => (
           <div key={index} className="border border-gray-700 rounded-md overflow-hidden">
-            <img src={image.url} alt={image.prompt} className="w-full h-auto" />
+            <img src={`data:image/png;base64,${image.b64}`} alt={image.prompt} className="w-full h-auto" />
             <p className="text-xs text-gray-400 p-2 bg-gray-800/50">{image.prompt}</p>
           </div>
         ))}
@@ -257,17 +257,17 @@ export default function ChatMessage(props: ChatMessageProps) {
   );
 }
 
-function ToolCallBlock({ tool_name, tool_args, status, result, isExpanded: initialIsExpanded }: ToolCallBlockType) {
-  const [isExpanded, setIsExpanded] = useState(initialIsExpanded ?? false);
+function ToolCallBlock({ tool, args, status, result }: ToolCallBlockType) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isResultExpanded, setIsResultExpanded] = useState(false);
 
   const getStatusIcon = () => {
     switch (status) {
       case 'running':
         return <SpinnerIcon />;
-      case 'success':
+      case 'done':
         return <CheckIcon />;
-      case 'failure':
+      case 'error':
         return <XIcon />;
       default:
         return null;
@@ -292,14 +292,14 @@ function ToolCallBlock({ tool_name, tool_args, status, result, isExpanded: initi
         <ChevronIcon open={isExpanded} />
         <div className="flex items-center gap-1.5">
           {getStatusIcon()}
-          <ToolIcon tool={tool_name} />
-          <span>{tool_name}</span>
+          <ToolIcon tool={tool} />
+          <span>{tool}</span>
         </div>
       </div>
       {isExpanded && (
         <div className="border-t border-gray-700 p-2">
           <pre className="whitespace-pre-wrap text-gray-300 text-xs bg-transparent p-0 m-0">
-            {formatArgs(tool_args)}
+            {formatArgs(args)}
           </pre>
           {result && (
             <div className="mt-2 border-t border-dashed border-gray-600 pt-2">
@@ -321,11 +321,9 @@ function ToolCallBlock({ tool_name, tool_args, status, result, isExpanded: initi
 }
 
 function CodeDiffBlock({
-  diffId,
-  filename,
-  language,
+  file,
   status,
-  diff,
+  code,
   isExpanded,
   onToggleExpand,
   onApply,
@@ -333,7 +331,7 @@ function CodeDiffBlock({
 }: CodeDiffBlockType & { isExpanded: boolean; onToggleExpand: () => void; onApply: () => void; onReject: () => void; }) {
 
   const renderDiff = () => {
-    const lines = diff.split('\n');
+    const lines = code.split('\n');
     return lines.map((line, index) => {
       let colorClass = 'text-gray-300';
       if (line.startsWith('+')) colorClass = 'text-green-400';
@@ -352,7 +350,7 @@ function CodeDiffBlock({
       <div className="flex items-center justify-between p-2">
         <div className="flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
           <ChevronIcon open={isExpanded} />
-          <span className="text-gray-300">{filename}</span>
+          <span className="text-gray-300">{file}</span>
         </div>
         {status === 'pending' && (
           <div className="flex items-center gap-2">

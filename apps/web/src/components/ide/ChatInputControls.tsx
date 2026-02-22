@@ -3,7 +3,6 @@
 import React, { useEffect } from 'react';
 import { useVoiceStore } from '@/stores/voice.store';
 import { sttService } from '@/lib/stt.service';
-import { Mic, MicOff } from 'lucide-react';
 
 // A simple toggle switch component
 function ToggleSwitch({ enabled, onChange }: { enabled: boolean, onChange: (enabled: boolean) => void }) {
@@ -52,7 +51,7 @@ export default function ChatInputControls() {
         className="p-2 rounded-full text-gray-300 hover:bg-gray-700 transition-colors"
         aria-label={isListening ? 'Stop listening' : 'Start listening'}
       >
-        {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+        <span className="text-sm font-semibold">{isListening ? 'Mic Off' : 'Mic'}</span>
       </button>
     </div>
   );
