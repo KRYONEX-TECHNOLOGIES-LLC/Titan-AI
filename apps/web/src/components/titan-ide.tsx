@@ -553,7 +553,7 @@ export default function TitanIDE() {
 
   return (
     <GitHubAuthProvider>
-    <div suppressHydrationWarning className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden select-none" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+    <div suppressHydrationWarning className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       {mounted && <IDEMenuBar />}
       {mounted && <IDECommandPalette />}
       {mounted && <IDEKeybindingService />}

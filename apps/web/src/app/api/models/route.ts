@@ -4,8 +4,8 @@
  */
 
 import { NextResponse } from 'next/server';
-import { MODEL_REGISTRY } from '@/lib/model-registry';
-export type { ModelInfo } from '@/lib/model-registry';
+import { MODEL_REGISTRY } from '../../../lib/model-registry';
+export type { ModelInfo } from '../../../lib/model-registry';
 
 export async function GET() {
   const byProvider: Record<string, typeof MODEL_REGISTRY> = {};

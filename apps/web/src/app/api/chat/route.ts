@@ -4,8 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { ModelInfo, MODEL_REGISTRY, normalizeModelId } from '@/lib/model-registry';
-import { scanForThreats, isHighSeverityThreat, PathObfuscator } from '@/lib/security';
+import { ModelInfo, MODEL_REGISTRY, normalizeModelId } from '../../../lib/model-registry';
+import { scanForThreats, isHighSeverityThreat, PathObfuscator } from '../../../lib/security';
 
 const pathObfuscator = new PathObfuscator();
 

@@ -714,11 +714,11 @@ async function getCreatorContext(workspacePath?: string): Promise<{ creatorConte
   let selfWorkContext = '';
 
   try {
-    const { getCurrentUser } = await import('@/lib/auth');
+    const { getCurrentUser } = await import('../../../../lib/auth');
     const user = await getCurrentUser();
 
     if (user?.isCreator && user?.creatorModeOn) {
-      const { CREATOR_IDENTITY_CONTEXT, SELF_WORK_CONTEXT } = await import('@/lib/creator');
+      const { CREATOR_IDENTITY_CONTEXT, SELF_WORK_CONTEXT } = await import('../../../../lib/creator');
       creatorContext = CREATOR_IDENTITY_CONTEXT;
       console.log('[chat] Creator Mode active: injecting Creator Identity Context');
 
@@ -1030,7 +1030,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Validate/normalize model and resolve provider model id
-  const { MODEL_REGISTRY, normalizeModelId } = await import('@/lib/model-registry');
+  const { MODEL_REGISTRY, normalizeModelId } = await import('../../../../lib/model-registry');
   const normalizedModel = normalizeModelId(model);
   const isTitanProtocol = Boolean(body?.titanProtocol);
   const modelEntry = MODEL_REGISTRY.find((m: { id: string }) => m.id === normalizedModel);

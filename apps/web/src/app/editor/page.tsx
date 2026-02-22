@@ -5,12 +5,12 @@
 
 import { Suspense } from 'react';
 import nextDynamic from 'next/dynamic';
-import { EditorLoading } from '@/components/editor-loading';
+import { EditorLoading } from '../../components/editor-loading';
 
 export const dynamic = 'force-dynamic';
 
 const TitanIDE = nextDynamic(
-  () => import('@/components/titan-ide'),
+  () => import('../../components/titan-ide'),
   {
     ssr: false,
     loading: () => <EditorLoading />,
