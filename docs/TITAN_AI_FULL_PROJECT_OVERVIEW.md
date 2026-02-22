@@ -12,48 +12,39 @@ Titan AI is an AI-native IDE delivered as a Next.js web application. The main en
 
 ```mermaid
 flowchart LR
-  subgraph user [User]
-    UI[UI Actions]
-  end
-  subgraph frontend [Frontend]
-    Page[page.tsx]
-    Factory[FactoryView]
-    Monaco[Monaco Editor]
-    Terminal[Terminal]
-  end
-  subgraph api [Next.js API]
-    Chat[/api/chat]
-    Models[/api/models]
-    Sessions[/api/sessions]
-    Midnight[/api/midnight]
-    Workspace[/api/workspace]
-  end
-  subgraph backend [Background]
-    Orchestrator[MidnightOrchestrator]
-    AgentLoop[AgentLoop]
-    StateEngine[DurableStateEngine]
-    ProjectQueue[ProjectQueue]
-  end
-  UI --> Page
-  Page --> Chat
-  Page --> Models
-  Page --> Sessions
-  Page --> Midnight
-  Page --> Workspace
-  Page --> Monaco
-  Page --> Terminal
-  Midnight --> Orchestrator
-  Orchestrator --> AgentLoop
-  Orchestrator --> StateEngine
-  Orchestrator --> ProjectQueue
-  Chat --> Monaco
-  Midnight --> Factory
+    subgraph User
+        UI[UI Actions]
+    end
+
+    subgraph "Frontend (apps/web)"
+        WebApp[Next.js UI]
+    end
+
+    subgraph "Backend (apps/desktop)"
+        MainProcess[Electron Main Process]
+        IPCHandlers[IPC Handlers]
+        Tools[Tool Execution]
+        Terminal[PTY Terminal]
+        FileSystem[FS Access]
+    end
+
+    UI --> WebApp
+    WebApp -- IPC --> MainProcess
+    MainProcess --> IPCHandlers
+    IPCHandlers --> Tools
+    IPCHandlers --> Terminal
+    IPCHandlers --> FileSystem
 ```
 
-- **User → UI:** Clicks and shortcuts drive which panel is visible, which model is active, and whether Project Midnight is on.
-- **UI → API:** Chat, model list, sessions, Midnight control, and workspace import are all wired to the listed API routes.
-- **API → Background:** The web app’s Midnight API uses in-memory state and simulated execution; the real orchestration, AgentLoop, state engine, and queue live in `packages/midnight` and are intended for a separate daemon/CLI, not the Next.js server today.
-- **Editor/Terminal:** Monaco and the terminal are driven by React state; AI suggestions appear as diff decorations in the editor; terminal shows local simulated output and Midnight-related messages.
+- **User → UI:** The user interacts with the Next.js web application running inside an Electron window.
+- **UI → Backend:** The frontend UI, built with Next.js and React, communicates with the Electron backend via Inter-Process Communication (IPC) calls. These are asynchronous messages sent from the renderer process (web content) to the main process (Node.js environment).
+- **Backend → Services:** The Electron main process (`apps/desktop/src/main.ts`) is the core of the application. It listens for IPC messages and routes them to various handlers responsible for specific tasks:
+    - **Tool Execution (`ipc/tools.js`):** Executes agentic tools like `run_command`.
+    - **Terminal (`ipc/terminal.js`):** Manages pseudo-terminal (PTY) sessions.
+    - **Filesystem (`ipc/filesystem.js`):** Handles file reading, writing, and directory listing.
+    - **Git (`ipc/git.js`):** Executes Git commands.
+    - **And others...** This modular architecture allows for extending the AI's capabilities by adding new IPC handlers.
+- **Autonomous Operation:** The "Midnight" autonomous functionality is not a separate package but is integrated into the Electron main process. Agent loops and orchestration are managed within the main process, leveraging the same IPC handlers that the user-facing UI uses.
 
 ---
 

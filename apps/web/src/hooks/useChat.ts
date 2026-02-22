@@ -14,12 +14,12 @@ import { ContextNavigator } from '@/lib/autonomy/context-navigator';
 import { MemoryManager } from '@/lib/autonomy/memory-manager';
 import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
 
-const MAX_TOOL_CALLS = 50;
-const MAX_CONSECUTIVE_FAILURES = 3;
-const MAX_LOOP_ITERATIONS = 25;
-const MAX_TOTAL_FAILURES = 8;
-const MAX_HISTORY_ENTRIES = 40;
-const MAX_TOOL_RESULT_LEN = 4000;
+const MAX_TOOL_CALLS = 120;
+const MAX_CONSECUTIVE_FAILURES = 5;
+const MAX_LOOP_ITERATIONS = 60;
+const MAX_TOTAL_FAILURES = 12;
+const MAX_HISTORY_ENTRIES = 60;
+const MAX_TOOL_RESULT_LEN = 6000;
 const TOKEN_BATCH_MS = 80;
 const TOKEN_BUDGET_CHARS = 120000;
 

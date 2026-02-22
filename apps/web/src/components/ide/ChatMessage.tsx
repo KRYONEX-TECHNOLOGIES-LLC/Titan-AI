@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useVoiceStore } from '@/stores/voice.store';
+import { ttsService } from '@/lib/tts.service';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ToolCallBlock as ToolCallBlockType, CodeDiffBlock as CodeDiffBlockType, GeneratedImage } from '@/types/ide';
@@ -70,756 +72,303 @@ function ToolIcon({ tool }: { tool: string }) {
     case 'read_file':
       return <svg width="12" height="12" viewBox="0 0 16 16" fill="#808080" style={{ flexShrink: 0 }}><path d="M3 1.75C3 .784 3.784 0 4.75 0h3.5a.75.75 0 01.53.22l5 5a.75.75 0 01.22.53v8.5A1.75 1.75 0 0112.25 16h-7.5A1.75 1.75 0 013 14.25V1.75zM4.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25V6H9.75A1.75 1.75 0 018 4.25V1.5H4.75zm4.75.97v1.78c0 .138.112.25.25.25h1.78L9.5 2.47z"/></svg>;
     case 'edit_file':
-      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#e0a526" style={{ flexShrink: 0 }}><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 00-.354 0L3.463 11.1a.25.25 0 00-.064.108l-.563 1.97 1.971-.564a.25.25 0 00.108-.064l8.61-8.61a.25.25 0 000-.353L12.427 2.487z"/></svg>;
+      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#e0a526" style={{ flexShrink: 0 }}><path d="M11.013 1.427a1.75 1.75 0 012.474 0l1.086 1.086a1.75 1.75 0 010 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 01-.927-.928l.929-3.25a1.75 1.75 0 01.445-.758l8.61-8.61zM12.25 3.52l-7.5 7.5-1.657.583.583-1.657 7.5-7.5 1.074 1.074z"/></svg>;
     case 'create_file':
-      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#3fb950" style={{ flexShrink: 0 }}><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0113.25 16h-9.5A1.75 1.75 0 012 14.25V1.75zm1.75-.25a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 019 4.25V1.5H3.75zm6.75.96v1.79c0 .138.112.25.25.25h1.79L10.5 2.46z"/></svg>;
+      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#3fb950" style={{ flexShrink: 0 }}><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586a.75.75 0 01.53.22l2.914 2.914a.75.75 0 01.22.53V14.25A1.75 1.75 0 0112.25 16h-8.5A1.75 1.75 0 012 14.25V1.75zM3.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V4.5h-2.75A1.75 1.75 0 018 2.75V1.5H3.75z"/></svg>;
     case 'delete_file':
-      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#f85149" style={{ flexShrink: 0 }}><path d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zm4.5 0V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675a.75.75 0 10-1.492.15l.66 6.6A1.75 1.75 0 005.405 15h5.19a1.75 1.75 0 001.741-1.575l.66-6.6a.75.75 0 00-1.492-.15l-.66 6.6a.25.25 0 01-.249.225h-5.19a.25.25 0 01-.249-.225l-.66-6.6z"/></svg>;
-    case 'list_directory':
-      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#dcb67a" style={{ flexShrink: 0 }}><path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z"/></svg>;
-    case 'grep_search': case 'glob_search': case 'semantic_search':
-      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#569cd6" style={{ flexShrink: 0 }}><path d="M11.5 7a4.499 4.499 0 11-8.998 0A4.499 4.499 0 0111.5 7zm-.82 4.74a6 6 0 111.06-1.06l3.04 3.04a.75.75 0 11-1.06 1.06l-3.04-3.04z"/></svg>;
+      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#f85149" style={{ flexShrink: 0 }}><path d="M11 1.75V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675a.75.75 0 10-1.492.15l.66 6.6A1.75 1.75 0 005.405 15h5.19a1.75 1.75 0 001.741-1.575l.66-6.6a.75.75 0 10-1.492-.15L11.538 13h-7.076l.034-3.325z"/></svg>;
     case 'run_command':
-      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#c586c0" style={{ flexShrink: 0 }}><path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H1.75z"/><path d="M7 11.5a.75.75 0 01-.75.75h-2.5a.75.75 0 010-1.5h2.5A.75.75 0 017 11.5zm1.303-5.75l1.135 1.134a.5.5 0 010 .707L8.303 8.75a.75.75 0 11-1.06-1.06l.97-.97-.97-.97a.75.75 0 111.06-1.06z"/></svg>;
+      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#808080" style={{ flexShrink: 0 }}><path d="M1.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V1.75a.25.25 0 00-.25-.25H1.75zM0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0114.25 16H1.75A1.75 1.75 0 010 14.25V1.75zm4.22 9.53a.75.75 0 011.06 0L8 13.29l2.72-2.76a.75.75 0 111.06 1.06L8.53 14.88a.75.75 0 01-1.06 0L4.22 12.12a.75.75 0 010-1.06zM8 8a1 1 0 01-1-1V3a1 1 0 112 0v4a1 1 0 01-1 1z"/></svg>;
+    case 'web_search':
+      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#808080" style={{ flexShrink: 0 }}><path d="M10.68 11.74a6 6 0 01-7.922-8.982 6 6 0 018.982 7.922l3.04 3.04a.75.75 0 11-1.06 1.06l-3.04-3.04zm-7.22-1.54a4.5 4.5 0 106.364-6.364 4.5 4.5 0 00-6.364 6.364z"/></svg>;
+    case 'web_fetch':
+      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#808080" style={{ flexShrink: 0 }}><path d="M7.47 8.75a.75.75 0 011.06 0l3.25 3.25a.75.75 0 11-1.06 1.06L8 9.31l-2.72 2.75a.75.75 0 01-1.06-1.06l3.25-3.25zM8 0a.75.75 0 01.75.75v8.586l2.72-2.75a.75.75 0 011.06 1.06l-3.25 3.25a.75.75 0 01-1.06 0L4.22 7.646a.75.75 0 111.06-1.06L8 9.31V.75A.75.75 0 018 0z"/></svg>;
     default:
-      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#808080" style={{ flexShrink: 0 }}><path d="M8.878.392a1.75 1.75 0 00-1.756 0l-5.25 3.045A1.75 1.75 0 001 5.07v5.86c0 .624.332 1.2.872 1.514l5.25 3.045a1.75 1.75 0 001.756 0l5.25-3.045c.54-.313.872-.89.872-1.514V5.07c0-.624-.332-1.2-.872-1.514L8.878.392z"/></svg>;
+      return <svg width="12" height="12" viewBox="0 0 16 16" fill="#808080" style={{ flexShrink: 0 }}><path d="M1.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V1.75a.25.25 0 00-.25-.25H1.75zM0 1.75C0 .784.784 0 1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0114.25 16H1.75A1.75 1.75 0 010 14.25V1.75z"/></svg>;
   }
 }
 
-/* ═══ TOOL CALL ROW ═══ */
-function getToolLabel(tool: string, args: Record<string, unknown>): string {
-  switch (tool) {
-    case 'read_file': return `Read ${args.path || 'file'}`;
-    case 'edit_file': return `Edited ${args.path || 'file'}`;
-    case 'create_file': return `Created ${args.path || 'file'}`;
-    case 'delete_file': return `Deleted ${args.path || 'file'}`;
-    case 'list_directory': return `Listed ${args.path || '.'}`;
-    case 'grep_search': return `Searched "${(args.query as string || '').slice(0, 35)}"`;
-    case 'glob_search': return `Glob ${args.pattern || ''}`;
-    case 'semantic_search': return `Searched codebase`;
-    case 'run_command': return `Ran \`${(args.command as string || '').slice(0, 55)}\``;
-    case 'read_lints': return `Lints ${args.path || ''}`;
-    default: return tool.replace(/_/g, ' ');
-  }
-}
+export default function ChatMessage(props: ChatMessageProps) {
+  const { content, role, streaming } = props;
+  const { isTTSEnabled } = useVoiceStore();
 
-function formatToolArgs(tool: string, args: Record<string, unknown>): string {
-  if (tool === 'run_command') return `$ ${args.command || ''}`;
-  if (tool === 'edit_file') {
-    const lines: string[] = [];
-    if (args.path) lines.push(`file: ${args.path}`);
-    if (args.old_string) lines.push(`find: ${(args.old_string as string).slice(0, 120)}...`);
-    if (args.new_string) lines.push(`replace: ${(args.new_string as string).slice(0, 120)}...`);
-    return lines.join('\n') || JSON.stringify(args, null, 2);
-  }
-  return JSON.stringify(args, null, 2);
-}
-
-function ToolCallRow({ tc, index, total }: { tc: ToolCallBlockType; index: number; total: number }) {
-  const [expanded, setExpanded] = useState(false);
-  const isRunning = tc.status === 'running';
-  const isDone = tc.status === 'done';
-  const isError = tc.status === 'error';
-
-  const label = getToolLabel(tc.tool, tc.args);
-  const duration = tc.finishedAt && tc.startedAt
-    ? `${((tc.finishedAt - tc.startedAt) / 1000).toFixed(1)}s`
-    : null;
-
-  return (
-    <div style={{ borderLeft: `2px solid ${isError ? '#f85149' : isRunning ? '#569cd6' : isDone ? '#3fb950' : '#333'}`, marginLeft: 2, marginBottom: 1 }}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          width: '100%', padding: '3px 6px', textAlign: 'left',
-          background: isRunning ? '#1a2030' : 'transparent',
-          border: 'none', cursor: 'pointer',
-          borderRadius: 2, transition: 'background 0.1s',
-        }}
-        onMouseEnter={e => { if (!isRunning) e.currentTarget.style.background = '#ffffff06'; }}
-        onMouseLeave={e => { if (!isRunning) e.currentTarget.style.background = 'transparent'; }}
-      >
-        <ChevronIcon open={expanded} />
-        <ToolIcon tool={tc.tool} />
-        <span style={{ flex: 1, fontSize: 12, color: isError ? '#f85149' : isRunning ? '#9bb8e0' : isDone ? '#9d9d9d' : '#9d9d9d', fontFamily: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {label}
-        </span>
-        {isRunning && <SpinnerIcon size={11} />}
-        {isDone && <CheckIcon size={11} />}
-        {isError && <XIcon size={11} />}
-        {duration && <span style={{ fontSize: 10, color: '#555', fontVariantNumeric: 'tabular-nums' }}>{duration}</span>}
-      </button>
-
-      {expanded && (
-        <div style={{ margin: '2px 0 4px 18px', borderRadius: 3, overflow: 'hidden', border: '1px solid #2a2a2a', background: '#0d0d0d' }}>
-          {tc.args && Object.keys(tc.args).length > 0 && (
-            <div style={{ padding: '6px 10px', borderBottom: '1px solid #1e1e1e' }}>
-              <pre style={{ fontSize: 11, color: '#6e6e6e', fontFamily: "'Cascadia Code', Consolas, monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.5, margin: 0, userSelect: 'text', cursor: 'text' }}>
-                {formatToolArgs(tc.tool, tc.args)}
-              </pre>
-            </div>
-          )}
-          {(tc.result || tc.error) && (
-            <div style={{ padding: '6px 10px', maxHeight: 200, overflowY: 'auto' }}>
-              <pre style={{ fontSize: 11, color: tc.error ? '#f85149' : '#6e6e6e', fontFamily: "'Cascadia Code', Consolas, monospace", whiteSpace: 'pre-wrap', wordBreak: 'break-all', lineHeight: 1.5, margin: 0, userSelect: 'text', cursor: 'text' }}>
-                {(tc.error || tc.result || '').slice(0, 3000)}
-                {(tc.error || tc.result || '').length > 3000 && '\n[truncated...]'}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══ CURSOR-STYLE TASK LIST ═══
-   Parses a numbered/bulleted plan from AI text and renders as animated todo checklist.
-   Items check off as tool calls complete.
-*/
-interface TaskItem {
-  text: string;
-  done: boolean;
-  active: boolean;
-}
-
-function parsePlanItems(text: string): string[] {
-  if (!text) return [];
-  const lines = text.split('\n');
-  const items: string[] = [];
-  for (const line of lines) {
-    // Match "1. text", "- text", "* text", "• text"
-    const m = line.match(/^[\s]*(?:\d+[\.\)]\s+|\-\s+|\*\s+|•\s+)(.+)/);
-    if (m) items.push(m[1].trim());
-  }
-  return items;
-}
-
-function extractPlanBlock(content: string): { plan: string[]; rest: string } {
-  if (!content) return { plan: [], rest: content };
-  // Look for a plan section: numbered/bulleted list of 2+ items at start or after a "plan:" header
-  const lines = content.split('\n');
-  const planLines: number[] = [];
-  let inPlan = false;
-  let planStart = -1;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const isPlanHeader = /^(plan|steps|i.ll|here.s what|going to|will:)/i.test(line.trim().replace(/[*_#]/g, ''));
-    const isBullet = /^[\s]*(?:\d+[\.\)]\s+|\-\s+|\*\s+|•\s+)/.test(line);
-
-    if (isPlanHeader) { inPlan = true; continue; }
-    if (inPlan && isBullet) {
-      if (planStart === -1) planStart = i;
-      planLines.push(i);
-    } else if (inPlan && planLines.length > 0 && line.trim() === '') {
-      continue;
-    } else if (planLines.length >= 2) {
-      break;
-    } else {
-      inPlan = false;
-      planLines.length = 0;
-      planStart = -1;
-    }
-  }
-
-  if (planLines.length >= 2) {
-    const planText = planLines.map(i => lines[i]).join('\n');
-    const plan = parsePlanItems(planText);
-    const rest = lines.filter((_, i) => !planLines.includes(i)).join('\n').trim();
-    return { plan, rest };
-  }
-
-  return { plan: [], rest: content };
-}
-
-function TaskList({ items, toolCalls, isStreaming }: { items: string[]; toolCalls: ToolCallBlockType[]; isStreaming?: boolean }) {
-  const doneCount = toolCalls.filter(t => t.status === 'done').length;
-  const activeIdx = toolCalls.findIndex(t => t.status === 'running');
-
-  // Map plan items to done/active state based on tool call progress
-  const taskItems: TaskItem[] = items.map((text, i) => ({
-    text,
-    done: i < Math.floor((doneCount / Math.max(toolCalls.length, 1)) * items.length),
-    active: i === Math.floor((activeIdx / Math.max(toolCalls.length, 1)) * items.length),
-  }));
-
-  return (
-    <div style={{ margin: '6px 0 8px 0', padding: '8px 10px', background: '#161616', borderRadius: 6, border: '1px solid #2a2a2a' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 11, color: '#569cd6', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Plan
-        </span>
-        <span style={{ fontSize: 10, color: '#555' }}>
-          {doneCount}/{toolCalls.length} ops
-        </span>
-      </div>
-      {taskItems.map((item, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 7, padding: '2px 0' }}>
-          {/* Checkbox */}
-          <div style={{
-            width: 14, height: 14, marginTop: 1, borderRadius: 3, flexShrink: 0,
-            border: `1.5px solid ${item.done ? '#3fb950' : item.active ? '#569cd6' : '#3c3c3c'}`,
-            background: item.done ? '#3fb950' : 'transparent',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.2s',
-          }}>
-            {item.done && (
-              <svg width="9" height="9" viewBox="0 0 16 16" fill="white">
-                <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/>
-              </svg>
-            )}
-            {item.active && !item.done && (
-              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#569cd6', animation: 'pulse 1s infinite' }} />
-            )}
-          </div>
-          <span style={{
-            fontSize: 12, lineHeight: '1.4',
-            color: item.done ? '#555' : item.active ? '#cccccc' : '#808080',
-            textDecoration: item.done ? 'line-through' : 'none',
-            transition: 'color 0.2s',
-            userSelect: 'text', cursor: 'text',
-          }}>
-            {item.text}
-          </span>
-        </div>
-      ))}
-      {/* Progress bar */}
-      {toolCalls.length > 0 && (
-        <div style={{ marginTop: 8, height: 2, background: '#2a2a2a', borderRadius: 1 }}>
-          <div style={{
-            height: '100%', borderRadius: 1,
-            background: isStreaming ? '#569cd6' : '#3fb950',
-            width: `${(doneCount / toolCalls.length) * 100}%`,
-            transition: 'width 0.3s ease',
-          }} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══ CODE DIFF CARD ═══ */
-function CodeDiffCard({ diff, onApply, onReject }: {
-  diff: CodeDiffBlockType;
-  onApply?: (diffId: string) => void;
-  onReject?: (diffId: string) => void;
-}) {
-  const [collapsed, setCollapsed] = useState(false);
-  const statusColor = diff.status === 'applied' ? '#238636' : diff.status === 'rejected' ? '#f85149' : '#3c3c3c';
-  return (
-    <div style={{ margin: '4px 0', borderRadius: 4, overflow: 'hidden', borderLeft: `2px solid ${statusColor}` }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '3px 8px',
-        background: diff.status === 'applied' ? '#0d1f12' : diff.status === 'rejected' ? '#1c0c0c' : '#1a1a1a',
-      }}>
-        <button onClick={() => setCollapsed(!collapsed)} style={{ display: 'flex', alignItems: 'center', gap: 5, flex: 1, background: 'none', border: 'none', cursor: 'pointer', minWidth: 0 }}>
-          <ChevronIcon open={!collapsed} />
-          <ToolIcon tool="edit_file" />
-          <span style={{ fontSize: 11, color: '#808080', fontFamily: "'Cascadia Code', Consolas, monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{diff.file}</span>
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0, marginLeft: 8 }}>
-          {diff.status === 'pending' && (
-            <>
-              <button onClick={() => onApply?.(diff.id)} title="Accept" style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 3 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#238636cc'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <CheckIcon size={13} />
-              </button>
-              <button onClick={() => onReject?.(diff.id)} title="Reject" style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 3 }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f8514933'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <XIcon size={13} />
-              </button>
-            </>
-          )}
-          {diff.status === 'applied' && <span style={{ fontSize: 10, color: '#3fb950', display: 'flex', alignItems: 'center', gap: 3 }}><CheckIcon size={10} /> Applied</span>}
-          {diff.status === 'rejected' && <span style={{ fontSize: 10, color: '#f85149', display: 'flex', alignItems: 'center', gap: 3 }}><XIcon size={10} /> Rejected</span>}
-        </div>
-      </div>
-      {!collapsed && (
-        <pre style={{ padding: '8px 12px', overflowX: 'auto', fontSize: 11, lineHeight: 1.6, fontFamily: "'Cascadia Code', Consolas, monospace", color: '#d4d4d4', background: '#111', maxHeight: 240, overflowY: 'auto', margin: 0, userSelect: 'text', cursor: 'text' }}>
-          <code style={{ userSelect: 'text' }}>{diff.code}</code>
-        </pre>
-      )}
-    </div>
-  );
-}
-
-/* ═══ CODE BLOCK ═══ */
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-      style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 3, color: copied ? '#3fb950' : '#6e6e6e' }}
-      onMouseEnter={e => e.currentTarget.style.background = '#ffffff15'}
-      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-      title="Copy"
-    >
-      {copied
-        ? <CheckIcon size={11} color="#3fb950" />
-        : <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg>
-      }
-    </button>
-  );
-}
-
-function CodeBlock({ language, filename, children, onApply }: {
-  language?: string; filename?: string; children: string;
-  onApply?: (code: string, filename?: string) => void;
-}) {
-  const [applied, setApplied] = useState(false);
-  const label = filename || language || 'code';
-  return (
-    <div style={{ margin: '6px 0', borderRadius: 5, overflow: 'hidden', background: '#0d0d0d', border: '1px solid #2a2a2a' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 8px 3px 10px', background: '#161616', borderBottom: '1px solid #2a2a2a' }}>
-        <span style={{ fontSize: 11, color: '#6e6e6e', fontFamily: "'Cascadia Code', Consolas, monospace" }}>{label}</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <CopyButton text={children} />
-          {onApply && !applied && (
-            <button
-              onClick={() => { onApply(children, filename); setApplied(true); }}
-              style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 3, color: '#569cd6' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#569cd620'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}
-              title="Apply to editor"
-            >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0zM8 0a8 8 0 100 16A8 8 0 008 0zm.75 4.75a.75.75 0 00-1.5 0v2.5h-2.5a.75.75 0 000 1.5h2.5v2.5a.75.75 0 001.5 0v-2.5h2.5a.75.75 0 000-1.5h-2.5v-2.5z"/></svg>
-            </button>
-          )}
-          {applied && <span style={{ width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckIcon size={11} /></span>}
-        </div>
-      </div>
-      <pre style={{ padding: '10px 12px', overflowX: 'auto', fontSize: 12, lineHeight: 1.6, fontFamily: "'Cascadia Code', 'JetBrains Mono', Consolas, monospace", color: '#d4d4d4', margin: 0, userSelect: 'text', cursor: 'text' }}>
-        <code style={{ userSelect: 'text' }}>{children}</code>
-      </pre>
-    </div>
-  );
-}
-
-/* ═══ THINKING SECTION ═══ */
-function ThinkingSection({ thinking, thinkingTime, isStreaming }: {
-  thinking: string; thinkingTime?: number; isStreaming?: boolean;
-}) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const [wasStreaming, setWasStreaming] = useState(false);
   useEffect(() => {
-    if (isStreaming) setWasStreaming(true);
-    else if (wasStreaming && detailsRef.current) { detailsRef.current.open = false; setWasStreaming(false); }
-  }, [isStreaming, wasStreaming]);
-  const label = thinkingTime && thinkingTime > 0 ? `Thought for ${thinkingTime}s` : isStreaming ? 'Thinking...' : 'Thought';
-  return (
-    <details ref={detailsRef} open={!!isStreaming} style={{ marginBottom: 6 }}>
-      <summary style={{ padding: '2px 0', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, listStyle: 'none', color: '#6e6e6e', userSelect: 'none' }}>
-        <ChevronIcon open={false} />
-        {isStreaming && <SpinnerIcon size={11} />}
-        <span>{label}</span>
-      </summary>
-      <div style={{ marginLeft: 16, marginTop: 4, padding: '6px 10px', fontSize: 11, color: '#555', fontFamily: "'Cascadia Code', Consolas, monospace", whiteSpace: 'pre-wrap', lineHeight: 1.5, maxHeight: 200, overflowY: 'auto', borderRadius: 4, background: '#0d0d0d', border: '1px solid #1e1e1e', userSelect: 'text', cursor: 'text' }}>
-        {thinking}
-      </div>
-    </details>
-  );
-}
-
-/* ═══ MARKDOWN RENDERER ═══ */
-function MarkdownContent({ content, onApplyCode }: {
-  content: string; onApplyCode?: (code: string, filename?: string) => void;
-}) {
-  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
-    e.preventDefault();
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.shell?.openExternal) {
-      (window as any).electronAPI.shell.openExternal(href);
-    } else {
-      window.open(href, '_blank', 'noopener,noreferrer');
+    if (role === 'assistant' && !streaming && isTTSEnabled && content) {
+      ttsService.speak(content);
     }
-  };
+    // Only re-run when content is finalized or TTS is toggled
+  }, [content, streaming, isTTSEnabled, role]);
 
-  return (
-    <div style={{ userSelect: 'text', cursor: 'text' }}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          code({ className, children }) {
-            const match = /language-(\w+)/.exec(className || '');
-            const codeStr = String(children).replace(/\n$/, '');
-            if (!className && !codeStr.includes('\n')) {
-              return <code style={{ background: '#1a1a1a', color: '#ce9178', padding: '1px 4px', borderRadius: 3, fontSize: 11.5, fontFamily: "'Cascadia Code', Consolas, monospace", userSelect: 'text' }}>{children}</code>;
-            }
-            const lang = match?.[1] || '';
-            const parts = lang.split(':');
-            const language = parts[0];
-            const filename = parts.length > 1 ? parts.slice(1).join(':') : undefined;
-            return <CodeBlock language={language} filename={filename} onApply={onApplyCode}>{codeStr}</CodeBlock>;
-          },
-          pre({ children }) { return <>{children}</>; },
-          p({ children }) { return <p style={{ marginBottom: 6, lineHeight: 1.55, userSelect: 'text' }}>{children}</p>; },
-          ul({ children }) { return <ul style={{ marginBottom: 6, paddingLeft: 18, listStyleType: 'disc', userSelect: 'text' }}>{children}</ul>; },
-          ol({ children }) { return <ol style={{ marginBottom: 6, paddingLeft: 18, listStyleType: 'decimal', userSelect: 'text' }}>{children}</ol>; },
-          li({ children }) { return <li style={{ fontSize: 12.5, lineHeight: 1.55, marginBottom: 2, userSelect: 'text' }}>{children}</li>; },
-          strong({ children }) { return <strong style={{ color: '#e0e0e0', fontWeight: 600 }}>{children}</strong>; },
-          em({ children }) { return <em style={{ color: '#9d9d9d' }}>{children}</em>; },
-          h1({ children }) { return <h1 style={{ fontSize: 14, fontWeight: 600, color: '#e0e0e0', marginBottom: 6, marginTop: 8 }}>{children}</h1>; },
-          h2({ children }) { return <h2 style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0', marginBottom: 5, marginTop: 8 }}>{children}</h2>; },
-          h3({ children }) { return <h3 style={{ fontSize: 12.5, fontWeight: 500, color: '#e0e0e0', marginBottom: 4, marginTop: 6 }}>{children}</h3>; },
-          a({ children, href }) {
-            return <a href={href || '#'} onClick={(e) => handleLinkClick(e, href || '')} style={{ color: '#569cd6', textDecoration: 'none', cursor: 'pointer' }} onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')} onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}>{children}</a>;
-          },
-          blockquote({ children }) { return <blockquote style={{ borderLeft: '2px solid #333', paddingLeft: 10, margin: '6px 0', color: '#6e6e6e' }}>{children}</blockquote>; },
-          hr() { return <hr style={{ border: 'none', borderTop: '1px solid #2a2a2a', margin: '8px 0' }} />; },
-          table({ children }) { return <table style={{ borderCollapse: 'collapse', width: '100%', margin: '6px 0', fontSize: 11 }}>{children}</table>; },
-          th({ children }) { return <th style={{ border: '1px solid #2a2a2a', padding: '4px 8px', background: '#1a1a1a', textAlign: 'left', color: '#e0e0e0' }}>{children}</th>; },
-          td({ children }) { return <td style={{ border: '1px solid #2a2a2a', padding: '4px 8px' }}>{children}</td>; },
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-}
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+  const [isDiffExpanded, setIsDiffExpanded] = useState<Record<string, boolean>>({});
 
-/* ═══ IMAGE LIGHTBOX ═══ */
-function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const thinkingTimeRef = useRef<NodeJS.Timeout | null>(null);
+  const [displayThinkingTime, setDisplayThinkingTime] = useState(0);
+
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+    if (props.thinkingTime) {
+      setDisplayThinkingTime(props.thinkingTime);
+    }
+  }, [props.thinkingTime]);
 
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 99999,
-        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        animation: 'fadeIn 150ms ease',
-        cursor: 'zoom-out',
-      }}
-    >
-      <button
-        onClick={onClose}
-        style={{
-          position: 'absolute', top: 16, right: 20, zIndex: 100000,
-          background: 'rgba(255,255,255,0.1)', border: 'none',
-          color: '#fff', fontSize: 20, width: 36, height: 36,
-          borderRadius: 8, cursor: 'pointer', display: 'flex',
-          alignItems: 'center', justifyContent: 'center',
-          lineHeight: 1,
-        }}
-      >
-        ✕
-      </button>
-      <img
-        src={src}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: '90vw', maxHeight: '90vh',
-          objectFit: 'contain', borderRadius: 6,
-          cursor: 'default', boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
-        }}
-        alt=""
-      />
-      <style>{`@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }`}</style>
-    </div>
-  );
-}
+  const renderableContent = content || (streaming ? '...' : '');
 
-/* ═══ IMAGE ATTACHMENTS ═══ */
-function ImageAttachments({ attachments }: { attachments: MessageAttachment[] }) {
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-  const [failedSet, setFailedSet] = useState<Set<number>>(() => new Set());
-  const [expanded, setExpanded] = useState(false);
-
-  const images = attachments.filter(a => a.mediaType.startsWith('image/'));
-  if (images.length === 0) return null;
-
-  const toSrc = (att: MessageAttachment) =>
-    att.base64.startsWith('data:') ? att.base64 : `data:${att.mediaType};base64,${att.base64}`;
-
-  const handleError = (idx: number) => {
-    setFailedSet(prev => { const next = new Set(prev); next.add(idx); return next; });
-  };
-
-  const visibleLimit = 4;
-  const showExpand = images.length > visibleLimit && !expanded;
-  const visible = expanded ? images : images.slice(0, visibleLimit);
-  const isSingle = images.length === 1;
-
-  return (
-    <>
-      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: isSingle ? '1fr' : 'repeat(2, 1fr)',
-        gap: 6, marginBottom: 8, maxWidth: isSingle ? 360 : 420,
-      }}>
-        {visible.map((att, i) => {
-          if (failedSet.has(i)) {
-            return (
-              <div key={i} style={{
-                background: '#1a1a1a', border: '1px solid #333',
-                borderRadius: 8, height: isSingle ? 200 : 120,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#555', fontSize: 11,
-              }}>
-                Image failed to load
-              </div>
-            );
-          }
-          const src = toSrc(att);
-          return (
-            <div
-              key={i}
-              onClick={() => setLightboxSrc(src)}
-              style={{
-                cursor: 'zoom-in', borderRadius: 8, overflow: 'hidden',
-                border: '1px solid #2a2a2a', background: '#111',
-                height: isSingle ? 'auto' : 140,
-                maxHeight: isSingle ? 280 : 140,
-              }}
-            >
-              <img
-                src={src}
-                alt={`Attachment ${i + 1}`}
-                loading="lazy"
-                onError={() => handleError(i)}
-                style={{
-                  width: '100%', height: '100%',
-                  objectFit: isSingle ? 'contain' : 'cover',
-                  display: 'block',
-                }}
-              />
-            </div>
-          );
-        })}
-      </div>
-      {showExpand && (
-        <button
-          onClick={() => setExpanded(true)}
-          style={{
-            background: 'none', border: '1px solid #333', borderRadius: 6,
-            color: '#888', fontSize: 11, padding: '3px 10px', cursor: 'pointer',
-            marginBottom: 8,
-          }}
-        >
-          +{images.length - visibleLimit} more image{images.length - visibleLimit > 1 ? 's' : ''}
-        </button>
-      )}
-    </>
-  );
-}
-
-/* ═══ GENERATED IMAGES (assistant output) ═══ */
-function GeneratedImagesDisplay({ images }: { images: GeneratedImage[] }) {
-  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
-
-  const downloadImage = (b64: string, prompt: string) => {
-    const a = document.createElement('a');
-    a.href = `data:image/png;base64,${b64}`;
-    a.download = `titan-${prompt.slice(0, 30).replace(/[^a-zA-Z0-9]/g, '_')}.png`;
-    a.click();
-  };
-
-  return (
-    <>
-      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '8px 0' }}>
-        {images.map((img) => (
-          <div key={img.id} style={{
-            background: '#161616', border: '1px solid #2a2a2a', borderRadius: 10,
-            overflow: 'hidden', maxWidth: 420,
-          }}>
-            <div
-              style={{ cursor: 'pointer', position: 'relative' }}
-              onClick={() => setLightboxSrc(`data:image/png;base64,${img.b64}`)}
-            >
-              <img
-                src={`data:image/png;base64,${img.b64}`}
-                alt={img.revisedPrompt || img.prompt}
-                style={{ width: '100%', display: 'block', borderRadius: '10px 10px 0 0' }}
-              />
-              <div style={{
-                position: 'absolute', top: 8, right: 8, display: 'flex', gap: 4,
-              }}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); downloadImage(img.b64, img.prompt); }}
-                  style={{
-                    width: 28, height: 28, borderRadius: 6, background: 'rgba(0,0,0,0.7)',
-                    border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', cursor: 'pointer', color: '#ccc',
-                  }}
-                  title="Download image"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                  </svg>
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setLightboxSrc(`data:image/png;base64,${img.b64}`); }}
-                  style={{
-                    width: 28, height: 28, borderRadius: 6, background: 'rgba(0,0,0,0.7)',
-                    border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', cursor: 'pointer', color: '#ccc',
-                  }}
-                  title="View full size"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div style={{ padding: '8px 12px' }}>
-              <div style={{ fontSize: 11, color: '#808080', lineHeight: 1.4 }}>
-                {img.revisedPrompt || img.prompt}
-              </div>
-              <div style={{ fontSize: 10, color: '#555', marginTop: 4 }}>
-                DALL-E 3 -- {img.size}
-              </div>
-            </div>
+  const renderAttachments = () => {
+    if (!props.attachments || props.attachments.length === 0) return null;
+    return (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {props.attachments.map((att, index) => (
+          <div key={index} className="border border-gray-700 rounded-md p-2 bg-gray-800/50">
+            <p className="text-xs text-gray-400 mb-1">{att.mediaType}</p>
+            <img src={`data:${att.mediaType};base64,${att.base64}`} alt={`attachment ${index + 1}`} className="max-w-xs max-h-48 rounded" />
           </div>
         ))}
       </div>
-    </>
+    );
+  };
+
+  const renderThinkingBlock = () => {
+    if (!props.thinking) return null;
+    return (
+      <div className="mt-2 text-xs text-gray-400 border-l-2 border-gray-600 pl-2">
+        <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setIsThinkingExpanded(!isThinkingExpanded)}>
+          <ChevronIcon open={isThinkingExpanded} />
+          <span className="font-mono">Thinking...</span>
+          {displayThinkingTime > 0 && <span className="text-gray-500">({(displayThinkingTime / 1000).toFixed(2)}s)</span>}
+        </div>
+        {isThinkingExpanded && (
+          <div className="mt-1 pl-3.5 whitespace-pre-wrap font-mono text-gray-500">
+            {props.thinking}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderToolCalls = () => {
+    if (!props.toolCalls || props.toolCalls.length === 0) return null;
+    return (
+      <div className="mt-2 text-xs">
+        {props.toolCalls.map((call, index) => (
+          <ToolCallBlock key={index} {...call} />
+        ))}
+      </div>
+    );
+  };
+
+  const renderCodeDiffs = () => {
+    if (!props.codeDiffs || props.codeDiffs.length === 0) return null;
+    return (
+      <div className="mt-2 text-xs">
+        {props.codeDiffs.map((diff) => (
+          <CodeDiffBlock
+            key={diff.diffId}
+            {...diff}
+            isExpanded={isDiffExpanded[diff.diffId] ?? true}
+            onToggleExpand={() => setIsDiffExpanded(prev => ({ ...prev, [diff.diffId]: !(prev[diff.diffId] ?? true) }))}
+            onApply={() => props.onApplyDiff?.(diff.diffId)}
+            onReject={() => props.onRejectDiff?.(diff.diffId)}
+          />
+        ))}
+      </div>
+    );
+  };
+  
+  const renderGeneratedImages = () => {
+    if (!props.generatedImages || props.generatedImages.length === 0) return null;
+    return (
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {props.generatedImages.map((image, index) => (
+          <div key={index} className="border border-gray-700 rounded-md overflow-hidden">
+            <img src={image.url} alt={image.prompt} className="w-full h-auto" />
+            <p className="text-xs text-gray-400 p-2 bg-gray-800/50">{image.prompt}</p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderMessageContent = () => {
+    return (
+      <div className="prose prose-sm prose-invert max-w-none">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {renderableContent}
+        </ReactMarkdown>
+      </div>
+    );
+  };
+
+  const renderRetry = () => {
+    if (!props.isError || !props.onRetry) return null;
+    return (
+      <div className="mt-2">
+        <button
+          onClick={() => props.onRetry?.(props.retryMessage || props.content)}
+          className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-white"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  };
+
+  const getAvatar = () => {
+    if (role === 'user') return 'M';
+    if (role === 'assistant') return 'T';
+    return 'T';
+  };
+
+  const getAvatarBgColor = () => {
+    if (role === 'user') return '#2a3d54';
+    if (role === 'assistant') return '#4a2a54';
+    return '#333';
+  };
+
+  return (
+    <div className={`p-4 border-b border-gray-800 ${role === 'user' ? 'bg-gray-800/30' : ''}`}>
+      <div className="flex items-start gap-3">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+          style={{ backgroundColor: getAvatarBgColor() }}
+        >
+          {getAvatar()}
+        </div>
+        <div className="flex-1 pt-0.5">
+          <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
+            <span className="font-bold text-white">{role === 'user' ? 'You' : 'Titan'}</span>
+            {streaming && (
+              <div className="flex items-center gap-1.5">
+                <SpinnerIcon size={10} />
+                <span className="font-mono">{props.streamingProviderModel || props.streamingModel || '...'}</span>
+              </div>
+            )}
+          </div>
+          {renderMessageContent()}
+          {renderAttachments()}
+          {renderThinkingBlock()}
+          {renderToolCalls()}
+          {renderCodeDiffs()}
+          {renderGeneratedImages()}
+          {renderRetry()}
+        </div>
+      </div>
+    </div>
   );
 }
 
-/* ═══ MAIN COMPONENT ═══ */
-export default function ChatMessage({
-  role, content, attachments, thinking, thinkingTime, streaming,
-  isError, retryMessage, activeModel, toolCalls, codeDiffs, generatedImages,
-  onRetry, onApplyCode, onApplyDiff, onRejectDiff,
-}: ChatMessageProps) {
+function ToolCallBlock({ tool_name, tool_args, status, result, isExpanded: initialIsExpanded }: ToolCallBlockType) {
+  const [isExpanded, setIsExpanded] = useState(initialIsExpanded ?? false);
+  const [isResultExpanded, setIsResultExpanded] = useState(false);
 
-  if (role === 'user') {
-    return (
-      <div style={{ marginBottom: 16, marginTop: 4 }}>
-        {attachments && attachments.length > 0 && (
-          <ImageAttachments attachments={attachments} />
-        )}
-        <div style={{ fontSize: 12.5, color: '#e0e0e0', whiteSpace: 'pre-wrap', lineHeight: 1.55, userSelect: 'text', cursor: 'text' }}>
-          {content}
-        </div>
-      </div>
-    );
-  }
+  const getStatusIcon = () => {
+    switch (status) {
+      case 'running':
+        return <SpinnerIcon />;
+      case 'success':
+        return <CheckIcon />;
+      case 'failure':
+        return <XIcon />;
+      default:
+        return null;
+    }
+  };
 
-  const isParallelMode = activeModel === 'titan-protocol-v2' || content?.includes('Titan Protocol v2');
-  const hasToolCalls = toolCalls && toolCalls.length > 0;
-  const hasCodeDiffs = codeDiffs && codeDiffs.length > 0;
-  const hasContent = content && content.trim().length > 0;
-
-  // Try to extract a plan block from the content
-  const { plan, rest } = hasToolCalls && hasContent
-    ? extractPlanBlock(content)
-    : { plan: [], rest: content };
-
-  const displayContent = plan.length > 0 ? rest : content;
-
-  const doneCount = toolCalls?.filter(t => t.status === 'done').length ?? 0;
-  const totalOps = toolCalls?.length ?? 0;
-  const activeOp = toolCalls?.find(t => t.status === 'running');
+  const formatArgs = (args: any) => {
+    if (typeof args === 'string') {
+      try {
+        const parsed = JSON.parse(args);
+        return JSON.stringify(parsed, null, 2);
+      } catch {
+        return args;
+      }
+    }
+    return JSON.stringify(args, null, 2);
+  };
 
   return (
-    <div style={{ marginBottom: 12 }}>
-      {/* Titan Protocol v2 indicator */}
-      {isParallelMode && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-          <span style={{
-            display: 'inline-block', padding: '2px 8px', borderRadius: 4,
-            fontSize: 10, fontWeight: 700, color: '#fff',
-            background: 'linear-gradient(135deg, #2563eb, #7c3aed)',
-            letterSpacing: '0.5px',
-          }}>
-            TITAN v2 PARALLEL
-          </span>
-          {streaming && (
-            <span style={{ fontSize: 10, color: '#818cf8' }}>
-              Orchestrating lanes...
-            </span>
+    <div className="font-mono bg-gray-800/50 border border-gray-700 rounded-md mb-2">
+      <div className="flex items-center gap-2 p-2 cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
+        <ChevronIcon open={isExpanded} />
+        <div className="flex items-center gap-1.5">
+          {getStatusIcon()}
+          <ToolIcon tool={tool_name} />
+          <span>{tool_name}</span>
+        </div>
+      </div>
+      {isExpanded && (
+        <div className="border-t border-gray-700 p-2">
+          <pre className="whitespace-pre-wrap text-gray-300 text-xs bg-transparent p-0 m-0">
+            {formatArgs(tool_args)}
+          </pre>
+          {result && (
+            <div className="mt-2 border-t border-dashed border-gray-600 pt-2">
+               <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setIsResultExpanded(!isResultExpanded)}>
+                <ChevronIcon open={isResultExpanded} />
+                <span className="text-gray-400">Result</span>
+              </div>
+              {isResultExpanded && (
+                <pre className="mt-1 pl-3.5 whitespace-pre-wrap text-gray-400 text-xs bg-transparent p-0 m-0">
+                  {result}
+                </pre>
+              )}
+            </div>
           )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Thinking */}
-      {thinking && (
-        <ThinkingSection thinking={thinking} thinkingTime={thinkingTime} isStreaming={streaming && !hasContent} />
-      )}
+function CodeDiffBlock({
+  diffId,
+  filename,
+  language,
+  status,
+  diff,
+  isExpanded,
+  onToggleExpand,
+  onApply,
+  onReject
+}: CodeDiffBlockType & { isExpanded: boolean; onToggleExpand: () => void; onApply: () => void; onReject: () => void; }) {
 
-      {/* ── Cursor-style plan/task list ── */}
-      {plan.length > 0 && toolCalls && (
-        <TaskList items={plan} toolCalls={toolCalls} isStreaming={streaming} />
-      )}
-
-      {/* ── Operation progress header (when running) ── */}
-      {hasToolCalls && totalOps > 0 && !plan.length && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, padding: '2px 0' }}>
-          {activeOp ? (
-            <>
-              <SpinnerIcon size={11} />
-              <span style={{ fontSize: 11, color: '#569cd6' }}>Working... ({doneCount}/{totalOps})</span>
-            </>
-          ) : doneCount === totalOps ? (
-            <>
-              <CheckIcon size={11} />
-              <span style={{ fontSize: 11, color: '#3fb950' }}>Completed {totalOps} operation{totalOps !== 1 ? 's' : ''}</span>
-            </>
-          ) : null}
+  const renderDiff = () => {
+    const lines = diff.split('\n');
+    return lines.map((line, index) => {
+      let colorClass = 'text-gray-300';
+      if (line.startsWith('+')) colorClass = 'text-green-400';
+      if (line.startsWith('-')) colorClass = 'text-red-400';
+      return (
+        <div key={index} className={`flex ${line.startsWith('+') ? 'bg-green-900/20' : line.startsWith('-') ? 'bg-red-900/20' : ''}`}>
+          <span className="w-8 text-right pr-2 text-gray-500 select-none">{index + 1}</span>
+          <span className="flex-1 pr-4">{line}</span>
         </div>
-      )}
+      );
+    });
+  };
 
-      {/* ── Tool call rows ── */}
-      {hasToolCalls && (
-        <div style={{ marginBottom: 6 }}>
-          {toolCalls!.map((tc, i) => (
-            <ToolCallRow key={tc.id} tc={tc} index={i} total={toolCalls!.length} />
-          ))}
+  return (
+    <div className="font-mono bg-gray-800/50 border border-gray-700 rounded-md mb-2">
+      <div className="flex items-center justify-between p-2">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={onToggleExpand}>
+          <ChevronIcon open={isExpanded} />
+          <span className="text-gray-300">{filename}</span>
         </div>
-      )}
-
-      {/* ── Code diffs ── */}
-      {hasCodeDiffs && (
-        <div style={{ marginBottom: 6 }}>
-          {codeDiffs!.map((diff) => (
-            <CodeDiffCard key={diff.id} diff={diff} onApply={onApplyDiff} onReject={onRejectDiff} />
-          ))}
+        {status === 'pending' && (
+          <div className="flex items-center gap-2">
+            <button onClick={onApply} className="text-xs px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-white">Apply</button>
+            <button onClick={onReject} className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-white">Reject</button>
+          </div>
+        )}
+        {status === 'applied' && <span className="text-xs text-green-400">Applied</span>}
+        {status === 'rejected' && <span className="text-xs text-red-400">Rejected</span>}
+      </div>
+      {isExpanded && (
+        <div className="border-t border-gray-700 p-2 bg-gray-900/50 max-h-80 overflow-y-auto">
+          <pre className="whitespace-pre text-xs p-0 m-0">
+            {renderDiff()}
+          </pre>
         </div>
-      )}
-
-      {/* ── Generated images ── */}
-      {generatedImages && generatedImages.length > 0 && (
-        <GeneratedImagesDisplay images={generatedImages} />
-      )}
-
-      {/* ── Text content ── */}
-      {hasContent && displayContent && (
-        <div style={{ fontSize: 12.5, lineHeight: 1.55, color: isError ? '#f85149' : '#c0c0c0', userSelect: 'text', cursor: 'text' }}>
-          <MarkdownContent content={displayContent} onApplyCode={onApplyCode} />
-        </div>
-      )}
-
-      {/* Streaming cursor */}
-      {streaming && (
-        <span style={{ display: 'inline-block', width: 2, height: 14, background: '#569cd6', animation: 'blink 1s step-start infinite', borderRadius: 1, verticalAlign: '-2px', marginLeft: 2 }}>
-          <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`}</style>
-        </span>
-      )}
-
-      {/* Error retry */}
-      {isError && retryMessage && onRetry && (
-        <button
-          onClick={() => onRetry(retryMessage)}
-          style={{ marginTop: 6, padding: '3px 10px', background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 4, color: '#9d9d9d', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
-          onMouseEnter={e => e.currentTarget.style.background = '#222'}
-          onMouseLeave={e => e.currentTarget.style.background = '#1a1a1a'}
-        >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 4v6h6M23 20v-6h-6M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
-          Retry
-        </button>
       )}
     </div>
   );
