@@ -3,6 +3,15 @@
 import { useCallback, useRef, useState } from 'react';
 import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities } from '@/lib/agent-capabilities';
+import { attemptEditWithRetry } from '@/lib/autonomy/edit-retry';
+import { CommandOutputParser } from '@/lib/autonomy/command-output-parser';
+import { runDebugLoop } from '@/lib/autonomy/debug-loop';
+import { GitOrchestrator } from '@/lib/autonomy/git-orchestrator';
+import { MemoryManager } from '@/lib/autonomy/memory-manager';
+
+const sharedParser = new CommandOutputParser();
+const sharedGitOrchestrator = new GitOrchestrator();
+const sharedMemoryManager = new MemoryManager();
 
 export interface ToolResultMeta {
   runtime: 'web' | 'desktop';
@@ -14,6 +23,8 @@ export interface ToolResultMeta {
   bytesWritten?: number;
   beforeHash?: string;
   afterHash?: string;
+  retryAttempts?: number;
+  corrected?: boolean;
   [key: string]: unknown;
 }
 
@@ -30,6 +41,7 @@ interface UseAgentToolsOptions {
   onFileEdited?: (path: string, newContent: string, pathResolved?: string) => void;
   onFileCreated?: (path: string, content: string, absolutePath: string) => void;
   onFileDeleted?: (path: string) => void;
+  onToolEvent?: (tool: string, event: { type: string; payload: Record<string, unknown> }) => void;
   workspacePath?: string;
 }
 
@@ -46,7 +58,7 @@ function resolveToWorkspace(filePath: string, wsPath?: string): string {
   return base + '/' + rel;
 }
 
-export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath }: UseAgentToolsOptions = {}) {
+export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, onToolEvent, workspacePath }: UseAgentToolsOptions = {}) {
   const abortRef = useRef(false);
   const lastResultRef = useRef<ToolResult | null>(null);
   const [lastResult, setLastResultState] = useState<ToolResult | null>(null);
@@ -88,7 +100,11 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
         'read_file', 'edit_file', 'create_file', 'delete_file',
         'list_directory', 'grep_search', 'glob_search', 'semantic_search',
       ]);
-      if (PATH_BASED_TOOLS.has(tool) && !workspacePath) {
+      const WORKSPACE_REQUIRED_TOOLS = new Set([
+        ...PATH_BASED_TOOLS,
+        'auto_debug', 'git_branch', 'git_commit', 'git_sync', 'memory_read', 'memory_write',
+      ]);
+      if (WORKSPACE_REQUIRED_TOOLS.has(tool) && !workspacePath) {
         return setLast({
           success: false,
           output: '',
@@ -142,13 +158,40 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           if (!filePath || oldStr === undefined || newStr === undefined) {
             return setLast({ success: false, output: '', error: 'path, old_string, and new_string are required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           }
-          const result = await api.tools.editFile(filePath, oldStr, newStr);
+          const retried = await attemptEditWithRetry(api as any, filePath, oldStr, newStr, 3);
+          if (!retried.success || !retried.result) {
+            return setLast({
+              success: false,
+              output: '',
+              error: retried.error || 'edit_file failed after retries',
+              meta: {
+                ...baseMeta,
+                durationMs: Date.now() - start,
+                retryAttempts: retried.attempts,
+                corrected: retried.correctedFromOriginal,
+              },
+              metadata: {
+                retryLog: retried.attemptLog,
+              },
+            });
+          }
+          const result = retried.result;
           const pathResolved = result.pathResolved ?? filePath;
           onFileEdited?.(args.path as string, result.newContent, pathResolved);
           return setLast({
             success: true,
             output: `File edited: ${args.path}`,
-            metadata: { newContent: result.newContent, pathResolved, changed: result.changed, bytesWritten: result.bytesWritten, beforeHash: result.beforeHash, afterHash: result.afterHash },
+            metadata: {
+              newContent: result.newContent,
+              pathResolved,
+              changed: result.changed,
+              bytesWritten: result.bytesWritten,
+              beforeHash: result.beforeHash,
+              afterHash: result.afterHash,
+              retryAttempts: retried.attempts,
+              corrected: retried.correctedFromOriginal,
+              retryLog: retried.attemptLog,
+            },
             meta: {
               ...baseMeta,
               durationMs: Date.now() - start,
@@ -157,6 +200,8 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
               bytesWritten: result.bytesWritten,
               beforeHash: result.beforeHash,
               afterHash: result.afterHash,
+              retryAttempts: retried.attempts,
+              corrected: retried.correctedFromOriginal,
             },
           });
         }
@@ -211,9 +256,121 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           const cwd = (args.cwd as string) || workspacePath;
           const data = await api.tools.runCommand(command, cwd);
           const combined = data.stderr ? `${data.stdout}\n${data.stderr}`.trim() : data.stdout;
+          const parsedOutput = sharedParser.parse(data.stdout || '', data.stderr || '', data.exitCode);
+          const primaryError = sharedParser.getPrimaryError(parsedOutput);
           onTerminalCommand?.(command, combined, data.exitCode);
           const output = combined.slice(0, 15000) + (data.exitCode !== 0 ? `\n[exit code: ${data.exitCode}]` : '');
-          return setLast({ success: true, output: output || '(no output)', metadata: { exitCode: data.exitCode }, meta: { ...baseMeta, durationMs: Date.now() - start } });
+          return setLast({
+            // Intentionally keep success=true so the chat loop can inspect output and parsed metadata
+            // rather than short-circuiting on run_command non-zero exits.
+            success: true,
+            output: output || '(no output)',
+            metadata: {
+              exitCode: data.exitCode,
+              parsedOutput: data.exitCode !== 0 || data.stderr ? parsedOutput : undefined,
+              primaryError: data.exitCode !== 0 ? primaryError : undefined,
+              affectedFiles: data.exitCode !== 0 ? sharedParser.getAffectedFiles(parsedOutput) : [],
+            },
+            meta: { ...baseMeta, durationMs: Date.now() - start },
+          });
+        }
+
+        case 'auto_debug': {
+          const command = args.command as string;
+          if (!command) {
+            return setLast({ success: false, output: '', error: 'command is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
+          }
+          const modelInvoker = async (prompt: string): Promise<string> => {
+            const res = await fetch('/api/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: prompt, model: 'gpt-5.3', stream: false }),
+            });
+            if (!res.ok) throw new Error(`model invoke failed (${res.status})`);
+            const data = await res.json();
+            return String(data.content || '');
+          };
+
+          const loopResult = await runDebugLoop(
+            command,
+            executeToolCall,
+            modelInvoker,
+            (event) => onToolEvent?.('auto_debug', event),
+          );
+          return setLast({
+            success: loopResult.resolved,
+            output: loopResult.resolved
+              ? `Debug loop resolved in ${loopResult.attempts} attempt(s).`
+              : `Debug loop escalated after ${loopResult.attempts} attempt(s).`,
+            metadata: { loopResult },
+            meta: { ...baseMeta, durationMs: Date.now() - start },
+          });
+        }
+
+        case 'git_branch': {
+          const branchName = String(args.branch || args.new_branch_name || '');
+          const baseBranch = String(args.base || args.base_branch || 'main');
+          if (!branchName) {
+            return setLast({ success: false, output: '', error: 'branch is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
+          }
+          const res = await sharedGitOrchestrator.branchWorkflow(branchName, baseBranch, executeToolCall);
+          return setLast({ success: res.success, output: res.output, metadata: res as unknown as Record<string, unknown>, meta: { ...baseMeta, durationMs: Date.now() - start } });
+        }
+
+        case 'git_commit': {
+          const message = String(args.message || args.description || 'update project');
+          const type = String(args.type || 'feat');
+          const scope = args.scope ? String(args.scope) : undefined;
+          const res = await sharedGitOrchestrator.commitWorkflow(message, executeToolCall, type, scope);
+          return setLast({ success: res.success, output: res.output, metadata: res as unknown as Record<string, unknown>, meta: { ...baseMeta, durationMs: Date.now() - start } });
+        }
+
+        case 'git_sync': {
+          const branch = String(args.branch || 'main');
+          const res = await sharedGitOrchestrator.syncWorkflow(branch, executeToolCall);
+          return setLast({ success: res.success, output: res.output, metadata: res as unknown as Record<string, unknown>, meta: { ...baseMeta, durationMs: Date.now() - start } });
+        }
+
+        case 'memory_read': {
+          const state = await sharedMemoryManager.readMemory(executeToolCall);
+          return setLast({
+            success: true,
+            output: state.raw || 'No memory entries found.',
+            metadata: {
+              entries: state.entries,
+              memoryPath: state.memoryPath,
+              count: state.entries.length,
+            },
+            meta: { ...baseMeta, durationMs: Date.now() - start, pathResolved: state.memoryPath },
+          });
+        }
+
+        case 'memory_write': {
+          const decision = String(args.decision || '');
+          const rationale = String(args.rationale || '');
+          const taskId = String(args.taskId || args.task_id || 'AUTO');
+          const status = String(args.status || 'ACTIVE');
+          const date = String(args.date || new Date().toISOString().slice(0, 10));
+          if (!decision || !rationale) {
+            return setLast({ success: false, output: '', error: 'decision and rationale are required', meta: { ...baseMeta, durationMs: Date.now() - start } });
+          }
+          const write = await sharedMemoryManager.appendDecision({
+            decision,
+            rationale,
+            date,
+            taskId,
+            status,
+            references: args.references ? String(args.references) : undefined,
+          }, {
+            executeToolCall,
+            directEditApi: api as any,
+          });
+          return setLast({
+            success: write.success,
+            output: write.success ? `Memory updated (${write.id}) in ${write.path}` : `Memory update failed: ${write.error || 'unknown error'}`,
+            metadata: write as unknown as Record<string, unknown>,
+            meta: { ...baseMeta, durationMs: Date.now() - start, pathResolved: write.path },
+          });
         }
 
         case 'web_search': {
@@ -294,7 +451,7 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
         meta: { ...baseMeta, durationMs: Date.now() - start },
       });
     }
-  }, [onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath]);
+  }, [onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, onToolEvent, workspacePath]);
 
   const abort = useCallback(() => {
     abortRef.current = true;
@@ -327,6 +484,18 @@ export function toolCallSummary(tool: string, args: Record<string, unknown>): st
       return `Glob "${args.pattern}"${args.path ? ` in ${args.path}` : ''}`;
     case 'run_command':
       return `$ ${(args.command as string || '').slice(0, 80)}`;
+    case 'auto_debug':
+      return `Auto debug: ${(args.command as string || '').slice(0, 60)}`;
+    case 'git_branch':
+      return `Git branch ${args.branch || args.new_branch_name}`;
+    case 'git_commit':
+      return `Git commit ${args.type || 'feat'}: ${(args.message as string || '').slice(0, 40)}`;
+    case 'git_sync':
+      return `Git sync ${args.branch || 'main'}`;
+    case 'memory_read':
+      return 'Read architectural memory';
+    case 'memory_write':
+      return `Write memory: ${(args.decision as string || '').slice(0, 40)}`;
     case 'web_search':
       return `Web search "${args.query}"`;
     case 'web_fetch':

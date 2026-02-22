@@ -202,6 +202,95 @@ const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'auto_debug',
+      description: 'Run an autonomous debugging loop: execute command, parse failures, fix file, and retry up to 3 times.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'Command to run and auto-debug' },
+        },
+        required: ['command'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'git_branch',
+      description: 'Create a feature branch from a base branch.',
+      parameters: {
+        type: 'object',
+        properties: {
+          branch: { type: 'string', description: 'New branch name' },
+          base: { type: 'string', description: 'Base branch. Defaults to main.' },
+        },
+        required: ['branch'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'git_commit',
+      description: 'Commit all tracked changes using Conventional Commits.',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', description: 'Commit type (feat, fix, chore, etc.)' },
+          scope: { type: 'string', description: 'Optional commit scope' },
+          message: { type: 'string', description: 'Commit description' },
+        },
+        required: ['message'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'git_sync',
+      description: 'Sync a branch with remote using pull then push.',
+      parameters: {
+        type: 'object',
+        properties: {
+          branch: { type: 'string', description: 'Branch to sync' },
+        },
+        required: ['branch'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'memory_read',
+      description: 'Read architectural memory from the project ADR memory log.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'memory_write',
+      description: 'Append an architectural decision to the memory log.',
+      parameters: {
+        type: 'object',
+        properties: {
+          decision: { type: 'string', description: 'Decision summary' },
+          rationale: { type: 'string', description: 'Why the decision was made' },
+          taskId: { type: 'string', description: 'Associated task id' },
+          status: { type: 'string', description: 'Decision status, defaults to ACTIVE' },
+          references: { type: 'string', description: 'Optional references' },
+        },
+        required: ['decision', 'rationale'],
+      },
+    },
+  },
 ];
 
 // ── The System Prompt ──
@@ -793,6 +882,26 @@ NEVER fabricate paths. If you need a file and it does not appear in the project 
     prompt += `\n\nRecently viewed files:\n${body.recentlyViewedFiles.slice(0, 10).map(f => `- ${f}`).join('\n')}`;
   }
 
+  if (body.navigationHints) {
+    prompt += `\n\nContext-first navigation hints:\n- Strategy: ${body.navigationHints.strategy}\n- Found direct target: ${body.navigationHints.found}`;
+    if (body.navigationHints.resolvedPath) {
+      prompt += `\n- Resolved path: ${body.navigationHints.resolvedPath}`;
+    }
+    if (body.navigationHints.toolCalls?.length) {
+      prompt += `\n- Suggested next tools:`;
+      for (const call of body.navigationHints.toolCalls.slice(0, 3)) {
+        prompt += `\n  - ${call.tool} (${call.reason})`;
+      }
+    }
+  }
+
+  if (body.omegaContext?.workOrders?.length) {
+    prompt += `\n\nOmega planning context:`;
+    for (const [idx, order] of body.omegaContext.workOrders.slice(0, 5).entries()) {
+      prompt += `\n${idx + 1}. ${order.taskDescription} [risk=${order.predictedRisk}]`;
+    }
+  }
+
   // Environment context (desktop vs web, OS)
   const os = body.osPlatform || 'unknown';
   if (body.isDesktop) {
@@ -877,6 +986,19 @@ interface ContinueRequest {
   linterDiagnostics?: Array<{ file: string; line: number; column: number; severity: string; message: string }>;
   recentlyEditedFiles?: Array<{ file: string; timestamp: number }>;
   recentlyViewedFiles?: string[];
+  navigationHints?: {
+    strategy: 'direct' | 'targeted_search' | 'exploration';
+    toolCalls: Array<{ tool: string; args: Record<string, unknown>; reason: string }>;
+    found: boolean;
+    resolvedPath?: string;
+  };
+  omegaContext?: {
+    workOrders?: Array<{
+      taskDescription: string;
+      acceptanceCriteria: string[];
+      predictedRisk: string;
+    }>;
+  };
   isDesktop?: boolean;
   osPlatform?: string;
   capabilities?: { runtime: string; workspaceOpen: boolean; toolsEnabled: boolean; reasonIfDisabled?: string };

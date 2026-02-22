@@ -119,7 +119,7 @@ export function useFileSystem(
         const folderName = folderPath.split(/[\\/]/).pop() || folderPath;
         const fileTree = convertNativeTree(nativeTree, '');
         const { openFolder: openFolderStore } = useFileStore.getState();
-        openFolderStore(folderName, folderPath, fileTree);
+        openFolderStore(folderPath, folderName, fileTree);
         setWorkspacePath(folderPath);
 
         await electronAPI.recentFolders.add(folderPath);

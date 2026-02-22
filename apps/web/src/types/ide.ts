@@ -7,6 +7,16 @@ export interface ToolCallBlock {
   error?: string;
   startedAt: number;
   finishedAt?: number;
+  retryAttempts?: number;
+  parsedErrors?: Array<{
+    filePath: string | null;
+    line: number | null;
+    column: number | null;
+    errorType: string | null;
+    message: string;
+  }>;
+  debugLoopId?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CodeDiffBlock {

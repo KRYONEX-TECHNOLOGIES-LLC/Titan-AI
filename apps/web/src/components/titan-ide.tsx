@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import type * as Monaco from 'monaco-editor';
 
 // Types
-import type { FileTab, PendingDiff } from '@/types/ide';
+import type { FileTab, PendingDiff, Session, FileAttachment } from '@/types/ide';
 
 // Hooks
 import { useChat } from '@/hooks/useChat';
@@ -13,6 +13,7 @@ import { useSessions } from '@/hooks/useSessions';
 import { useSettings } from '@/hooks/useSettings';
 import { useMidnight } from '@/hooks/useMidnight';
 import { useFileSystem } from '@/hooks/useFileSystem';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { useSession } from '@/providers/session-provider';
 import GitHubAuthProvider from '@/providers/github-auth-provider';
 
@@ -722,9 +723,6 @@ function ActivityIcon({ children, active, onClick, title }: { children: React.Re
     </button>
   );
 }
-
-import { Session, FileAttachment } from '@/types/ide';
-import { useVoiceInput } from '@/hooks/useVoiceInput';
 
 function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode, attachments, onAddAttachments, onRemoveAttachment, capabilities, lastToolResult, onOpenFolder }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;

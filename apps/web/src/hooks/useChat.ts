@@ -6,9 +6,13 @@ import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers
 import { useAgentTools, toolCallSummary } from './useAgentTools';
 import { useParallelChat } from './useParallelChat';
 import { useSupremeChat } from './useSupremeChat';
+import { useOmegaChat } from './useOmegaChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
+import { ContextNavigator } from '@/lib/autonomy/context-navigator';
+import { MemoryManager } from '@/lib/autonomy/memory-manager';
+import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
 
 const MAX_TOOL_CALLS = 50;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -191,8 +195,34 @@ export function useChat({
 
   const pendingContentRef = useRef('');
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeStreamRef = useRef<{ sessionId: string; messageId: string } | null>(null);
+  const contextNavigatorRef = useRef(new ContextNavigator());
+  const memoryManagerRef = useRef(new MemoryManager());
+  const omegaFluencyRef = useRef(new OmegaFluency());
 
-  const agentTools = useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath });
+  const agentTools = useAgentTools({
+    onTerminalCommand,
+    onFileEdited,
+    onFileCreated,
+    onFileDeleted,
+    workspacePath,
+    onToolEvent: (tool, event) => {
+      const active = activeStreamRef.current;
+      if (!active) return;
+      if (tool !== 'auto_debug') return;
+      const eventId = `debug-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const text = JSON.stringify(event.payload).slice(0, 1200);
+      appendToolCallToMessage(active.sessionId, active.messageId, {
+        id: eventId,
+        tool: `auto_debug:${event.type}`,
+        args: {},
+        status: 'done',
+        result: text,
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+      });
+    },
+  });
 
   const updateMessage = useCallback((
     sessionId: string,
@@ -382,6 +412,25 @@ export function useChat({
     const gitStatus = await fetchGitStatus();
     const fileTree = serializeFileTree();
     const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
+    const lastUserMessage = [...conversationHistory].reverse().find((m) => m.role === 'user' && typeof m.content === 'string');
+    const navigationPlan = lastUserMessage?.content
+      ? contextNavigatorRef.current.resolveTarget(lastUserMessage.content, {
+          openTabs,
+          recentlyEditedFiles,
+          recentlyViewedFiles,
+          workspacePath: wsPath,
+        })
+      : undefined;
+    const omegaContext = titanProtocolMode && lastUserMessage?.content
+      ? {
+          workOrders: omegaFluencyRef.current.decomposeToWorkOrders(lastUserMessage.content, {
+            workspacePath: wsPath,
+            openTabs,
+            fileTree,
+            recentlyEditedFiles,
+          }),
+        }
+      : undefined;
 
     const compressedHistory = compressConversationHistory(conversationHistory);
     const caps = getCapabilities(workspacePath);
@@ -410,6 +459,8 @@ export function useChat({
         linterDiagnostics: linterDiagnostics?.slice(0, 10) || [],
         recentlyEditedFiles: recentlyEditedFiles?.slice(0, 10) || [],
         recentlyViewedFiles: recentlyViewedFiles?.slice(0, 10) || [],
+        navigationHints: navigationPlan,
+        omegaContext,
         isDesktop: isDesktop || false,
         osPlatform: osPlatform || 'unknown',
         capabilities: { runtime: caps.runtime, workspaceOpen: caps.workspaceOpen, toolsEnabled: caps.toolsEnabled, reasonIfDisabled: caps.reasonIfDisabled },
@@ -539,19 +590,31 @@ export function useChat({
 
     const sessionId = activeSessionId;
     const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    activeStreamRef.current = { sessionId, messageId: streamMessageId };
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     const currentCode = editorInstance?.getValue() || fileContents[activeTab] || '';
     const selection = editorInstance?.getSelection();
     const selectedText = selection ? editorInstance?.getModel()?.getValueInRange(selection) : '';
     const currentLanguage = getLanguageFromFilename(activeTab);
 
+    let memoryPrefix = '';
+    if (memoryManagerRef.current.shouldReadMemory(msg)) {
+      const memory = await agentTools.executeToolCall('memory_read', {});
+      if (memory.success && memory.output) {
+        memoryPrefix = `[Architectural Memory]\n${memory.output.slice(0, 6000)}\n\n`;
+      }
+    }
+
     const userContent = selectedText
       ? `[Selected Code]\n\`\`\`${currentLanguage}\n${selectedText}\n\`\`\`\n\n${msg}`
       : msg;
+    const finalUserContent = memoryPrefix + userContent;
 
     const userMessage: ChatMessage = {
       role: 'user',
-      content: userContent,
+      content: finalUserContent,
       attachments: readyAttachments.length > 0 ? readyAttachments : undefined,
       time: 'just now',
     };
@@ -575,18 +638,17 @@ export function useChat({
     setIsThinking(true);
     thinkingStartRef.current = Date.now();
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
     const conversationHistory: LLMMessage[] = [
-      { role: 'user', content: userContent },
+      { role: 'user', content: finalUserContent },
     ];
 
     let totalToolCalls = 0;
     let consecutiveFailures = 0;
     let totalFailures = 0;
     let loopIterations = 0;
+    let taskCompletedSuccessfully = false;
     const isTitanProtocol = TITAN_PROTOCOL_IDS.has(activeModel);
+    const touchedFiles = new Set<string>();
 
     try {
       while (true) {
@@ -649,6 +711,7 @@ export function useChat({
             streaming: false,
             content: m.content || content || 'Done.',
           }));
+          taskCompletedSuccessfully = true;
           break;
         }
 
@@ -691,7 +754,24 @@ export function useChat({
             result: result.output?.slice(0, 3000),
             error: result.error,
             finishedAt: Date.now(),
+            retryAttempts: result.meta?.retryAttempts as number | undefined,
+            parsedErrors: (result.metadata?.parsedOutput as { errors?: Array<{
+              filePath: string | null;
+              line: number | null;
+              column: number | null;
+              errorType: string | null;
+              message: string;
+            }> } | undefined)?.errors?.slice(0, 5),
+            metadata: result.metadata,
           });
+
+          if (typeof finalArgs.path === 'string' && finalArgs.path.trim().length > 0) {
+            touchedFiles.add(finalArgs.path);
+          }
+          const affectedFiles = result.metadata?.affectedFiles as string[] | undefined;
+          if (Array.isArray(affectedFiles)) {
+            for (const file of affectedFiles) touchedFiles.add(file);
+          }
 
           if (!result.success) {
             consecutiveFailures++;
@@ -796,6 +876,27 @@ export function useChat({
 
         updateMessage(sessionId, streamMessageId, (m) => ({ ...m, streaming: true }));
       }
+
+      const shouldWriteMemory = taskCompletedSuccessfully
+        && /architecture|decision|adr|chose|chosen|rationale|protocol/i.test(msg)
+        && !abortedRef.current
+        && !controller.signal.aborted;
+      if (shouldWriteMemory) {
+        const touchedSummary = Array.from(touchedFiles).slice(0, 8);
+        const decision = touchedSummary.length > 0
+          ? `Architectural change: ${msg.slice(0, 80)} [files: ${touchedSummary.join(', ')}]`
+          : `Architectural change: ${msg.slice(0, 100)}`;
+        const memoryWrite = await agentTools.executeToolCall('memory_write', {
+          decision,
+          rationale: 'Autonomous completion updated as part of persistent memory workflow.',
+          taskId: `CHAT-${Date.now()}`,
+          status: 'ACTIVE',
+          references: activeTab || undefined,
+        });
+        if (!memoryWrite.success) {
+          console.warn('Memory auto-write failed:', memoryWrite.error || memoryWrite.output);
+        }
+      }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         updateMessage(sessionId, streamMessageId, (m) => ({
@@ -828,6 +929,7 @@ export function useChat({
       setIsThinking(false);
       setIsStreaming(false);
       abortControllerRef.current = null;
+      activeStreamRef.current = null;
     }
   }, [
     chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, attachments, clearAttachments,
@@ -891,8 +993,19 @@ export function useChat({
     osPlatform,
   });
 
+  const omegaChat = useOmegaChat({
+    sessions,
+    setSessions,
+    activeSessionId,
+    workspacePath,
+    openTabs,
+    isDesktop,
+    osPlatform,
+  });
+
   const isParallelMode = activeModel === 'titan-protocol-v2';
   const isSupremeMode = activeModel === 'titan-supreme-protocol';
+  const isOmegaMode = activeModel === 'titan-omega-protocol';
 
   if (isParallelMode) {
     return {
@@ -915,6 +1028,18 @@ export function useChat({
       handleSend: supremeChat.handleSend,
       handleStop: supremeChat.handleStop,
       handleKeyDown: supremeChat.handleKeyDown,
+    };
+  }
+
+  if (isOmegaMode) {
+    return {
+      chatInput: omegaChat.chatInput,
+      setChatInput: omegaChat.setChatInput,
+      isThinking: omegaChat.isThinking,
+      isStreaming: omegaChat.isStreaming,
+      handleSend: omegaChat.handleSend,
+      handleStop: omegaChat.handleStop,
+      handleKeyDown: omegaChat.handleKeyDown,
     };
   }
 

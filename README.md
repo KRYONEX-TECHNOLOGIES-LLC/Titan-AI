@@ -1,5 +1,71 @@
 # Titan AI
 
+Titan AI is an AI-native IDE with an Electron desktop app (`apps/desktop`) and a Next.js web app (`apps/web`) in a pnpm + Turborepo monorepo.
+
+## Prerequisites
+
+- Node.js **20+**
+- pnpm **9+** (repo expects `pnpm@9.15.0`)
+
+On Windows (PowerShell), the most reliable setup is:
+
+```powershell
+corepack enable
+corepack prepare pnpm@9.15.0 --activate
+node -v
+pnpm -v
+```
+
+## Install
+
+From the repo root:
+
+```powershell
+pnpm install
+```
+
+## Start Titan AI (Desktop / Electron)
+
+This is the primary app.
+
+From the repo root:
+
+```powershell
+pnpm dev:desktop
+```
+
+What to expect:
+
+- The desktop app starts an internal Next.js server (default **http://localhost:3100**)
+- Electron launches and connects to that server
+
+If you see `EADDRINUSE ... 3100`, you already have a dev instance running. Stop it and rerun `pnpm dev:desktop`.
+
+## Start the Web App (Optional)
+
+From the repo root:
+
+```powershell
+pnpm dev:web
+```
+
+## Common Issues
+
+### Port 3100 already in use
+
+- Symptom: `Error: listen EADDRINUSE: address already in use :::3100`
+- Fix: close the existing Titan desktop dev process, then rerun:
+
+```powershell
+pnpm dev:desktop
+```
+
+### Lint script prompts interactively
+
+`apps/web` uses `next lint`. Depending on local state, it may prompt to configure ESLint. If this happens, run the suggested codemod once, then rerun lint.
+
+# Titan AI
+
 **Next-Generation AI-Native Integrated Development Environment**
 
 Built by KRYONEX TECHNOLOGIES LLC

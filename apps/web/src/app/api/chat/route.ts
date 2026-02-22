@@ -563,6 +563,10 @@ function lookupProviderModelId(displayModelId: string): { providerModelId: strin
   const normalizedId = normalizeModelId(displayModelId);
   if (!normalizedId?.trim()) {
     const defaultModel = MODEL_REGISTRY[0];
+    console.warn('[chat] Empty model id fallback to default registry model', {
+      requestedModel: displayModelId,
+      fallbackProviderModelId: defaultModel?.providerModelId,
+    });
     return {
       providerModelId: defaultModel?.providerModelId || 'anthropic/claude-sonnet-4.6',
       displayName: defaultModel?.name || 'Claude Sonnet 4.6',
@@ -587,6 +591,11 @@ function lookupProviderModelId(displayModelId: string): { providerModelId: strin
   
   // Fallback to first model in registry
   const fallback = MODEL_REGISTRY[0];
+  console.warn('[chat] Unknown model id fallback to default registry model', {
+    requestedModel: displayModelId,
+    normalizedModel: normalizedId,
+    fallbackProviderModelId: fallback?.providerModelId,
+  });
   return {
     providerModelId: fallback?.providerModelId || normalizedId,
     displayName: fallback?.name || normalizedId,

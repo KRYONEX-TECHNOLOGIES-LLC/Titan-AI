@@ -181,3 +181,42 @@ protocol_supreme:
     consensus_quorum: 2
     consensus_followers: [primary_worker, secondary_worker, operator]
     worktree_isolation: true
+
+# ═══ TITAN OMEGA PROTOCOL ═══
+# Architect + Specialist Cadre + Sentinel + Operator with AST-aware, zero-trust execution.
+protocol_omega:
+  mode: omega
+  description: "Omega governance — Architect + Specialist Cadre + Sentinel + Operator with AST-aware changes, predictive scaffolding, and zero-trust execution"
+
+  agents:
+    architect_model: claude-opus-4.6
+    sentinel_model: gpt-5.3
+    operator_model: gpt-5.3
+    specialist_low_risk: llama-4-maverick
+    specialist_medium_risk: qwen3-coder
+    specialist_high_risk: claude-opus-4.6
+
+  limits:
+    max_concurrent_specialists: 4
+    max_rework_attempts: 2
+    max_dag_nodes: 12
+    lane_timeout_ms: 300000
+    step_budget_warning: 100
+    step_budget_hard_limit: 150
+
+  token_budget:
+    per_request: 800000
+    daily: 15000000
+
+  features:
+    enable_ast: true
+    enable_dynamic_tests: true
+    enable_integration_test: true
+    enable_predictive_scaffolding: true
+
+  governance:
+    zero_trust: true
+    plan_signing: sha256
+    operator_scope: signed_plan_only
+    specialist_scope: work_order_only
+    sentinel_default_assumption: code_is_broken

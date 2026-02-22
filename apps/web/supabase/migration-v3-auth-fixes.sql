@@ -30,21 +30,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 -- Make github_id nullable and non-unique (required for non-GitHub OAuth users)
 ALTER TABLE users ALTER COLUMN github_id DROP NOT NULL;
 
-DO $$
-DECLARE
-  idx RECORD;
-BEGIN
-  FOR idx IN
-    SELECT indexname
-    FROM pg_indexes
-    WHERE schemaname = 'public'
-      AND tablename = 'users'
-      AND indexdef ILIKE '%UNIQUE%'
-      AND indexdef ILIKE '%(github_id)%'
-  LOOP
-    EXECUTE format('DROP INDEX IF EXISTS public.%I', idx.indexname);
-  END LOOP;
-END $$;
+-- Drop the UNIQUE constraint on github_id (PostgreSQL names it users_github_id_key).
+-- Must drop constraint, not index; otherwise: "cannot drop index ... because constraint ... requires it"
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_github_id_key;
 
 -- Ensure required auth indexes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider_id
