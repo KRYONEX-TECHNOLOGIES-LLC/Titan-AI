@@ -12,7 +12,15 @@ const electronAPI = {
     readFile: (filePath: string, opts?: { lineOffset?: number; lineLimit?: number }) =>
       ipcRenderer.invoke('tools:readFile', filePath, opts) as Promise<{ content: string; lineCount: number }>,
     editFile: (filePath: string, oldStr: string, newStr: string) =>
-      ipcRenderer.invoke('tools:editFile', filePath, oldStr, newStr) as Promise<{ success: boolean; newContent: string }>,
+      ipcRenderer.invoke('tools:editFile', filePath, oldStr, newStr) as Promise<{
+        success: boolean;
+        newContent: string;
+        pathResolved?: string;
+        beforeHash?: string;
+        afterHash?: string;
+        changed?: boolean;
+        bytesWritten?: number;
+      }>,
     createFile: (filePath: string, content: string) =>
       ipcRenderer.invoke('tools:createFile', filePath, content) as Promise<{ success: boolean }>,
     deleteFile: (filePath: string) =>

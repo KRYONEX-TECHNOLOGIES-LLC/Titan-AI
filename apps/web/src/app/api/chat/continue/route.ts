@@ -228,11 +228,22 @@ SECTION 1: ABSOLUTE RULES (VIOLATIONS ARE CRITICAL FAILURES)
 
 7. NEVER ASK THE USER TO DO SOMETHING YOU CAN DO YOURSELF WITH YOUR TOOLS. If they ask you to create a file, create it. If they ask you to install a package, run the install command. If they ask you to fix a bug, read the code and fix it. Do not say "you can run npm install" -- call run_command and do it yourself.
 
-8. WHEN YOU FIRST INTERACT WITH A NEW PROJECT OR WORKSPACE: Your FIRST tool call MUST be list_directory (with no path or path ".") to see what files and folders actually exist. NEVER guess or assume filenames like docker-compose.yml, package.json, Makefile, etc. exist without first confirming via list_directory. If you try to read a file that does not exist, it wastes a tool call and counts toward your limit. Always explore first, then act on what you find.
+8. WORKSPACE EXPLORATION RULES:
+   1. If the user's task clearly targets a specific file (the file is named in their message, or it is the "Currently active file", or it is in "Open files in the editor"), you MUST skip list_directory and go straight to read_file on that file. Do not explore. Do not search. Read the target file and act on it.
+   2. If the user's task is broad or you genuinely do not know where the relevant code lives (e.g. "find where authentication is handled", "set up the project", "what does this project do"), THEN call list_directory once on the root to orient yourself.
+   3. NEVER call list_directory, grep_search, or glob_search more than once each per task UNLESS the first result was insufficient and you need to drill deeper into a specific subdirectory. Three search-type calls maximum per task unless the task explicitly requires a codebase-wide audit.
+   4. If the CURRENT WORKSPACE section in this prompt already shows the project structure, you already have the directory listing. Do NOT call list_directory again to get the same information. Use what you were given.
 
-9. USE RELATIVE PATHS FOR ALL FILE OPERATIONS. When calling read_file, edit_file, create_file, etc., use paths relative to the workspace root (e.g., "src/main.py", "package.json"). The system automatically resolves them to the correct absolute location. Do NOT construct absolute paths yourself.
+9. USE RELATIVE PATHS FOR ALL FILE OPERATIONS. When calling read_file, edit_file, create_file, etc., use paths relative to the workspace root (e.g., "api/main.py", "dashboard/package.json"). The system automatically resolves them to the correct absolute location. Do NOT construct absolute paths yourself.
 
-8. NEVER GUESS AT FILE CONTENTS. If you need to edit a file, read it first. If you are not sure what a file contains, read it. If your edit_file call fails because old_string was not found, re-read the file and try again with the correct content.
+10. NEVER GUESS AT FILE CONTENTS. If you need to edit a file, read it first. If you are not sure what a file contains, read it. If your edit_file call fails because old_string was not found, re-read the file and try again with the correct content.
+
+11. EFFICIENCY RULE -- MINIMUM TOOL CALLS: You are penalized for unnecessary tool calls. Every tool call costs time and tokens.
+   - If the user asks about the currently open file and you can see its path in context: ONE read_file call, then act. Not list_directory + grep_search + 5 read_file calls.
+   - If the user asks you to edit a file you just read in this conversation: edit it directly. Do not re-read it unless your edit_file failed.
+   - If the user asks a question you can answer from the project structure already shown in this prompt: answer it. Do not call list_directory to get the same info.
+   - If the user pastes code or an error message: you already have the information. Do not search for it.
+   Target: Most single-file tasks should complete in 2-4 tool calls (read, edit, verify). Multi-file tasks should complete in 5-10 tool calls. If you are making 15+ tool calls for a simple task, you are doing it wrong.
 
 ==========================================================================
 SECTION 2: HOW YOU WORK (THE TOOL-CALLING PATTERN)
@@ -265,7 +276,7 @@ TOOL: delete_file
 
 TOOL: list_directory
   Purpose: Explore the project structure.
-  When to use: At the start of a task to understand the project. When looking for specific files.
+  When to use: When the target file or project layout is unclear. When the user has a file open and the task concerns that file, you may skip this and use read_file on that path instead. Otherwise use at the start of a task to understand the project or when looking for specific files.
   Tips: Start with the root directory, then drill into specific subdirectories.
 
 TOOL: grep_search
@@ -658,12 +669,25 @@ function buildSystemPrompt(body: ContinueRequest, creatorContext?: string, selfW
     prompt += '\n\n' + selfWorkContext;
   }
 
+  // Tools capability (R1: visible to model)
+  if (body.capabilities) {
+    const c = body.capabilities;
+    prompt += `\n\n==========================================================================
+TOOLS CAPABILITY
+==========================================================================
+runtime: ${c.runtime}
+workspaceOpen: ${c.workspaceOpen}
+toolsEnabled: ${c.toolsEnabled}${c.reasonIfDisabled ? `\nreasonIfDisabled: ${c.reasonIfDisabled}` : ''}
+
+If toolsEnabled is false, do NOT attempt read_file, edit_file, create_file, delete_file, list_directory, grep_search, glob_search, semantic_search, or run_command. Explain that file and terminal tools require the desktop app with a folder open.`;
+  }
+
   // Workspace context
   if (body.workspacePath) {
     prompt += `\n\n==========================================================================
-CURRENT WORKSPACE
+CURRENT WORKSPACE (WORKSPACE MANIFEST)
 ==========================================================================
-Path: ${body.workspacePath}`;
+Workspace root: ${body.workspacePath}`;
   }
 
   // Open files
@@ -675,6 +699,32 @@ Path: ${body.workspacePath}`;
   if (body.fileTree) {
     prompt += `\n\nProject structure (top-level):\n${body.fileTree.slice(0, 3000)}`;
   }
+
+  // Tool discipline (desktop with workspace: reduce random file reads)
+  if (body.capabilities?.toolsEnabled && body.workspacePath) {
+    prompt += `
+
+TOOL DISCIPLINE:
+- When the target file is unknown: call list_directory (root) once per session to orient; then use grep_search before reading random files.
+- Do not read .env unless the user asks or the task explicitly requires it.
+- If the project structure is already shown above, use it; do not call list_directory again just to repeat the same information.`;
+  }
+
+  // Monorepo rules (active for all workspaces)
+  prompt += `
+
+MONOREPO RULES (ACTIVE FOR ALL WORKSPACES):
+
+This workspace may be a monorepo with multiple services. Do NOT assume:
+  - A top-level src/ directory exists (source code may live in named subdirectories like tms/, api/, services/, packages/, etc.)
+  - A root package.json exists (frontend projects may have their own package.json in a subdirectory like dashboard/, web/, frontend/, client/)
+  - A root requirements.txt exists (Python deps may not be tracked yet, or may be in subdirectories)
+
+BEFORE running npm/yarn/pnpm commands: Find the actual package.json location first. If it is in dashboard/package.json, run commands from the dashboard/ directory using the cwd parameter.
+
+BEFORE running pip/python commands: Check which subdirectory contains the Python code (look for __init__.py files or .py files in the project structure).
+
+NEVER fabricate paths. If you need a file and it does not appear in the project structure provided above, search for it. Do not guess that it is in src/ or at the root.`;
 
   // Current file context
   if (body.codeContext) {
@@ -804,6 +854,7 @@ interface ContinueRequest {
     name?: string;
   }>;
   model: string;
+  titanProtocol?: boolean;
   attachments?: Array<{ mediaType: string; base64: string }>;
   codeContext?: { file: string; content: string; selection?: string; language: string };
   repoMap?: string;
@@ -828,6 +879,7 @@ interface ContinueRequest {
   recentlyViewedFiles?: string[];
   isDesktop?: boolean;
   osPlatform?: string;
+  capabilities?: { runtime: string; workspaceOpen: boolean; toolsEnabled: boolean; reasonIfDisabled?: string };
 }
 
 
@@ -858,10 +910,18 @@ export async function POST(request: NextRequest) {
   // Validate/normalize model and resolve provider model id
   const { MODEL_REGISTRY, normalizeModelId } = await import('@/lib/model-registry');
   const normalizedModel = normalizeModelId(model);
-  const isTitanProtocol = normalizedModel === 'titan-protocol';
+  const isTitanProtocol = Boolean(body?.titanProtocol);
   const modelEntry = MODEL_REGISTRY.find((m: { id: string }) => m.id === normalizedModel);
+  const usedRegistryFallback = !modelEntry && !normalizedModel.includes('/');
   const providerModelId = modelEntry?.providerModelId
     || (normalizedModel.includes('/') ? normalizedModel : (MODEL_REGISTRY[0]?.providerModelId || normalizedModel));
+  if (usedRegistryFallback) {
+    console.warn('[chat/continue] Unknown model id fallback to default registry model', {
+      requestedModel: model,
+      normalizedModel,
+      fallbackProviderModelId: providerModelId,
+    });
+  }
   model = modelEntry?.id || normalizedModel;
 
   if (modelEntry && !modelEntry.supportsTools) {

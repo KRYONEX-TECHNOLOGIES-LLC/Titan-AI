@@ -1,21 +1,41 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
-import { electronAPI } from '@/lib/electron';
+import { useCallback, useRef, useState } from 'react';
+import { isElectron, electronAPI } from '@/lib/electron';
+import { getCapabilities } from '@/lib/agent-capabilities';
 
-interface ToolResult {
+export interface ToolResultMeta {
+  runtime: 'web' | 'desktop';
+  workspacePath?: string;
+  toolName: string;
+  durationMs: number;
+  pathResolved?: string;
+  changed?: boolean;
+  bytesWritten?: number;
+  beforeHash?: string;
+  afterHash?: string;
+  [key: string]: unknown;
+}
+
+export interface ToolResult {
   success: boolean;
   output: string;
   error?: string;
+  meta?: ToolResultMeta;
   metadata?: Record<string, unknown>;
 }
 
 interface UseAgentToolsOptions {
   onTerminalCommand?: (command: string, output: string, exitCode: number) => void;
-  onFileEdited?: (path: string, newContent: string) => void;
-  onFileCreated?: (path: string, content: string) => void;
+  onFileEdited?: (path: string, newContent: string, pathResolved?: string) => void;
+  onFileCreated?: (path: string, content: string, absolutePath: string) => void;
   onFileDeleted?: (path: string) => void;
   workspacePath?: string;
+}
+
+function normalizeToolError(e: unknown, context: { runtime: string; workspaceOpen: boolean; toolName: string }): string {
+  const msg = e instanceof Error ? e.message : String(e ?? 'Unknown error');
+  return `[${context.runtime} workspaceOpen=${context.workspaceOpen} tool=${context.toolName}] ${msg}`;
 }
 
 function resolveToWorkspace(filePath: string, wsPath?: string): string {
@@ -28,18 +48,53 @@ function resolveToWorkspace(filePath: string, wsPath?: string): string {
 
 export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath }: UseAgentToolsOptions = {}) {
   const abortRef = useRef(false);
+  const lastResultRef = useRef<ToolResult | null>(null);
+  const [lastResult, setLastResultState] = useState<ToolResult | null>(null);
+
+  const setLast = useCallback((r: ToolResult) => {
+    lastResultRef.current = r;
+    setLastResultState(r);
+    return r;
+  }, []);
 
   const executeToolCall = useCallback(async (
     tool: string,
     args: Record<string, unknown>
   ): Promise<ToolResult> => {
+    const start = Date.now();
+    const caps = getCapabilities(workspacePath);
+    const baseMeta: ToolResultMeta = {
+      runtime: caps.runtime,
+      workspacePath: caps.workspacePath,
+      toolName: tool,
+      durationMs: 0,
+    };
+
     if (abortRef.current) {
-      return { success: false, output: '', error: 'Aborted' };
+      return setLast({ success: false, output: '', error: 'Aborted', meta: { ...baseMeta, durationMs: Date.now() - start } });
     }
 
     try {
       if (!electronAPI) {
-        return { success: false, output: '', error: 'Electron API not available. This app requires the desktop version.' };
+        return setLast({
+          success: false,
+          output: '',
+          error: 'Electron API not available. This app requires the desktop version.',
+          meta: { ...baseMeta, durationMs: Date.now() - start },
+        });
+      }
+
+      const PATH_BASED_TOOLS = new Set([
+        'read_file', 'edit_file', 'create_file', 'delete_file',
+        'list_directory', 'grep_search', 'glob_search', 'semantic_search',
+      ]);
+      if (PATH_BASED_TOOLS.has(tool) && !workspacePath) {
+        return setLast({
+          success: false,
+          output: '',
+          error: 'ERROR: No folder is open. Go to File > Open Folder and open your project directory before asking me to read, edit, or search files.',
+          meta: { ...baseMeta, durationMs: Date.now() - start },
+        });
       }
 
       const api = electronAPI;
@@ -47,9 +102,8 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
       switch (tool) {
         case 'read_file': {
           const rawPath = args.path as string;
-          if (!rawPath) return { success: false, output: '', error: 'path is required' };
+          if (!rawPath) return setLast({ success: false, output: '', error: 'path is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const COMMON_EXTS = ['.py', '.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.md', '.txt', '.toml', '.cfg', '.env'];
-          // Try the exact path first, then fallback with common extensions
           const candidatePaths: string[] = [resolveToWorkspace(rawPath, workspacePath)];
           const hasExt = /\.[a-zA-Z0-9]+$/.test(rawPath);
           if (!hasExt) {
@@ -69,11 +123,16 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
               break;
             } catch { /* try next */ }
           }
-          if (!data) return { success: false, output: '', error: `File not found: ${rawPath}` };
+          if (!data) return setLast({ success: false, output: '', error: `File not found: ${rawPath}`, meta: { ...baseMeta, durationMs: Date.now() - start } });
           const lines = data.content.split('\n');
-          const start = (args.startLine as number) || 1;
-          const numbered = lines.map((l, i) => `${String(start + i).padStart(6)}|${l}`).join('\n');
-          return { success: true, output: numbered, metadata: { lines: data.lineCount, size: data.content.length, resolvedPath: usedPath } };
+          const lineStart = (args.startLine as number) || 1;
+          const numbered = lines.map((l, i) => `${String(lineStart + i).padStart(6)}|${l}`).join('\n');
+          return setLast({
+            success: true,
+            output: numbered,
+            metadata: { lines: data.lineCount, size: data.content.length, resolvedPath: usedPath },
+            meta: { ...baseMeta, durationMs: Date.now() - start, pathResolved: usedPath },
+          });
         }
 
         case 'edit_file': {
@@ -81,28 +140,42 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           const oldStr = args.old_string as string;
           const newStr = args.new_string as string;
           if (!filePath || oldStr === undefined || newStr === undefined) {
-            return { success: false, output: '', error: 'path, old_string, and new_string are required' };
+            return setLast({ success: false, output: '', error: 'path, old_string, and new_string are required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           }
           const result = await api.tools.editFile(filePath, oldStr, newStr);
-          onFileEdited?.(args.path as string, result.newContent);
-          return { success: true, output: `File edited: ${args.path}`, metadata: { newContent: result.newContent } };
+          const pathResolved = result.pathResolved ?? filePath;
+          onFileEdited?.(args.path as string, result.newContent, pathResolved);
+          return setLast({
+            success: true,
+            output: `File edited: ${args.path}`,
+            metadata: { newContent: result.newContent, pathResolved, changed: result.changed, bytesWritten: result.bytesWritten, beforeHash: result.beforeHash, afterHash: result.afterHash },
+            meta: {
+              ...baseMeta,
+              durationMs: Date.now() - start,
+              pathResolved,
+              changed: result.changed,
+              bytesWritten: result.bytesWritten,
+              beforeHash: result.beforeHash,
+              afterHash: result.afterHash,
+            },
+          });
         }
 
         case 'create_file': {
           const filePath = resolveToWorkspace(args.path as string, workspacePath);
           const content = (args.content as string) || '';
-          if (!filePath) return { success: false, output: '', error: 'path is required' };
+          if (!filePath) return setLast({ success: false, output: '', error: 'path is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           await api.tools.createFile(filePath, content);
-          onFileCreated?.(args.path as string, content);
-          return { success: true, output: `File created: ${args.path}`, metadata: { size: content.length } };
+          onFileCreated?.(args.path as string, content, filePath);
+          return setLast({ success: true, output: `File created: ${args.path}`, metadata: { size: content.length }, meta: { ...baseMeta, durationMs: Date.now() - start, pathResolved: filePath } });
         }
 
         case 'delete_file': {
           const filePath = resolveToWorkspace(args.path as string, workspacePath);
-          if (!filePath) return { success: false, output: '', error: 'path is required' };
+          if (!filePath) return setLast({ success: false, output: '', error: 'path is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           await api.tools.deleteFile(filePath);
           onFileDeleted?.(args.path as string);
-          return { success: true, output: `File deleted: ${args.path}` };
+          return setLast({ success: true, output: `File deleted: ${args.path}`, meta: { ...baseMeta, durationMs: Date.now() - start, pathResolved: filePath } });
         }
 
         case 'list_directory': {
@@ -110,81 +183,77 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           const dirPath = rawDir ? resolveToWorkspace(rawDir, workspacePath) : (workspacePath || '.');
           const data = await api.tools.listDir(dirPath);
           const listing = data.entries.map(e => `${e.type === 'directory' ? 'dir ' : 'file'} ${e.name}${e.type === 'directory' ? '/' : ''}`).join('\n');
-          return { success: true, output: listing || '(empty directory)', metadata: { count: data.entries.length } };
+          return setLast({ success: true, output: listing || '(empty directory)', metadata: { count: data.entries.length }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'grep_search': {
           const query = args.query as string;
-          if (!query) return { success: false, output: '', error: 'query is required' };
+          if (!query) return setLast({ success: false, output: '', error: 'query is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const rawDir = (args.path as string) || '';
           const dirPath = rawDir ? resolveToWorkspace(rawDir, workspacePath) : (workspacePath || '.');
           const data = await api.tools.grep(query, dirPath, { include: args.glob as string, maxResults: 200 });
           const output = data.matches.map(m => `${m.file}:${m.line}:${m.content}`).join('\n');
-          return { success: true, output: output || 'No results found', metadata: { matchCount: data.matches.length } };
+          return setLast({ success: true, output: output || 'No results found', metadata: { matchCount: data.matches.length }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'glob_search': {
           const pattern = args.pattern as string;
-          if (!pattern) return { success: false, output: '', error: 'pattern is required' };
+          if (!pattern) return setLast({ success: false, output: '', error: 'pattern is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const rawDir = (args.path as string) || '';
           const dirPath = rawDir ? resolveToWorkspace(rawDir, workspacePath) : (workspacePath || '.');
           const data = await api.tools.glob(pattern, dirPath);
-          return { success: true, output: data.files.join('\n') || 'No files matched', metadata: { count: data.files.length } };
+          return setLast({ success: true, output: data.files.join('\n') || 'No files matched', metadata: { count: data.files.length }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'run_command': {
           const command = args.command as string;
-          if (!command) return { success: false, output: '', error: 'command is required' };
+          if (!command) return setLast({ success: false, output: '', error: 'command is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const cwd = (args.cwd as string) || workspacePath;
           const data = await api.tools.runCommand(command, cwd);
           const combined = data.stderr ? `${data.stdout}\n${data.stderr}`.trim() : data.stdout;
           onTerminalCommand?.(command, combined, data.exitCode);
           const output = combined.slice(0, 15000) + (data.exitCode !== 0 ? `\n[exit code: ${data.exitCode}]` : '');
-          return {
-            success: true,
-            output: output || '(no output)',
-            metadata: { exitCode: data.exitCode },
-          };
+          return setLast({ success: true, output: output || '(no output)', metadata: { exitCode: data.exitCode }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'web_search': {
           const query = args.query as string;
-          if (!query) return { success: false, output: '', error: 'query is required' };
+          if (!query) return setLast({ success: false, output: '', error: 'query is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const results = await api.web.search(query);
           const output = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n\n');
-          return { success: true, output: output || 'No results found', metadata: { count: results.length } };
+          return setLast({ success: true, output: output || 'No results found', metadata: { count: results.length }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'web_fetch': {
           const url = args.url as string;
-          if (!url) return { success: false, output: '', error: 'url is required' };
+          if (!url) return setLast({ success: false, output: '', error: 'url is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const data = await api.web.fetch(url);
-          return { success: true, output: data.content.slice(0, 30000), metadata: { title: data.title } };
+          return setLast({ success: true, output: data.content.slice(0, 30000), metadata: { title: data.title }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'read_lints': {
           const filePath = resolveToWorkspace(args.path as string, workspacePath);
-          if (!filePath) return { success: false, output: '', error: 'path is required' };
+          if (!filePath) return setLast({ success: false, output: '', error: 'path is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const data = await api.tools.readLints(filePath);
-          if (data.diagnostics.length === 0) return { success: true, output: 'No linter errors found.' };
+          if (data.diagnostics.length === 0) return setLast({ success: true, output: 'No linter errors found.', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const output = data.diagnostics.map(d => `${d.file}:${d.line}:${d.column} ${d.severity}: ${d.message} [${d.source}]`).join('\n');
-          return { success: true, output, metadata: { count: data.diagnostics.length } };
+          return setLast({ success: true, output, metadata: { count: data.diagnostics.length }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'semantic_search': {
           const query = args.query as string;
-          if (!query) return { success: false, output: '', error: 'query is required' };
+          if (!query) return setLast({ success: false, output: '', error: 'query is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const rawDir = (args.path as string) || '';
           const dirPath = rawDir ? resolveToWorkspace(rawDir, workspacePath) : (workspacePath || '.');
           const data = await api.tools.semanticSearch(query, dirPath);
-          if (data.results.length === 0) return { success: true, output: 'No semantic results. Try grep_search for text-based search.' };
+          if (data.results.length === 0) return setLast({ success: true, output: 'No semantic results. Try grep_search for text-based search.', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const output = data.results.map(r => `${r.file}:${r.line} (score: ${r.score.toFixed(2)})\n  ${r.content}`).join('\n');
-          return { success: true, output };
+          return setLast({ success: true, output, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'generate_image': {
           const prompt = args.prompt as string;
-          if (!prompt) return { success: false, output: '', error: 'prompt is required' };
+          if (!prompt) return setLast({ success: false, output: '', error: 'prompt is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
           const res = await fetch('/api/image/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -197,10 +266,10 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({ error: 'Failed' }));
-            return { success: false, output: '', error: (err as { error: string }).error || 'Image generation failed' };
+            return setLast({ success: false, output: '', error: (err as { error: string }).error || 'Image generation failed', meta: { ...baseMeta, durationMs: Date.now() - start } });
           }
           const imgData = await res.json() as { b64_json: string; revised_prompt: string; size: string };
-          return {
+          return setLast({
             success: true,
             output: `Image generated successfully. Revised prompt: ${imgData.revised_prompt}`,
             metadata: {
@@ -209,18 +278,21 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
               size: imgData.size || args.size || '1024x1024',
               prompt,
             },
-          };
+            meta: { ...baseMeta, durationMs: Date.now() - start },
+          });
         }
 
         default:
-          return { success: false, output: '', error: `Unknown tool: ${tool}` };
+          return setLast({ success: false, output: '', error: `Unknown tool: ${tool}`, meta: { ...baseMeta, durationMs: Date.now() - start } });
       }
     } catch (e) {
-      return {
+      const errMsg = normalizeToolError(e, { runtime: caps.runtime, workspaceOpen: caps.workspaceOpen, toolName: tool });
+      return setLast({
         success: false,
         output: '',
-        error: e instanceof Error ? e.message : 'Tool execution failed',
-      };
+        error: errMsg,
+        meta: { ...baseMeta, durationMs: Date.now() - start },
+      });
     }
   }, [onTerminalCommand, onFileEdited, onFileCreated, onFileDeleted, workspacePath]);
 
@@ -232,7 +304,9 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
     abortRef.current = false;
   }, []);
 
-  return { executeToolCall, abort, reset };
+  const getLastResult = useCallback((): ToolResult | null => lastResultRef.current, []);
+
+  return { executeToolCall, abort, reset, getLastResult, lastResult };
 }
 
 export function toolCallSummary(tool: string, args: Record<string, unknown>): string {

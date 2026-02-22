@@ -22,6 +22,8 @@ import { isElectron, electronAPI } from '@/lib/electron';
 
 // Components
 import ChatMessage from '@/components/ide/ChatMessage';
+import { ToolsStatus } from '@/components/ide/ToolsStatus';
+import { getCapabilities } from '@/lib/agent-capabilities';
 
 const FactoryView = dynamic(() => import('@/components/midnight/FactoryView'), { ssr: false });
 const TrustSlider = dynamic(() => import('@/components/midnight/TrustSlider'), { ssr: false });
@@ -86,6 +88,8 @@ export default function TitanIDE() {
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [pendingDiff, setPendingDiff] = useState<PendingDiff | null>(null);
+  const pendingDiffRef = useRef<PendingDiff | null>(null);
+  useEffect(() => { pendingDiffRef.current = pendingDiff; }, [pendingDiff]);
 
   // Menu state
   const [showPlusDropdown, setShowPlusDropdown] = useState(false);
@@ -169,35 +173,40 @@ export default function TitanIDE() {
     }, 100);
   }, []);
 
-  // Agent callback: file edited on disk -> update editor + file tree
-  const handleAgentFileEdited = useCallback((path: string, newContent: string) => {
+  // Agent callback: file edited on disk -> update editor + file tree (pathResolved = absolute path from IPC for matching)
+  const handleAgentFileEdited = useCallback((path: string, newContent: string, pathResolved?: string) => {
     const normalizedPath = normalizeFilePath(path);
+    const wsPath = fileSystem.workspacePath || useFileStore.getState().workspacePath || '';
+    const base = wsPath.replace(/[/\\]+$/, '');
+    const relativeFromResolved = pathResolved && base && pathResolved.startsWith(base)
+      ? normalizeFilePath(pathResolved.slice(base.length).replace(/^[/\\]+/, ''))
+      : '';
+    const matchPaths = [normalizedPath, path, relativeFromResolved].filter(Boolean);
     setFileContents(prev => ({ ...prev, [normalizedPath]: newContent, [path]: newContent }));
     useEditorStore.getState().loadFileContents({ [normalizedPath]: newContent, [path]: newContent });
 
-    if (activeTab === path || activeTab === normalizedPath) {
-      if (editorInstance) {
-        const model = editorInstance.getModel();
-        if (model && model.getValue() !== newContent) {
-          model.setValue(newContent);
-        }
+    const tabMatches = matchPaths.some(p => activeTab === p || activeTab === normalizeFilePath(p));
+    if (tabMatches && editorInstance) {
+      const model = editorInstance.getModel();
+      if (model && model.getValue() !== newContent) {
+        model.setValue(newContent);
       }
     }
 
     setTabs(prev => {
-      const exists = prev.some(t => t.name === normalizedPath || t.name === path);
+      const exists = prev.some(t => matchPaths.some(p => t.name === p || t.name === normalizeFilePath(p)));
       if (!exists) {
         const info = getFileInfo(normalizedPath);
         return [...prev, { name: normalizedPath, icon: info.icon, color: info.color, modified: false }];
       }
       return prev.map(t => (
-        (t.name === normalizedPath || t.name === path) ? { ...t, modified: false } : t
+        matchPaths.some(p => t.name === p || t.name === normalizeFilePath(p)) ? { ...t, modified: false } : t
       ));
     });
     setActiveTab(normalizedPath);
 
     debouncedRefreshTree();
-  }, [activeTab, editorInstance, debouncedRefreshTree, normalizeFilePath]);
+  }, [activeTab, editorInstance, debouncedRefreshTree, fileSystem.workspacePath, normalizeFilePath]);
 
   // Agent callback: file created on disk -> update tree + optionally open
   const handleAgentFileCreated = useCallback((path: string, content: string, absolutePath?: string) => {
@@ -273,8 +282,9 @@ export default function TitanIDE() {
     if (!editorInstance || !monacoInstance) return;
     const model = editorInstance.getModel();
     if (!model) return;
-    if (pendingDiff?.decorationIds) {
-      editorInstance.deltaDecorations(pendingDiff.decorationIds, []);
+    const currentDiff = pendingDiffRef.current;
+    if (currentDiff?.decorationIds?.length) {
+      editorInstance.deltaDecorations(currentDiff.decorationIds, []);
     }
     const oldLines = oldContent.split('\n');
     const newLines = newContent.split('\n');
@@ -298,7 +308,18 @@ export default function TitanIDE() {
     }
     const decorationIds = editorInstance.deltaDecorations([], decorations);
     setPendingDiff({ file: activeTab, oldContent, newContent, decorationIds });
-  }, [editorInstance, monacoInstance, activeTab, pendingDiff]);
+  }, [editorInstance, monacoInstance, activeTab]);
+
+  // No-tools callback: block send and show CTA (open folder or use desktop)
+  const handleNoToolsAvailable = useCallback((reason: import('@/lib/agent-capabilities').ToolsDisabledReason) => {
+    if (reason === 'NO_WORKSPACE') {
+      fileSystem.openFolder();
+    } else if (reason === 'WEB_RUNTIME') {
+      alert('File editing and terminal tools require the Titan Desktop app. Open this project in the desktop app to use the agent.');
+    } else {
+      alert('Tools are not available. Open a folder (File > Open Folder) to enable file editing.');
+    }
+  }, [fileSystem]);
 
   // Chat -- wired up with all callbacks and context
   const chat = useChat({
@@ -314,22 +335,24 @@ export default function TitanIDE() {
     cursorPosition: { line: cursorPosition.line, column: cursorPosition.column, file: activeTab },
     isDesktop: isElectron,
     osPlatform,
+    onNoToolsAvailable: handleNoToolsAvailable,
   });
 
   // Apply changes
   const handleApplyChanges = useCallback(() => {
-    if (pendingDiff && editorInstance && monacoInstance) {
+    const currentDiff = pendingDiffRef.current;
+    if (currentDiff && editorInstance && monacoInstance) {
       const model = editorInstance.getModel();
       if (model) {
-        if (pendingDiff.decorationIds.length > 0) editorInstance.deltaDecorations(pendingDiff.decorationIds, []);
-        model.setValue(pendingDiff.newContent);
-        setFileContents(prev => ({ ...prev, [pendingDiff.file]: pendingDiff.newContent }));
-        setTabs(prev => prev.map(t => t.name === pendingDiff.file ? { ...t, modified: true } : t));
+        if (currentDiff.decorationIds.length > 0) editorInstance.deltaDecorations(currentDiff.decorationIds, []);
+        model.setValue(currentDiff.newContent);
+        setFileContents(prev => ({ ...prev, [currentDiff.file]: currentDiff.newContent }));
+        setTabs(prev => prev.map(t => t.name === currentDiff.file ? { ...t, modified: true } : t));
         setPendingDiff(null);
       }
     }
     setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, changedFiles: [] } : s));
-  }, [pendingDiff, editorInstance, monacoInstance, activeSessionId, setSessions]);
+  }, [editorInstance, monacoInstance, activeSessionId, setSessions]);
 
   // Editor commands
   const executeCommand = useCallback((command: string) => {
@@ -570,14 +593,16 @@ export default function TitanIDE() {
                 onNewAgent={() => handleNewAgent(settings.activeModel)} onSend={chat.handleSend} onStop={chat.handleStop}
                 onKeyDown={chat.handleKeyDown} onApply={handleApplyChanges} chatEndRef={chatEndRef}
                 attachments={chat.attachments} onAddAttachments={chat.addAttachments} onRemoveAttachment={chat.removeAttachment}
+                capabilities={chat.capabilities} lastToolResult={chat.lastToolResult} onOpenFolder={fileSystem.openFolder}
                 onRenameSession={handleRenameSession} onDeleteSession={handleDeleteSession}
                 hasPendingDiff={pendingDiff !== null}
                 onRejectDiff={() => {
-                  if (pendingDiff && editorInstance) {
+                  const currentDiff = pendingDiffRef.current;
+                  if (currentDiff && editorInstance) {
                     const model = editorInstance.getModel();
                     if (model) {
-                      if (pendingDiff.decorationIds.length > 0) editorInstance.deltaDecorations(pendingDiff.decorationIds, []);
-                      model.setValue(pendingDiff.oldContent);
+                      if (currentDiff.decorationIds.length > 0) editorInstance.deltaDecorations(currentDiff.decorationIds, []);
+                      model.setValue(currentDiff.oldContent);
                     }
                   }
                   setPendingDiff(null);
@@ -701,7 +726,7 @@ function ActivityIcon({ children, active, onClick, title }: { children: React.Re
 import { Session, FileAttachment } from '@/types/ide';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode, attachments, onAddAttachments, onRemoveAttachment }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode, attachments, onAddAttachments, onRemoveAttachment, capabilities, lastToolResult, onOpenFolder }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; isStreaming: boolean; activeModel: string;
   onNewAgent: () => void; onSend: () => void; onStop: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -712,6 +737,9 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   attachments?: FileAttachment[];
   onAddAttachments?: (files: File[]) => void;
   onRemoveAttachment?: (id: string) => void;
+  capabilities?: import('@/lib/agent-capabilities').AgentCapabilities;
+  lastToolResult?: import('@/hooks/useAgentTools').ToolResult | null;
+  onOpenFolder?: () => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -782,6 +810,11 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           New Thread
         </button>
       </div>
+      {capabilities && (
+        <div className="px-3 py-2 shrink-0 border-b border-[#2d2d2d]">
+          <ToolsStatus capabilities={capabilities} lastResult={lastToolResult ?? null} onOpenFolder={onOpenFolder} showTelemetry={false} />
+        </div>
+      )}
       <div className="px-1 pt-1 shrink-0 max-h-[160px] overflow-y-auto">
         {sessions.map(s => (
           <div key={s.id} className={`group relative rounded mb-px ${activeSessionId === s.id ? 'bg-[#37373d]' : 'hover:bg-[#2a2a2a]'}`}>

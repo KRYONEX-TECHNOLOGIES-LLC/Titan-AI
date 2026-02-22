@@ -1,0 +1,8 @@
+# Python dependencies for tms/ and API (from actual imports in apps/desktop/tms/)
+fastapi
+uvicorn
+pydantic
+aiohttp
+numpy
+pandas
+pytest

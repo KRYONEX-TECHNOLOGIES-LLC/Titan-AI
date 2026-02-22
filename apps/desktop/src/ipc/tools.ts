@@ -1,7 +1,12 @@
 import { IpcMain, BrowserWindow } from 'electron';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+
+function contentHash(content: string): string {
+  return crypto.createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 16);
+}
 
 const backgroundProcs = new Map<string, ChildProcess>();
 
@@ -46,17 +51,29 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
   });
 
   ipcMain.handle('tools:editFile', async (_e, filePath: string, oldStr: string, newStr: string) => {
-    const resolved = path.resolve(filePath);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`File not found: ${resolved}`);
+    const pathResolved = path.resolve(filePath);
+    if (!fs.existsSync(pathResolved)) {
+      throw new Error(`File not found: ${pathResolved}`);
     }
-    let content = fs.readFileSync(resolved, 'utf-8');
-    if (!content.includes(oldStr)) {
+    const beforeContent = fs.readFileSync(pathResolved, 'utf-8');
+    const beforeHash = contentHash(beforeContent);
+    if (!beforeContent.includes(oldStr)) {
       throw new Error(`old_string not found in file. Make sure it matches exactly, including whitespace.`);
     }
-    content = content.replace(oldStr, newStr);
-    fs.writeFileSync(resolved, content, 'utf-8');
-    return { success: true, newContent: content };
+    const newContent = beforeContent.replace(oldStr, newStr);
+    fs.writeFileSync(pathResolved, newContent, 'utf-8');
+    const afterReadback = fs.readFileSync(pathResolved, 'utf-8');
+    const afterHash = contentHash(afterReadback);
+    const bytesWritten = Buffer.byteLength(newContent, 'utf-8');
+    return {
+      success: true,
+      newContent: afterReadback,
+      pathResolved,
+      beforeHash,
+      afterHash,
+      changed: true,
+      bytesWritten,
+    };
   });
 
   ipcMain.handle('tools:createFile', async (_e, filePath: string, content: string) => {

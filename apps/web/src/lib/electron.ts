@@ -6,7 +6,15 @@ export interface ElectronAPI {
   };
   tools: {
     readFile: (filePath: string, opts?: { lineOffset?: number; lineLimit?: number }) => Promise<{ content: string; lineCount: number }>;
-    editFile: (filePath: string, oldStr: string, newStr: string) => Promise<{ success: boolean; newContent: string }>;
+    editFile: (filePath: string, oldStr: string, newStr: string) => Promise<{
+      success: boolean;
+      newContent: string;
+      pathResolved?: string;
+      beforeHash?: string;
+      afterHash?: string;
+      changed?: boolean;
+      bytesWritten?: number;
+    }>;
     createFile: (filePath: string, content: string) => Promise<{ success: boolean }>;
     deleteFile: (filePath: string) => Promise<{ success: boolean }>;
     listDir: (dirPath: string) => Promise<{ entries: Array<{ name: string; type: string; size: number }> }>;

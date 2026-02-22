@@ -8,6 +8,7 @@ import { useParallelChat } from './useParallelChat';
 import { useSupremeChat } from './useSupremeChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
+import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
 
 const MAX_TOOL_CALLS = 50;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -94,7 +95,7 @@ interface UseChatOptions {
   editorInstance: any;
   onTerminalCommand?: (command: string, output: string, exitCode: number) => void;
   onFileEdited?: (path: string, newContent: string) => void;
-  onFileCreated?: (path: string, content: string) => void;
+  onFileCreated?: (path: string, content: string, absolutePath: string) => void;
   onFileDeleted?: (path: string) => void;
   workspacePath?: string;
   openTabs?: string[];
@@ -105,6 +106,8 @@ interface UseChatOptions {
   recentlyViewedFiles?: string[];
   isDesktop?: boolean;
   osPlatform?: string;
+  /** When tools are required but disabled, call before blocking send. */
+  onNoToolsAvailable?: (reason: ToolsDisabledReason) => void;
 }
 
 interface LLMMessage {
@@ -176,6 +179,7 @@ export function useChat({
   recentlyViewedFiles,
   isDesktop,
   osPlatform,
+  onNoToolsAvailable,
 }: UseChatOptions) {
   const [chatInput, setChatInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
@@ -373,12 +377,14 @@ export function useChat({
     abortSignal: AbortSignal,
     messageAttachments?: { mediaType: string; base64: string }[],
     modelOverride?: string,
+    titanProtocolMode?: boolean,
   ): Promise<{ content: string; toolCalls: StreamToolCall[] }> {
     const gitStatus = await fetchGitStatus();
     const fileTree = serializeFileTree();
     const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
 
     const compressedHistory = compressConversationHistory(conversationHistory);
+    const caps = getCapabilities(workspacePath);
 
     const response = await fetch('/api/chat/continue', {
       method: 'POST',
@@ -387,6 +393,7 @@ export function useChat({
       body: JSON.stringify({
         messages: compressedHistory,
         model: modelOverride || activeModel,
+        titanProtocol: !!titanProtocolMode,
         attachments: messageAttachments,
         codeContext: {
           file: activeTab,
@@ -405,6 +412,7 @@ export function useChat({
         recentlyViewedFiles: recentlyViewedFiles?.slice(0, 10) || [],
         isDesktop: isDesktop || false,
         osPlatform: osPlatform || 'unknown',
+        capabilities: { runtime: caps.runtime, workspaceOpen: caps.workspaceOpen, toolsEnabled: caps.toolsEnabled, reasonIfDisabled: caps.reasonIfDisabled },
       }),
     });
 
@@ -514,6 +522,11 @@ export function useChat({
   const handleSend = useCallback(async () => {
     if (!chatInput.trim() && attachments.length === 0) return;
     const msg = chatInput.trim();
+    const caps = getCapabilities(workspacePath);
+    if (requiresTools(msg) && !caps.toolsEnabled) {
+      onNoToolsAvailable?.(caps.reasonIfDisabled ?? 'NO_WORKSPACE');
+      return;
+    }
     setChatInput('');
     abortedRef.current = false;
     agentTools.reset();
@@ -604,6 +617,7 @@ export function useChat({
             controller.signal,
             loopIterations === 1 ? readyAttachments : undefined,
             iterationModel,
+            isTitanProtocol,
           );
         } catch (err) {
           if (abortedRef.current || controller.signal.aborted) break;
@@ -713,7 +727,7 @@ export function useChat({
 
           const resultOutput = result.success
             ? result.output
-            : `Error: ${result.error || 'Unknown error'}\n${result.output || ''}`;
+            : `TOOL FAILED: ${result.error || 'Unknown error'}\n${result.output || ''}`;
 
           return { tc, resultOutput };
         }
@@ -819,7 +833,7 @@ export function useChat({
     chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, attachments, clearAttachments,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
     appendCodeDiffToMessage, appendGeneratedImageToMessage, agentTools, flushTokens, workspacePath, openTabs, terminalHistory,
-    cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop, osPlatform,
+    cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop, osPlatform, onNoToolsAvailable,
   ]);
 
   const handleStop = useCallback(() => {
@@ -916,5 +930,7 @@ export function useChat({
     addAttachments,
     removeAttachment,
     clearAttachments,
+    capabilities: getCapabilities(workspacePath),
+    lastToolResult: agentTools.lastResult,
   };
 }
