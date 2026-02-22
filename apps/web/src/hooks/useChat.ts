@@ -647,6 +647,10 @@ export function useChat({
     let totalFailures = 0;
     let loopIterations = 0;
     let taskCompletedSuccessfully = false;
+    let productiveCallsMade = 0;
+    let nudgesUsed = 0;
+    const MAX_NUDGES = 2;
+    const PRODUCTIVE_TOOLS = new Set(['edit_file', 'create_file', 'delete_file', 'run_command', 'auto_debug', 'git_commit', 'git_sync', 'git_branch', 'memory_write']);
     const isTitanProtocol = TITAN_PROTOCOL_IDS.has(activeModel);
     const touchedFiles = new Set<string>();
 
@@ -691,17 +695,41 @@ export function useChat({
         const { content, toolCalls } = streamResult;
 
         if (toolCalls.length === 0) {
+          const contentIsEmpty = !content || content.trim().length < 30 || /^(done\.?|okay\.?|got it\.?|understood\.?|i see\.?)$/i.test(content.trim());
           const actionPatterns = /\b(I'll|I will|Let me|I would|I can|I should|we can|we should|here's what|I'd)\b.*\b(create|edit|read|run|install|write|fix|modify|update|add|remove|delete|build|open|check)\b/i;
-          const hasNoToolCalls = totalToolCalls === 0;
-          const looksLikeActionDescription = actionPatterns.test(content) && hasNoToolCalls && content.length < 2000;
 
-          if (looksLikeActionDescription && consecutiveFailures === 0) {
+          // Nudge 1: Agent described actions but called zero tools
+          if (totalToolCalls === 0 && actionPatterns.test(content) && content.length < 2000 && nudgesUsed < MAX_NUDGES) {
             conversationHistory.push({ role: 'assistant', content });
             conversationHistory.push({
               role: 'user',
               content: 'You described what you would do but did not call any tools. Stop describing and actually do it. Call the appropriate tools now.',
             });
-            consecutiveFailures++;
+            nudgesUsed++;
+            updateMessage(sessionId, streamMessageId, (m) => ({ ...m, streaming: true }));
+            continue;
+          }
+
+          // Nudge 2: Agent only explored (read/list/search) but never took productive action
+          if (totalToolCalls > 0 && productiveCallsMade === 0 && contentIsEmpty && nudgesUsed < MAX_NUDGES) {
+            conversationHistory.push({ role: 'assistant', content: content || '' });
+            conversationHistory.push({
+              role: 'user',
+              content: 'You explored the codebase but took no action. The user expects you to make changes, run commands, or build something based on their request. Do NOT just say "Done" -- execute the appropriate tools now to complete the task. If the task only required information, provide a thorough answer based on what you found.',
+            });
+            nudgesUsed++;
+            updateMessage(sessionId, streamMessageId, (m) => ({ ...m, streaming: true }));
+            continue;
+          }
+
+          // Nudge 3: Agent did productive work but returned empty/minimal response
+          if (productiveCallsMade > 0 && contentIsEmpty && nudgesUsed < MAX_NUDGES) {
+            conversationHistory.push({ role: 'assistant', content: content || '' });
+            conversationHistory.push({
+              role: 'user',
+              content: 'You made changes but did not provide a summary. Briefly describe what you did and verify the changes work by running a build or test command.',
+            });
+            nudgesUsed++;
             updateMessage(sessionId, streamMessageId, (m) => ({ ...m, streaming: true }));
             continue;
           }
@@ -709,7 +737,7 @@ export function useChat({
           updateMessage(sessionId, streamMessageId, (m) => ({
             ...m,
             streaming: false,
-            content: m.content || content || 'Done.',
+            content: m.content || content || (productiveCallsMade > 0 ? 'Changes applied.' : 'No actionable changes were needed.'),
           }));
           taskCompletedSuccessfully = true;
           break;
@@ -764,6 +792,10 @@ export function useChat({
             }> } | undefined)?.errors?.slice(0, 5),
             metadata: result.metadata,
           });
+
+          if (PRODUCTIVE_TOOLS.has(tc.tool) && result.success) {
+            productiveCallsMade++;
+          }
 
           if (typeof finalArgs.path === 'string' && finalArgs.path.trim().length > 0) {
             touchedFiles.add(finalArgs.path);

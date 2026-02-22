@@ -43,4 +43,23 @@
 - **Status:** ACTIVE
 
 ---
+## ADR-006: Autonomous Memory Implementation
+- **Decision:** Titan AI will now use this file (`apps/desktop/docs/memory.md`) to record key decisions, conversation summaries, and architectural changes to establish a persistent memory.
+- **Rationale:** A stateless architecture is insufficient for complex, multi-turn autonomous development. This file provides the simplest possible persistent memory store, enabling the AI to learn from interactions and maintain long-term context without requiring an external database. It is the first step toward full autonomous self-improvement.
+- **Date:** 2026-02-21
+- **Task ID:** SELF-UPGRADE-MEMORY-001
+- **Status:** ACTIVE
+
+---
+
+---
+## ADR-007: Critical `run_command` Failure on Windows
+- **Decision:** The `run_command` tool is currently non-functional on the Windows development environment due to a `spawn powershell.exe ENOENT` error. This prevents all build, test, and verification actions.
+- **Rationale:** The tool appears unable to locate `powershell.exe` or resolve basic environment variables like `%PATH%`. This is a critical execution blocker that halts all autonomous development and self-updating capabilities. The immediate priority is to debug and fix the shell invocation logic within the `run_command` implementation for Windows.
+- **Date:** 2026-02-21
+- **Task ID:** SELF-DIAGNOSTIC-001
+- **Status:** BLOCKER
+
+---
 <!-- NEW ENTRIES BELOW THIS LINE -->
+

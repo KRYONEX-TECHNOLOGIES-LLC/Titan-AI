@@ -63,8 +63,16 @@ export function useSessions(mounted: boolean) {
           localStorage.removeItem('titan-sessions');
           return;
         }
-        if (state.sessions?.length > 0) setSessions(state.sessions);
-        if (state.activeSessionId) setActiveSessionId(state.activeSessionId);
+        if (state.sessions?.length > 0) {
+          setSessions(state.sessions);
+          const activeId = state.activeSessionId;
+          const sessionExists = state.sessions.some(s => s.id === activeId);
+          if (activeId && sessionExists) {
+            setActiveSessionId(activeId);
+          } else {
+            setActiveSessionId(state.sessions[0].id);
+          }
+        }
       }
     } catch (e) {
       console.error('Failed to restore sessions:', e);
@@ -112,17 +120,17 @@ export function useSessions(mounted: boolean) {
   }, []);
 
   const handleDeleteSession = useCallback((id: string) => {
-    setSessions(prev => {
-      const remaining = prev.filter(s => s.id !== id);
-      if (remaining.length === 0) return prev;
-      return remaining;
-    });
-    setActiveSessionId(prev => {
-      const remaining = sessions.filter(s => s.id !== id);
-      if (prev === id && remaining.length > 0) return remaining[0].id;
-      return prev;
-    });
-  }, [sessions]);
+    const remainingSessions = sessions.filter(s => s.id !== id);
+    if (remainingSessions.length === 0) {
+      return; // Don't delete the last session
+    }
+
+    setSessions(remainingSessions);
+
+    if (activeSessionId === id) {
+      setActiveSessionId(remainingSessions[0].id);
+    }
+  }, [sessions, activeSessionId]);
 
   return {
     sessions,

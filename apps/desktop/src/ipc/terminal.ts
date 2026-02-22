@@ -2,6 +2,7 @@ import { IpcMain, BrowserWindow } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as os from 'os';
 import * as fs from 'fs';
+import * as path from 'path';
 
 interface TerminalSession {
   id: string;
@@ -27,7 +28,14 @@ async function tryLoadNodePty(): Promise<typeof import('node-pty') | null> {
 }
 
 function getDefaultShell(): string {
-  if (process.platform === 'win32') return 'powershell.exe';
+  if (process.platform === 'win32') {
+    const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+    const ps = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    try { if (fs.existsSync(ps)) return ps; } catch {}
+    const pwsh = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe');
+    try { if (fs.existsSync(pwsh)) return pwsh; } catch {}
+    return path.join(systemRoot, 'System32', 'cmd.exe');
+  }
   return process.env.SHELL || '/bin/bash';
 }
 

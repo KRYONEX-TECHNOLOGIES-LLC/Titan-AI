@@ -31,6 +31,22 @@ function looksLikeServer(command: string): boolean {
   return SERVER_PATTERNS.some(p => p.test(command));
 }
 
+function resolveWindowsShell(): { shellPath: string; isPowerShell: boolean } {
+  const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+
+  const candidates = [
+    path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe'),
+  ];
+
+  for (const candidate of candidates) {
+    try { if (fs.existsSync(candidate)) return { shellPath: candidate, isPowerShell: true }; } catch {}
+  }
+
+  const cmd = path.join(systemRoot, 'System32', 'cmd.exe');
+  return { shellPath: cmd, isPowerShell: false };
+}
+
 export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): void {
 
   ipcMain.handle('tools:readFile', async (_e, filePath: string, opts?: { lineOffset?: number; lineLimit?: number }) => {
@@ -177,7 +193,9 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
   ipcMain.handle('tools:runCommand', async (_e, command: string, cwd?: string) => {
     const resolved = cwd ? path.resolve(cwd) : process.cwd();
     const isWindows = process.platform === 'win32';
-    const shellPath = isWindows ? 'powershell.exe' : '/bin/bash';
+    const { shellPath, isPowerShell } = isWindows
+      ? resolveWindowsShell()
+      : { shellPath: '/bin/bash', isPowerShell: false };
     const isServer = looksLikeServer(command);
     const timeout = isServer ? 15000 : 120000;
 
@@ -187,12 +205,15 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
 
     return new Promise((resolve) => {
       const args = isWindows
-        ? ['-NoProfile', '-NonInteractive', '-Command', command]
+        ? isPowerShell
+          ? ['-NoProfile', '-NonInteractive', '-Command', command]
+          : ['/d', '/s', '/c', command]
         : ['-c', command];
 
       const proc = spawn(shellPath, args, {
         cwd: resolved,
         env: { ...process.env, FORCE_COLOR: '0' },
+        windowsHide: true,
       });
 
       let stdout = '';

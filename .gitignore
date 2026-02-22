@@ -22,6 +22,9 @@ target/
 *.swp
 *.swo
 
+# Cursor / Titan planning artifacts
+.cursor/plans/
+
 # OS
 .DS_Store
 Thumbs.db
