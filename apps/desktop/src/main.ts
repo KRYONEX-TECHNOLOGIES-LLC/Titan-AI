@@ -260,6 +260,22 @@ function setupOAuthInterceptor(win: BrowserWindow): void {
   });
 }
 
+async function loadWithRetry(win: BrowserWindow, url: string, maxRetries = 5): Promise<void> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await win.loadURL(url);
+      return;
+    } catch {
+      console.log(`[Main] loadURL attempt ${attempt}/${maxRetries} failed, retrying in 2s...`);
+      if (attempt < maxRetries) {
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+  }
+  console.error(`[Main] All ${maxRetries} loadURL attempts failed for ${url}`);
+  await win.loadURL(`data:text/html,${encodeURIComponent(`<html><body style="background:#0a0a14;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:2rem;margin-bottom:1rem">Titan AI</h1><p style="color:#aaa">Failed to connect to the internal server on port ${DESKTOP_PORT}.</p><p style="color:#aaa">Please restart the app with: <code style="background:#1a1a2e;padding:4px 8px;border-radius:4px">pnpm dev:desktop</code></p></div></body></html>`)}`);
+}
+
 async function createWindow(): Promise<void> {
   const windowState = restoreWindowState(store);
 
@@ -279,7 +295,7 @@ async function createWindow(): Promise<void> {
   createAppMenu(mainWindow);
   setupOAuthInterceptor(mainWindow);
 
-  mainWindow.loadURL(`http://localhost:${DESKTOP_PORT}/editor`);
+  await loadWithRetry(mainWindow, `http://localhost:${DESKTOP_PORT}/editor`);
 }
 
 function registerAllIPC(win: BrowserWindow): void {
