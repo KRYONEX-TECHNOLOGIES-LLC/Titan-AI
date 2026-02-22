@@ -14,7 +14,7 @@ interface GitHubUser {
 }
 
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23li34gxKFR3F8129J';
-const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
+const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '5fd834a712aa7aeaf4acb85a13e8725b592b2d81';
 const SCOPES = 'user:email,repo';
 
 function httpsPost(hostname: string, path: string, body: string, headers: Record<string, string>): Promise<string> {
