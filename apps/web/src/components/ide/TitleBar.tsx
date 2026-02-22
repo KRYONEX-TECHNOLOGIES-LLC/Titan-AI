@@ -215,9 +215,8 @@ export default function TitleBar(props: TitleBarProps) {
 }
 
 function GitHubConnectButton() {
-  const { user, isConnected, isLoading, deviceFlow, signIn, signOut, cancelDeviceFlow, error, clearError } = useGitHubAuth();
+  const { user, isConnected, isLoading, signIn, signOut, error, clearError } = useGitHubAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -235,15 +234,7 @@ function GitHubConnectButton() {
     }
   }, [error, clearError]);
 
-  const copyCode = () => {
-    if (deviceFlow?.userCode) {
-      navigator.clipboard.writeText(deviceFlow.userCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  if (isLoading && !deviceFlow) {
+  if (isLoading) {
     return <div className="w-6 h-6 rounded-full bg-[#3c3c3c] animate-pulse" />;
   }
 
@@ -266,53 +257,6 @@ function GitHubConnectButton() {
             <div className="flex gap-2">
               <button onClick={() => { clearError(); signIn(); setDropdownOpen(false); }} className="flex-1 px-3 py-1.5 text-[11px] bg-[#24292f] hover:bg-[#32383f] text-white rounded-md transition-colors">Retry</button>
               <button onClick={() => { clearError(); setDropdownOpen(false); }} className="px-3 py-1.5 text-[11px] text-[#666] hover:text-white rounded-md transition-colors">Dismiss</button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Device flow in progress -- show code entry UI
-  if (deviceFlow) {
-    return (
-      <div ref={ref} className="relative">
-        <button
-          onClick={(e) => { e.stopPropagation(); setDropdownOpen(!dropdownOpen); }}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1a3a1a] hover:bg-[#1f4a1f] text-[#3fb950] rounded-full text-[12px] font-medium transition-colors border border-[#3fb950]/30 animate-pulse"
-          title="Waiting for GitHub authorization..."
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
-          </svg>
-          {deviceFlow.userCode}
-        </button>
-
-        {dropdownOpen && (
-          <div className="absolute top-full right-0 mt-1.5 w-[280px] bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg shadow-2xl z-[9999] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#3c3c3c] text-center">
-              <div className="text-[10px] text-[#808080] uppercase tracking-wider mb-2">Enter this code on GitHub</div>
-              <button onClick={copyCode} className="px-4 py-2 bg-[#0d1117] border border-[#30363d] rounded-md hover:border-[#3fb950] transition-colors">
-                <span className="text-[20px] font-mono font-bold tracking-[6px] text-white">{deviceFlow.userCode}</span>
-              </button>
-              <div className="mt-2 text-[11px] text-[#3fb950]">
-                {copied ? 'Copied!' : 'Click to copy'}
-              </div>
-            </div>
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-[#f0883e] animate-pulse" />
-                <span className="text-[12px] text-[#f0883e]">Waiting for authorization...</span>
-              </div>
-              <div className="text-[11px] text-[#666] leading-relaxed">
-                A browser tab opened at github.com/login/device. Paste the code above and click Authorize.
-              </div>
-              <button
-                onClick={() => { cancelDeviceFlow(); setDropdownOpen(false); }}
-                className="mt-3 w-full px-3 py-1.5 text-[12px] text-[#f85149] bg-[#f8514910] hover:bg-[#f8514920] rounded-md transition-colors"
-              >
-                Cancel
-              </button>
             </div>
           </div>
         )}

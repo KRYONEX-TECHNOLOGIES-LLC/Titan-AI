@@ -158,19 +158,6 @@ const electronAPI = {
   auth: {
     signInWithGithub: () =>
       ipcRenderer.invoke('auth:signInWithGithub') as Promise<{ token: string; user: unknown }>,
-    startDeviceFlow: () =>
-      ipcRenderer.invoke('auth:startDeviceFlow') as Promise<{
-        deviceCode: string; userCode: string; verificationUri: string;
-        expiresIn: number; interval: number;
-      }>,
-    pollDeviceFlow: (deviceCode: string) =>
-      ipcRenderer.invoke('auth:pollDeviceFlow', deviceCode) as Promise<
-        | { status: 'pending' }
-        | { status: 'slow_down' }
-        | { status: 'expired' }
-        | { status: 'error'; error: string }
-        | { status: 'success'; session: { token: string; user: unknown } }
-      >,
     getSession: () =>
       ipcRenderer.invoke('auth:getSession') as Promise<{ token: string; user: unknown } | null>,
     signOut: () =>

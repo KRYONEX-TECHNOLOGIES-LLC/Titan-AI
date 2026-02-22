@@ -1,5 +1,6 @@
 import { IpcMain, BrowserWindow, safeStorage, shell } from 'electron';
 import * as https from 'https';
+import * as crypto from 'crypto';
 import Store from 'electron-store';
 
 const store = new Store();
@@ -12,20 +13,9 @@ interface GitHubUser {
   avatar_url: string;
 }
 
-interface AuthSession {
-  token: string;
-  user: GitHubUser;
-}
-
-interface DeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  expires_in: number;
-  interval: number;
-}
-
 const CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23li34gxKFR3F8129J';
+const CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '';
+const SCOPES = 'user:email,repo';
 
 function httpsPost(hostname: string, path: string, body: string, headers: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -57,97 +47,124 @@ function httpsGet(hostname: string, path: string, headers: Record<string, string
   });
 }
 
-export function registerAuthHandlers(ipcMain: IpcMain, _win: BrowserWindow): void {
+async function exchangeCodeForToken(code: string): Promise<string> {
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
+    code,
+  });
 
-  // Step 1: Request device + user codes from GitHub
-  ipcMain.handle('auth:startDeviceFlow', async () => {
+  const raw = await httpsPost('github.com', '/login/oauth/access_token', params.toString(), {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Accept': 'application/json',
+  });
+
+  const parsed = JSON.parse(raw);
+  if (parsed.error) {
+    throw new Error(parsed.error_description || parsed.error);
+  }
+  return parsed.access_token;
+}
+
+async function fetchGitHubUser(token: string): Promise<GitHubUser> {
+  const raw = await httpsGet('api.github.com', '/user', {
+    'Authorization': `Bearer ${token}`,
+    'Accept': 'application/json',
+    'User-Agent': 'TitanAI-Desktop',
+  });
+  return JSON.parse(raw) as GitHubUser;
+}
+
+function saveSession(token: string, user: GitHubUser): void {
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(token);
+    store.set('auth.encryptedToken', encrypted.toString('base64'));
+  } else {
+    store.set('auth.token', token);
+  }
+  store.set('auth.user', user);
+}
+
+export function registerAuthHandlers(ipcMain: IpcMain, parentWin: BrowserWindow): void {
+
+  ipcMain.handle('auth:signInWithGithub', async () => {
     if (!CLIENT_ID) {
       throw new Error('GITHUB_CLIENT_ID is not configured');
     }
 
-    const body = `client_id=${encodeURIComponent(CLIENT_ID)}&scope=${encodeURIComponent('user:email,repo')}`;
-    const raw = await httpsPost('github.com', '/login/oauth/device/code', body, {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json',
+    const state = crypto.randomBytes(16).toString('hex');
+    const authUrl = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(CLIENT_ID)}&scope=${encodeURIComponent(SCOPES)}&state=${state}`;
+
+    return new Promise<{ token: string; user: GitHubUser }>((resolve, reject) => {
+      const popup = new BrowserWindow({
+        width: 520,
+        height: 720,
+        parent: parentWin,
+        modal: true,
+        title: 'Sign in to GitHub — Titan AI',
+        backgroundColor: '#0a0a14',
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      });
+      popup.setMenuBarVisibility(false);
+
+      let settled = false;
+
+      const handleRedirect = async (url: string) => {
+        if (settled) return;
+
+        let parsed: URL;
+        try { parsed = new URL(url); } catch { return; }
+
+        const code = parsed.searchParams.get('code');
+        const returnedState = parsed.searchParams.get('state');
+        const error = parsed.searchParams.get('error');
+
+        if (!code && !error) return;
+        if (!returnedState) return;
+
+        settled = true;
+        popup.close();
+
+        if (error) {
+          reject(new Error(`GitHub denied access: ${parsed.searchParams.get('error_description') || error}`));
+          return;
+        }
+
+        if (returnedState !== state) {
+          reject(new Error('OAuth state mismatch — possible CSRF attack'));
+          return;
+        }
+
+        try {
+          const token = await exchangeCodeForToken(code!);
+          const user = await fetchGitHubUser(token);
+          saveSession(token, user);
+          resolve({ token, user });
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      popup.webContents.on('will-navigate', (_event, navUrl) => {
+        handleRedirect(navUrl);
+      });
+
+      popup.webContents.on('will-redirect', (_event, navUrl) => {
+        handleRedirect(navUrl);
+      });
+
+      popup.on('closed', () => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('Sign-in window was closed'));
+        }
+      });
+
+      popup.loadURL(authUrl);
     });
-
-    let parsed: DeviceCodeResponse & { error?: string; error_description?: string };
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error('GitHub returned invalid response. Make sure Device Flow is enabled in your GitHub OAuth App settings (github.com/settings/developers).');
-    }
-    if (parsed.error) {
-      if (parsed.error === 'unauthorized_client') {
-        throw new Error('Device Flow is not enabled on this GitHub OAuth App. Go to github.com/settings/developers, open this OAuth App, and enable Device Flow.');
-      }
-      throw new Error(parsed.error_description || parsed.error);
-    }
-
-    shell.openExternal(parsed.verification_uri);
-
-    return {
-      deviceCode: parsed.device_code,
-      userCode: parsed.user_code,
-      verificationUri: parsed.verification_uri,
-      expiresIn: parsed.expires_in,
-      interval: parsed.interval,
-    };
-  });
-
-  // Step 2: Poll GitHub for token (called repeatedly by renderer)
-  ipcMain.handle('auth:pollDeviceFlow', async (_e, deviceCode: string) => {
-    if (!CLIENT_ID) throw new Error('GITHUB_CLIENT_ID is not configured');
-
-    const body = `client_id=${encodeURIComponent(CLIENT_ID)}&device_code=${encodeURIComponent(deviceCode)}&grant_type=${encodeURIComponent('urn:ietf:params:oauth:grant-type:device_code')}`;
-
-    const raw = await httpsPost('github.com', '/login/oauth/access_token', body, {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json',
-    });
-
-    let parsed: Record<string, string>;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return { status: 'error' as const, error: 'Invalid response from GitHub' };
-    }
-
-    if (parsed.error === 'authorization_pending') {
-      return { status: 'pending' as const };
-    }
-    if (parsed.error === 'slow_down') {
-      return { status: 'slow_down' as const };
-    }
-    if (parsed.error === 'expired_token') {
-      return { status: 'expired' as const };
-    }
-    if (parsed.error) {
-      return { status: 'error' as const, error: parsed.error_description || parsed.error };
-    }
-
-    const accessToken = parsed.access_token as string;
-    const userRaw = await httpsGet('api.github.com', '/user', {
-      'Authorization': `Bearer ${accessToken}`,
-      'Accept': 'application/json',
-      'User-Agent': 'TitanAI-Desktop',
-    });
-    const user = JSON.parse(userRaw) as GitHubUser;
-
-    if (safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(accessToken);
-      store.set('auth.encryptedToken', encrypted.toString('base64'));
-    } else {
-      store.set('auth.token', accessToken);
-    }
-    store.set('auth.user', user);
-
-    return { status: 'success' as const, session: { token: accessToken, user } };
-  });
-
-  // Legacy handler kept for backward compat (redirects to device flow)
-  ipcMain.handle('auth:signInWithGithub', async () => {
-    throw new Error('Use auth:startDeviceFlow instead');
   });
 
   ipcMain.handle('auth:getSession', async () => {

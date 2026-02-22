@@ -106,18 +106,22 @@ function setupAutoUpdater(): void {
 async function startNextServer(port: number): Promise<void> {
   const { spawn } = await import('child_process');
   const webDir = path.join(__dirname, '..', '..', 'web');
+  const isDev = !app.isPackaged;
 
   return new Promise((resolve, reject) => {
     const env = {
       ...process.env,
       PORT: String(port),
-      NODE_ENV: 'production',
+      NODE_ENV: isDev ? 'development' : 'production',
       ELECTRON: 'true',
       NEXTAUTH_URL: `http://localhost:${port}`,
       AUTH_TRUST_HOST: 'true',
     };
 
-    nextServerProcess = spawn('npx', ['next', 'start', '-p', String(port)], {
+    const nextCmd = isDev ? 'dev' : 'start';
+    const nextArgs = ['next', nextCmd, '-p', String(port)];
+    if (isDev) nextArgs.push('--turbopack');
+    nextServerProcess = spawn('npx', nextArgs, {
       cwd: webDir,
       env,
       shell: true,
