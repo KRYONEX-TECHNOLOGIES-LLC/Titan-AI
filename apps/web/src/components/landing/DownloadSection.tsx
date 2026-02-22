@@ -79,7 +79,7 @@ export function DownloadSection() {
             : `Download for ${os === 'windows' ? 'Windows' : os === 'macos' ? 'macOS' : 'Linux'}`}
         </button>
         <p className="text-xs text-[#5f5f75] mb-12">
-          v{release?.version || '0.1.0'} &middot; {release?.channel || 'stable'} channel &middot; ~120 MB
+          v{release?.version || '0.1.0'} &middot; {release?.channel || 'stable'} channel &middot; ~138 MB
         </p>
 
         {/* Platform cards */}
