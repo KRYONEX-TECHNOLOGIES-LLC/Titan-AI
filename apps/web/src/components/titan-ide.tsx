@@ -91,6 +91,20 @@ export default function TitanIDE() {
   const [pendingDiff, setPendingDiff] = useState<PendingDiff | null>(null);
   const pendingDiffRef = useRef<PendingDiff | null>(null);
   useEffect(() => { pendingDiffRef.current = pendingDiff; }, [pendingDiff]);
+  useEffect(() => {
+    const unsubscribe = useEditorStore.subscribe((state, prevState) => {
+      if (state.tabs !== prevState.tabs) {
+        setTabs(state.tabs);
+      }
+      if (state.activeTab !== prevState.activeTab) {
+        setActiveTab(state.activeTab);
+      }
+      if (state.fileContents !== prevState.fileContents) {
+        setFileContents((prev) => ({ ...prev, ...state.fileContents }));
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   // Menu state
   const [showPlusDropdown, setShowPlusDropdown] = useState(false);
