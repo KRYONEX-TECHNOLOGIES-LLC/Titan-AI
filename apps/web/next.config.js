@@ -29,6 +29,12 @@ const nextConfig = {
       type: 'asset/resource',
     });
 
+    // Add alias for '@' to point to the src directory
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, 'src'),
+    };
+
     return config;
   },
   experimental: {
