@@ -165,8 +165,9 @@ async function startNextServer(port: number): Promise<void> {
       // Use Electron's own bundled Node (process.execPath) to run the standalone server.
       // ELECTRON_RUN_AS_NODE=1 is critical: without it, process.execPath launches a full
       // Electron window instead of behaving as Node, causing infinite window spawning.
-      const serverJs = path.join(webDir, 'server.js');
-      nextServerProcess = spawn(process.execPath, [serverJs], {
+      // Use relative path — absolute paths with spaces (e.g. "C:\Program Files\...")
+      // get split by Electron's ELECTRON_RUN_AS_NODE argument parser on Windows.
+      nextServerProcess = spawn(process.execPath, ['./server.js'], {
         cwd: webDir,
         env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
         stdio: ['pipe', 'pipe', 'pipe'],
