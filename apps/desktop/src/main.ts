@@ -1,6 +1,17 @@
 import { app, BrowserWindow, protocol, ipcMain, shell, dialog } from 'electron';
 import * as path from 'path';
 import * as http from 'http';
+
+// GPU acceleration + input responsiveness — must be set before app.whenReady()
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('disable-software-rasterization');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+if (process.platform === 'win32') {
+  // Removes the Windows occlusion-detection overhead that throttles hidden windows
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+}
 import Store from 'electron-store';
 import { autoUpdater } from 'electron-updater';
 import { registerToolHandlers, killAllBackground } from './ipc/tools.js';

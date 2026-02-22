@@ -509,12 +509,17 @@ export default function TitanIDE() {
     return () => document.removeEventListener('click', handleClick);
   }, [settings]);
 
-  // Chat scroll
+  // Chat scroll — throttled to 300ms with rAF so it doesn't block input rendering
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [currentSession?.messages]);
   useEffect(() => {
     if (!chat.isThinking && !chat.isStreaming) return;
-    const timer = window.setInterval(() => { chatEndRef.current?.scrollIntoView({ behavior: 'auto' }); }, 100);
-    return () => window.clearInterval(timer);
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const scroll = () => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      timeoutId = setTimeout(scroll, 300);
+    };
+    scroll();
+    return () => clearTimeout(timeoutId);
   }, [chat.isThinking, chat.isStreaming]);
 
   // Persist tabs/editor state
@@ -721,13 +726,15 @@ export default function TitanIDE() {
         creatorModeActive={titanSession?.user?.creatorModeOn === true}
       />
 
-      {/* Factory View */}
-      <FactoryView
-        isOpen={midnight.showFactoryView}
-        onClose={() => midnight.setShowFactoryView(false)}
-        onStop={midnight.stopMidnight}
-        trustLevel={midnight.trustLevel}
-      />
+      {/* Factory View — only mount while open so its polling/SSE are inactive otherwise */}
+      {midnight.showFactoryView && (
+        <FactoryView
+          isOpen={midnight.showFactoryView}
+          onClose={() => midnight.setShowFactoryView(false)}
+          onStop={midnight.stopMidnight}
+          trustLevel={midnight.trustLevel}
+        />
+      )}
     </div>
     </GitHubAuthProvider>
   );

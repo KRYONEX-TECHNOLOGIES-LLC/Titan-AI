@@ -43,7 +43,7 @@ interface Props {
   workspacePath?: string;
 }
 
-const POLL_INTERVAL = 5000;
+const POLL_INTERVAL = 15000;
 
 export default function GitPanel({ workspacePath }: Props) {
   const { user: ghUser, token: ghToken, isConnected: ghConnected, signIn: connectGitHub } = useGitHubAuth();

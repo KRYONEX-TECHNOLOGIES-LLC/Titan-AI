@@ -210,7 +210,7 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
     };
 
     fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
+    const interval = setInterval(fetchLogs, 5000);
 
     // SSE stream for real-time events
     let eventSource: EventSource | null = null;

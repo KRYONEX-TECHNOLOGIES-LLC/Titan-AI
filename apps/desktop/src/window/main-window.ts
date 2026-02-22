@@ -45,6 +45,8 @@ export function createMainWindow(state: WindowState): BrowserWindow {
       nodeIntegration: false,
       sandbox: false,
       webSecurity: true,
+      backgroundThrottling: false,
+      v8CacheOptions: 'bypassHeatCheckAndEagerCompile',
     },
   });
 

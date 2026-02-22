@@ -7,7 +7,7 @@
  * Uses inline styles per ADR (T4: no Tailwind in chat UI components).
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLaneStore, LANE_STATUS_COLORS, LANE_STATUS_LABELS } from '@/stores/lane-store';
 import type { LaneSummary, LaneStatusUI } from '@/types/ide';
 
@@ -174,12 +174,12 @@ export default function LanePanel() {
 
   const stats = useMemo(() => getStats(), [lanes, getStats]);
 
-  // Auto-refresh elapsed times
+  // Auto-refresh elapsed times — use a local tick so only this component re-renders,
+  // not the entire Zustand store and all its subscribers.
+  const [, setTick] = useState(0);
   useEffect(() => {
     if (!isOrchestrating && laneArray.length === 0) return;
-    const interval = setInterval(() => {
-      useLaneStore.setState(s => ({ ...s }));
-    }, 2000);
+    const interval = setInterval(() => setTick(t => t + 1), 2000);
     return () => clearInterval(interval);
   }, [isOrchestrating, laneArray.length]);
 
