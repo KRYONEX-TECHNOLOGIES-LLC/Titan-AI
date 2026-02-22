@@ -105,28 +105,44 @@ function setupAutoUpdater(): void {
 
 async function startNextServer(port: number): Promise<void> {
   const { spawn } = await import('child_process');
-  const webDir = path.join(__dirname, '..', '..', 'web');
   const isDev = !app.isPackaged;
+
+  // Dev: apps/desktop/dist/../../web => apps/web/
+  // Packaged: Next.js standalone copies the monorepo structure, so server.js lives at
+  //           resources/web-server/apps/web/server.js (mirrors outputFileTracingRoot layout)
+  const webDir = isDev
+    ? path.join(__dirname, '..', '..', 'web')
+    : path.join(process.resourcesPath, 'web-server', 'apps', 'web');
 
   return new Promise((resolve, reject) => {
     const env = {
       ...process.env,
       PORT: String(port),
+      HOSTNAME: 'localhost',
       NODE_ENV: isDev ? 'development' : 'production',
       ELECTRON: 'true',
       NEXTAUTH_URL: `http://localhost:${port}`,
       AUTH_TRUST_HOST: 'true',
     };
 
-    const nextCmd = isDev ? 'dev' : 'start';
-    const nextArgs = ['next', nextCmd, '-p', String(port)];
-    if (isDev) nextArgs.push('--turbopack');
-    nextServerProcess = spawn('npx', nextArgs, {
-      cwd: webDir,
-      env,
-      shell: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    if (isDev) {
+      const nextArgs = ['next', 'dev', '-p', String(port), '--turbopack'];
+      nextServerProcess = spawn('npx', nextArgs, {
+        cwd: webDir,
+        env,
+        shell: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } else {
+      // Use Electron's own bundled Node (process.execPath) to run the standalone server.
+      // This means no system Node.js or npx is required on the end-user's machine.
+      const serverJs = path.join(webDir, 'server.js');
+      nextServerProcess = spawn(process.execPath, [serverJs], {
+        cwd: webDir,
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    }
 
     let resolved = false;
 
@@ -137,7 +153,7 @@ async function startNextServer(port: number): Promise<void> {
     nextServerProcess.stdout?.on('data', (data: Buffer) => {
       const output = data.toString();
       console.log('[Next.js]', output);
-      if (!resolved && (output.includes('Ready') || output.includes('started server'))) {
+      if (!resolved && (output.includes('Ready') || output.includes('started server') || output.includes('Listening on'))) {
         resolved = true;
         resolve();
       }

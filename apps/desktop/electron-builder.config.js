@@ -16,16 +16,22 @@ module.exports = {
   files: [
     'dist/**/*',
     'node_modules/**/*',
-    '../web/.next/**/*',
-    '../web/package.json',
-    '../web/next.config.js',
-    '../web/node_modules/**/*',
   ],
 
   extraResources: [
     {
-      from: '../web/.next',
-      to: 'app/.next',
+      from: '../web/.next/standalone',
+      to: 'web-server',
+      filter: ['**/*'],
+    },
+    {
+      from: '../web/.next/static',
+      to: 'web-server/.next/static',
+      filter: ['**/*'],
+    },
+    {
+      from: '../web/public',
+      to: 'web-server/public',
       filter: ['**/*'],
     },
   ],

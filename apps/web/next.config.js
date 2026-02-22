@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const path = require('path');
 const nextConfig = {
+  output: 'standalone',
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   reactStrictMode: true,
   transpilePackages: [],
