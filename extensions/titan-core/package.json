@@ -255,7 +255,7 @@
   },
   "dependencies": {
     "@titan/ai-gateway": "workspace:*",
-    "@titan/core-editor": "workspace:*",
+    "@titan/editor-core": "workspace:*",
     "@titan/vectordb": "workspace:*"
   },
   "devDependencies": {

@@ -11,7 +11,7 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@titan/mcp-host": "workspace:*",
+    "@titan/mcp": "workspace:*",
     "@titan/mcp-sampling": "workspace:*"
   },
   "devDependencies": {

@@ -11,7 +11,7 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@titan/mcp-host": "workspace:*",
+    "@titan/mcp": "workspace:*",
     "@titan/filesystem": "workspace:*",
     "@titan/terminal": "workspace:*",
     "simple-git": "^3.22.0",
