@@ -22,7 +22,6 @@ import { getFileInfo, getLanguageFromFilename } from '@/utils/file-helpers';
 import { isElectron, electronAPI } from '@/lib/electron';
 
 // Components
-import ChatMessage from '@/components/ide/ChatMessage';
 import { ToolsStatus } from '@/components/ide/ToolsStatus';
 import { getCapabilities } from '@/lib/agent-capabilities';
 
@@ -42,6 +41,7 @@ const IDECloneRepoDialog = dynamic(() => import('@/components/ide/CloneRepoDialo
 const EditorArea = dynamic(() => import('@/components/ide/EditorArea'), { ssr: false });
 const TitleBar = dynamic(() => import('@/components/ide/TitleBar'), { ssr: false });
 const StatusBar = dynamic(() => import('@/components/ide/StatusBar'), { ssr: false });
+const ChatMessage = dynamic(() => import('@/components/ide/ChatMessage'), { ssr: false });
 
 // Zustand stores
 import { useLayoutStore } from '@/stores/layout-store';
