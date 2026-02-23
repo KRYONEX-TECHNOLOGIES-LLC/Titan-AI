@@ -869,39 +869,59 @@ The app has AUTO-UPDATE built in. When you push a tagged release:
   - The popup has an Install button — one click removes old version, installs new, restarts
 You do NOT build locally. GitHub Actions builds in the cloud.
 
-═══ THE EXACT COMMANDS — COPY THESE EXACTLY EVERY TIME ═══
+═══ THE EXACT COMMANDS — COPY-PASTE TEMPLATE (run in this exact order) ═══
 
-Step 1 — Read current version:
+[PRE-FLIGHT] Confirm you are in the self-project:
    run_command("git remote get-url origin")
-   ↳ Verify output contains "KRYONEX-TECHNOLOGIES-LLC/Titan-AI" — ABORT if not
-   Read file: package.json → note current "version" (e.g. "0.2.2")
-   Decide new version using semver:
-     - Patch (bug fix):    0.2.2 → 0.2.3
-     - Minor (feature):    0.2.2 → 0.3.0
-     - Major (breaking):   0.2.2 → 1.0.0
+   ↳ MUST contain "KRYONEX-TECHNOLOGIES-LLC/Titan-AI" — if not, STOP. Do not release.
 
-Step 2 — Bump version in EXACTLY 2 files (both must match):
+[STEP 1] Read and decide version:
+   read_file("package.json")              ← find current "version" field
+   Patch (bug fix): 0.X.Y → 0.X.Y+1
+   Minor (feature): 0.X.Y → 0.X+1.0
+   Major (breaking): 0.X.Y → X+1.0.0
+
+[STEP 2] Bump version in EXACTLY 2 files:
    edit_file("package.json")              → change "version" to "X.Y.Z"
    edit_file("apps/desktop/package.json") → change "version" to "X.Y.Z"
-   These MUST be identical. Mismatch = broken auto-update.
+   read_file("package.json")              ← VERIFY both show same version
+   read_file("apps/desktop/package.json") ← VERIFY both show same version
+   Mismatch = broken auto-update. Fix before continuing.
 
-Step 3 — Commit the version bump:
+[STEP 3] Stage and verify:
    run_command("git add -A")
-   run_command("git commit -m 'chore: bump to vX.Y.Z'")
-   run_command("git push origin main")
-   ↳ Verify push succeeded (exit code 0, no rejection)
-   ↳ If rejected: run_command("git pull --rebase origin main") then push again
+   run_command("git status")              ← confirm only expected files staged
 
-Step 4 — Create and push the tag (THIS IS THE TRIGGER):
+[STEP 4] Commit:
+   run_command("git commit -m \"vX.Y.Z: one-line description of what changed\"")
+   ↳ Confirm exit code 0 and output shows "[main XXXXXXX]"
+
+[STEP 5] Push commit:
+   run_command("git push origin main")
+   ↳ Confirm "main -> main" with no errors
+   ↳ If rejected (remote ahead): run_command("git pull --rebase origin main") then push again
+   ↳ If still rejected: STOP and ask Mateo. NEVER force-push.
+
+[STEP 6] Create and push the tag — THE ACTUAL TRIGGER:
    run_command("git tag vX.Y.Z")
    run_command("git push origin vX.Y.Z")
-   ↳ This triggers .github/workflows/release-desktop.yml
-   ↳ Without this step, NOTHING happens. No build. No update. No download.
+   ↳ Confirm output shows "* [new tag] vX.Y.Z -> vX.Y.Z"
+   ↳ WITHOUT THIS STEP: nothing builds, no installer, no update popup, no download update.
+   ↳ This one push triggers everything: build → release → deploy → user popup.
 
-Step 5 — Verify the pipeline started:
-   run_command("gh run list --workflow release-desktop.yml --limit 1")
-   ↳ Confirm status is "in_progress" or "queued" (not "failed")
-   ↳ If failed: read the logs with gh run view <ID> --log-failed
+[STEP 7] MANDATORY — Verify CI started:
+   run_command("gh run list --limit 3")
+   ↳ Confirm "Release Desktop" shows "in_progress" or "queued"
+   ↳ If "failed": run_command("gh run view <ID> --log-failed") and fix the issue
+   ↳ Do NOT tell Mateo the release is done until you confirm this step shows in_progress.
+
+DONE CHECKLIST — check every item before telling Mateo:
+   □ Remote URL confirmed as KRYONEX-TECHNOLOGIES-LLC/Titan-AI
+   □ Both package.json files show the same new version
+   □ git push origin main exited with code 0
+   □ git push origin vX.Y.Z showed "* [new tag]"
+   □ gh run list shows "Release Desktop" as in_progress or completed
+   All checked = release is live. Any unchecked = incomplete release, fix it first.
 
 ═══ WHAT HAPPENS AUTOMATICALLY AFTER YOU PUSH THE TAG ═══
 

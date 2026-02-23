@@ -325,6 +325,210 @@ gh run list --workflow release-desktop.yml --limit 1
 
 ---
 
+## ════════════════════════════════════════════════════════════════════════
+## TITAN RELEASE RUNBOOK — COPY-PASTE TEMPLATE (DO NOT DEVIATE)
+## ════════════════════════════════════════════════════════════════════════
+##
+## THIS IS YOUR STEP-BY-STEP GUIDE. Run every command exactly as shown.
+## Do NOT improvise. Do NOT skip steps. Do NOT reorder steps.
+## Every command below has a VERIFY section — you must confirm it before moving on.
+##
+## ONLY USE THIS RUNBOOK WHEN INSIDE THE SELF-PROJECT:
+##   git remote get-url origin → must contain "KRYONEX-TECHNOLOGIES-LLC/Titan-AI"
+##   If it doesn't match → STOP. This runbook does not apply.
+## ════════════════════════════════════════════════════════════════════════
+
+---
+
+### RELEASE RUNBOOK — START HERE EVERY TIME
+
+---
+
+#### PRE-FLIGHT CHECK (Run this before anything else)
+
+```
+run_command("git remote get-url origin")
+```
+
+EXPECTED OUTPUT contains: `KRYONEX-TECHNOLOGIES-LLC/Titan-AI`
+IF NOT MATCHED → STOP IMMEDIATELY. You are not in the Titan project. Do not release.
+IF MATCHED → Continue to Step 1.
+
+---
+
+#### STEP 1 — Read current version
+
+```
+read_file("package.json")   ← look for the "version" field, e.g. "0.3.2"
+```
+
+Decide the new version number using SemVer:
+- Bug fix only:      e.g. 0.3.2 → 0.3.3  (patch)
+- New feature added: e.g. 0.3.2 → 0.4.0  (minor)
+- Breaking change:   e.g. 0.3.2 → 1.0.0  (major)
+
+Write down: OLD_VERSION = `0.X.Y`  NEW_VERSION = `0.X.Z`
+
+---
+
+#### STEP 2 — Bump version in EXACTLY 2 files (must be identical)
+
+File 1:
+```
+edit_file("package.json")              change "version": "OLD" → "version": "NEW"
+```
+
+File 2:
+```
+edit_file("apps/desktop/package.json") change "version": "OLD" → "version": "NEW"
+```
+
+VERIFY — Read both files back and confirm they match:
+```
+read_file("package.json")              ← confirm "version": "NEW_VERSION"
+read_file("apps/desktop/package.json") ← confirm "version": "NEW_VERSION"
+```
+IF THEY DON'T MATCH → Fix them now. Mismatch = broken auto-update.
+
+---
+
+#### STEP 3 — Stage and review changes
+
+```
+run_command("git add -A")
+run_command("git status")
+```
+
+EXPECTED: You should see `modified: package.json` and `modified: apps/desktop/package.json`
+plus any other files you changed. If you see unexpected files, review them before committing.
+
+---
+
+#### STEP 4 — Commit
+
+```
+run_command("git commit -m \"vNEW_VERSION: <one-line description of what changed>\"")
+```
+
+EXAMPLE: `git commit -m "v0.3.3: Add release runbook to AGENT-SYNC and system prompt"`
+
+EXPECTED OUTPUT: `[main XXXXXXX] vNEW_VERSION: ...`
+IF FAILED → Check what went wrong before proceeding. Do not skip.
+
+---
+
+#### STEP 5 — Push commit to main
+
+```
+run_command("git push origin main")
+```
+
+EXPECTED OUTPUT: `main -> main` with no errors.
+
+IF REJECTED (remote has new commits):
+```
+run_command("git pull --rebase origin main")
+run_command("git push origin main")
+```
+
+IF STILL REJECTED → STOP. Something is wrong. Do not force-push. Ask Mateo.
+
+---
+
+#### STEP 6 — Create and push the version tag (THE ACTUAL TRIGGER)
+
+```
+run_command("git tag vNEW_VERSION")
+run_command("git push origin vNEW_VERSION")
+```
+
+EXAMPLE: `git tag v0.3.3` then `git push origin v0.3.3`
+
+EXPECTED OUTPUT: `* [new tag] vNEW_VERSION -> vNEW_VERSION`
+
+⚠️ THIS STEP IS THE TRIGGER. Without this, NOTHING happens:
+- No GitHub Actions build
+- No new installer
+- No download link update
+- No update popup for existing users
+
+IF PUSH FAILS (tag already exists):
+```
+run_command("git tag -d vNEW_VERSION")          ← delete local tag
+run_command("git push origin :refs/tags/vNEW_VERSION")  ← delete remote tag (only if you haven't created a release yet)
+```
+Then re-create the tag at the correct commit.
+
+---
+
+#### STEP 7 — Verify the CI pipeline started (MANDATORY)
+
+```
+run_command("gh run list --limit 3")
+```
+
+EXPECTED OUTPUT: Three rows showing `in_progress` or `queued` for:
+- `Release Desktop`
+- `CI`
+- `Security Scan`
+
+IF `Release Desktop` shows `failed`:
+```
+run_command("gh run list --limit 1")              ← get the run ID
+run_command("gh run view <RUN_ID> --log-failed")  ← read the failure logs
+```
+Fix the issue, then decide whether to re-run or push a patch commit with a new tag.
+
+IF `Release Desktop` is NOT in the list → the tag push may not have triggered it.
+Check with: `gh run list --workflow release-desktop.yml --limit 3`
+
+---
+
+#### WHAT HAPPENS AUTOMATICALLY AFTER YOU COMPLETE ALL 7 STEPS
+
+1. GitHub Actions spins up a Windows cloud machine
+2. Builds the .exe installer + latest.yml (the electron-updater manifest)
+3. Creates a GitHub Release `vNEW_VERSION` with the installer attached
+4. Updates `manifest.json` with new version + download URL and pushes it
+5. Railway auto-deploys the web app → `titan.kryonex.com` shows new version
+6. `electron-updater` in all existing Titan installs detects the new release
+7. Users see "Update Available" popup → click Install → auto-removes old, installs new, restarts
+
+WAIT TIME: ~10-15 minutes from tag push to installer available.
+
+---
+
+#### QUICK REFERENCE — ALL 7 COMMANDS IN ORDER
+
+Replace `vX.Y.Z` with your actual version number everywhere:
+
+```
+run_command("git remote get-url origin")                  ← Pre-flight check
+read_file("package.json")                                  ← Note current version
+edit_file("package.json")                                  ← Bump "version"
+edit_file("apps/desktop/package.json")                     ← Bump "version" (must match)
+run_command("git add -A")
+run_command("git status")                                  ← Verify staged files
+run_command("git commit -m \"vX.Y.Z: description here\"")
+run_command("git push origin main")                        ← If rejected: pull --rebase first
+run_command("git tag vX.Y.Z")
+run_command("git push origin vX.Y.Z")                     ← THE TRIGGER
+run_command("gh run list --limit 3")                       ← Verify CI started
+```
+
+#### CHECKLIST — CHECK EACH BOX BEFORE CALLING THE RELEASE DONE
+
+- [ ] Pre-flight: remote URL confirmed as KRYONEX-TECHNOLOGIES-LLC/Titan-AI
+- [ ] Both package.json files show the same new version
+- [ ] `git push origin main` exited with code 0
+- [ ] `git push origin vX.Y.Z` showed `* [new tag]`
+- [ ] `gh run list --limit 3` shows `Release Desktop` as `in_progress` or `completed`
+
+If every box is checked → the release is live. You're done.
+If any box is not checked → you have an incomplete release. Fix it before telling Mateo it's done.
+
+---
+
 <!-- NEW ENTRIES BELOW THIS LINE -->
 
 ### 2026-02-23 | Cursor AI — Restore broken build pipeline + enable auto-updates
