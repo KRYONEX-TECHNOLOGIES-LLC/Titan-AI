@@ -3,7 +3,7 @@
 
 agents:
   supervisor:
-    model: qwen3.5-plus-2026-02-15
+    model: qwen/qwen-max
     fallback: claude-sonnet-4.6
     role: Supreme Architect & Task Decomposer
     reads: [memory.md, plan.md, checklist.md]
@@ -23,7 +23,7 @@ agents:
 
   coder:
     model: qwen3-coder-next
-    fallback: qwen3.5-plus-2026-02-15
+    fallback: qwen/qwen-max
     role: Technical Implementation Worker
     reads: []  # Receives only what Supervisor sends
     writes: []  # Output goes to Verifier, not to disk
@@ -73,7 +73,7 @@ logging:
 
 cost_optimization:
   cheap_models: [qwen3-coder-next, gemini-2.0-flash, deepseek-reasoner]
-  expensive_models: [qwen3.5-plus-2026-02-15]
+  expensive_models: [qwen/qwen-max]
   compute_split: "80-90% cheap workers, 10-20% planning + verification"
 
 # ═══ TITAN PROTOCOL v2: PARALLEL LANE CONFIGURATION ═══
@@ -92,12 +92,12 @@ protocol_v2:
     lane_timeout_ms: 300000  # 5 minutes per lane
 
   agents:
-    supervisor_model: qwen3.5-plus-2026-02-15
+    supervisor_model: qwen/qwen-max
     default_worker_model: qwen3-coder-next
     default_verifier_model: deepseek-reasoner
     executor_model: gemini-2.0-flash
-    worker_fallback: qwen3.5-plus-2026-02-15
-    verifier_fallback: qwen3.5-plus-2026-02-15
+    worker_fallback: qwen/qwen-max
+    verifier_fallback: qwen/qwen-max
 
   lane_lifecycle:
     statuses:
@@ -146,7 +146,7 @@ protocol_supreme:
   description: "Overseer/Operator/Primary Worker/Secondary Worker governance loop with zero-trust controls"
 
   agents:
-    overseer_model: qwen3.5-plus-2026-02-15
+    overseer_model: qwen/qwen-max
     operator_model: deepseek-reasoner
     primary_worker_model: qwen3-coder-next
     secondary_worker_model: gemini-2.0-flash
