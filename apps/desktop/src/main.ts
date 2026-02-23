@@ -452,11 +452,26 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('window-all-closed', () => {
-  if (nextServerProcess) {
-    nextServerProcess.kill();
-    nextServerProcess = null;
+function killServerProcess() {
+  if (!nextServerProcess) return;
+  const pid = nextServerProcess.pid;
+  nextServerProcess.removeAllListeners();
+  try {
+    if (process.platform === 'win32' && pid) {
+      // Force-kill the entire process tree on Windows — .kill() only sends
+      // SIGTERM which Node/Windows silently ignores, leaving zombie processes.
+      require('child_process').execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
+    } else {
+      nextServerProcess.kill('SIGKILL');
+    }
+  } catch {
+    // Process may already be gone — that's fine
   }
+  nextServerProcess = null;
+}
+
+app.on('window-all-closed', () => {
+  killServerProcess();
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -471,8 +486,10 @@ app.on('activate', async () => {
 app.on('before-quit', () => {
   killAllTerminals();
   killAllBackground();
-  if (nextServerProcess) {
-    nextServerProcess.kill();
-    nextServerProcess = null;
-  }
+  killServerProcess();
+});
+
+// Final safety net: if the main process exits for any reason, take the server with it
+process.on('exit', () => {
+  killServerProcess();
 });
