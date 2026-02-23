@@ -13,6 +13,7 @@ import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/
 import { ContextNavigator } from '@/lib/autonomy/context-navigator';
 import { MemoryManager } from '@/lib/autonomy/memory-manager';
 import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
+import { playBellSound } from '@/utils/notification-sound';
 
 const MAX_TOOL_CALLS = 120;
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -1052,10 +1053,15 @@ export function useChat({
         clearTimeout(flushTimerRef.current);
         flushTimerRef.current = null;
       }
+      const wasAborted = abortedRef.current;
       setIsThinking(false);
       setIsStreaming(false);
       abortControllerRef.current = null;
       activeStreamRef.current = null;
+
+      if (!wasAborted) {
+        playBellSound(0.6);
+      }
     }
   }, [
     editorInstance, activeTab, fileContents, activeSessionId, activeModel, attachments, clearAttachments,
