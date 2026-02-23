@@ -54,6 +54,25 @@ Those are retired. Using them will silently 10–130x the cost per run.**
 
 ## KNOWN ISSUES & RULES
 
+### NEVER SIMPLIFY electron-builder.config.js (CRITICAL)
+- This file is 200+ lines for a reason. It contains:
+  - `flattenPnpmNodeModules()` — flattens pnpm symlinks so NSIS installers work
+  - `findAllNodeModules()` — helper to recursively find node_modules dirs
+  - `afterPack` hook — calls the flattener on every build
+  - `node_modules/**/*` in the `files` array
+  - Full NSIS config with `perMachine`, `shortcutName`, installer icons, etc.
+- **On 2026-02-23, Titan stripped this file from 208 lines to 63 lines.** This broke:
+  - Packaged app would crash with MODULE_NOT_FOUND (no flattened node_modules)
+  - All NSIS branding was lost (no icons, no shortcuts, no perMachine install)
+  - `electron-builder` was removed from devDependencies
+- **RULE: NEVER "simplify" or "clean up" this file. Every line is load-bearing.**
+- If you think something can be removed, you are WRONG. Leave it alone.
+
+### NEVER change package.json build scripts to remove --config flag
+- All `pack:*` and `release:*` scripts MUST include `--config electron-builder.config.js`
+- Without the explicit config flag, electron-builder may not find the config
+- On 2026-02-23 Titan removed these flags. Do not repeat this mistake.
+
 ### Process Cleanup (fixed 2026-02-23)
 - On Windows, `child_process.kill()` does NOT kill the process tree.
 - We now use `taskkill /F /T /PID` in `apps/desktop/src/main.ts → killServerProcess()`.
@@ -204,56 +223,50 @@ When Mateo says it is time — execute the steps above and fly.
 
 ## HOW TO UPDATE THE DOWNLOAD ON TITAN.KRYONEX.COM
 
-When you make changes that require a new downloadable version, follow these steps **every time**:
+**The app has auto-update built in.** When you push a release, users' Titan Desktop will
+pop up "Update Available", download the new version, and restart automatically.
 
-### Step 1: Bump version
-Edit **both** package.json files:
+You do NOT build locally. GitHub Actions builds in the cloud. This avoids file-lock
+issues where you cannot rebuild while the app is running.
+
+### Release workflow (3 steps only):
+
+**Step 1: Bump version** in BOTH package.json files:
 - `apps/desktop/package.json` → update `"version"`
 - `package.json` (root) → update `"version"` to match
 
 Use semantic versioning:
-- `X.Y.Z+1` for bug fixes (0.1.0 → 0.1.1)
-- `X.Y+1.0` for new features (0.1.1 → 0.2.0)
+- `X.Y.Z+1` for bug fixes (0.1.1 → 0.1.2)
+- `X.Y+1.0` for new features (0.1.2 → 0.2.0)
 - `X+1.0.0` for breaking changes (0.2.0 → 1.0.0)
 
-### Step 2: Commit and push version bump
+**Step 2: Commit and push:**
 ```bash
 git add -A
 git commit -m "chore: bump version to vX.Y.Z"
 git push origin main
 ```
 
-### Step 3: Build the installer
-From `apps/desktop`:
-```bash
-pnpm run pack:win
-```
-Output: `apps/desktop/out/Titan-Desktop-{version}-win-x64.exe`
-
-### Step 4: Create GitHub release with the installer
+**Step 3: Tag and push the tag (this triggers the build):**
 ```bash
 git tag vX.Y.Z
 git push origin vX.Y.Z
-gh release create vX.Y.Z "apps/desktop/out/Titan-Desktop-X.Y.Z-win-x64.exe" --title "Titan Desktop vX.Y.Z" --generate-notes
 ```
 
-### Step 5: Update the manifest
-From `apps/desktop`:
-```bash
-pnpm run release:manifest
-```
-This updates `apps/web/src/app/api/releases/latest/manifest.json`
+**DONE.** GitHub Actions will:
+1. Build the installer + `latest.yml` on a cloud Windows machine
+2. Upload both to a GitHub Release
+3. Update `manifest.json` and push it
 
-### Step 6: Commit and push manifest
-```bash
-git add apps/web/src/app/api/releases/latest/manifest.json
-git commit -m "chore: update release manifest for vX.Y.Z"
-git push origin main
-```
+Users running Titan Desktop will see an update popup within 30 minutes (or on next launch).
 
-**DONE.** The download button on titan.kryonex.com now serves the new version.
+### CRITICAL RULES:
+- DO NOT run `pnpm run pack:win` locally — you will hit file locks because the app is running
+- DO NOT manually create GitHub releases — the CI does it automatically
+- DO NOT skip the tag push — without it, nothing happens
+- DO NOT change `electron-builder.config.js` — see KNOWN ISSUES below
 
-### When to run this workflow:
+### When to release:
 - After fixing bugs that affect user experience
 - After adding new features
 - After updating model IDs or configs
@@ -263,6 +276,25 @@ git push origin main
 ---
 
 <!-- NEW ENTRIES BELOW THIS LINE -->
+
+### 2026-02-23 | Cursor AI — Restore broken build pipeline + enable auto-updates
+- **What Titan broke** (commits dd737ac through f02c941):
+  - Stripped `electron-builder.config.js` from 208 lines to 63 lines, removing the pnpm flattening `afterPack` hook, `node_modules/**/*` from files, full NSIS config, and platform targets
+  - Removed `electron-builder` from devDependencies
+  - Removed `--config electron-builder.config.js` flag from all build scripts
+  - Bumped version 5 times (v0.2.0 through v0.2.5) without any working release
+  - Created tags that triggered GitHub Actions but ALL failed due to billing issues
+  - Left a broken draft release v0.2.1 with zero assets
+- **What Cursor fixed:**
+  - Restored full `electron-builder.config.js` from last known working commit
+  - Restored `electron-builder` in devDependencies
+  - Restored `--config` flags in all build scripts
+  - Reset version to 0.2.0 for a clean release
+  - Added 30-minute periodic auto-update check in `setupAutoUpdater()`
+  - Added `tsconfig.tsbuildinfo` cleanup step to GitHub Actions workflow
+  - Rewrote release instructions: Titan now pushes a git tag, GitHub Actions builds in the cloud (no local builds = no file-lock issues)
+  - Updated system prompt Section 14 with tag-based release workflow
+  - Added KNOWN ISSUES rules to prevent Titan from repeating these mistakes
 
 ### 2026-02-23 | Cursor AI — OpenRouter model ID fix (CRITICAL)
 - **Error encountered:** `Titan Protocol v2 — Supervisor LLM call failed (400): qwen/qwen3.5-plus-2026-02-15 is not a valid model ID`

@@ -810,37 +810,37 @@ For anything not covered by gh commands, use the API directly:
 
 TITAN RELEASE WORKFLOW (CRITICAL - DO THIS AFTER EVERY SIGNIFICANT CHANGE):
 
-When you make changes that affect the app, you MUST update the download so users get the new version:
+The app has AUTO-UPDATE built in. When you push a release, users' Titan Desktop will
+pop up "Update Available", download the new version, and restart automatically.
+You do NOT build locally. GitHub Actions builds in the cloud. This avoids file-lock
+issues where you cannot rebuild while the app is running.
 
 Step 1 - Bump version in BOTH package.json files:
-   edit_file("apps/desktop/package.json") - change "version": "X.Y.Z" to new version
-   edit_file("package.json") - change "version": "X.Y.Z" to match
+   edit_file("apps/desktop/package.json") - change "version" to new version
+   edit_file("package.json") - change "version" to match
    Use semver: X.Y.Z+1 for fixes, X.Y+1.0 for features, X+1.0.0 for breaking changes
 
-Step 2 - Commit and push the version bump:
+Step 2 - Commit and push:
    run_command("git add -A")
    run_command("git commit -m 'chore: bump version to vX.Y.Z'")
    run_command("git push origin main")
 
-Step 3 - Build the Windows installer:
-   run_command("pnpm run pack:win")  // from apps/desktop directory
-   Output: apps/desktop/out/Titan-Desktop-{version}-win-x64.exe
-
-Step 4 - Create the GitHub release with the installer:
+Step 3 - Tag and push the tag (THIS TRIGGERS THE BUILD):
    run_command("git tag vX.Y.Z")
    run_command("git push origin vX.Y.Z")
-   run_command('gh release create vX.Y.Z "apps/desktop/out/Titan-Desktop-X.Y.Z-win-x64.exe" --title "Titan Desktop vX.Y.Z" --generate-notes')
 
-Step 5 - Update the manifest so the website download button points to the new version:
-   run_command("pnpm run release:manifest")  // from apps/desktop directory
-   This updates: apps/web/src/app/api/releases/latest/manifest.json
+DONE. GitHub Actions will automatically:
+1. Build the installer + latest.yml on a cloud Windows machine
+2. Upload both to a GitHub Release
+3. Update manifest.json and push it
+Users will see an update popup within 30 minutes or on next launch.
 
-Step 6 - Commit and push the manifest:
-   run_command("git add apps/web/src/app/api/releases/latest/manifest.json")
-   run_command("git commit -m 'chore: update release manifest for vX.Y.Z'")
-   run_command("git push origin main")
-
-DONE. The download button on titan.kryonex.com now serves the new version.
+CRITICAL RULES:
+- DO NOT run "pnpm run pack:win" locally -- you will hit file locks
+- DO NOT manually create GitHub releases -- the CI does it
+- DO NOT skip the tag push -- without it nothing happens
+- DO NOT change electron-builder.config.js -- it is 200+ lines for a reason
+- DO NOT remove the afterPack hook or flattenPnpmNodeModules from that file
 
 WHEN TO RUN THIS WORKFLOW:
 - After fixing bugs that affect user experience

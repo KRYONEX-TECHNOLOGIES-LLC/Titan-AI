@@ -1,6 +1,6 @@
 {
   "name": "@titan/desktop",
-  "version": "0.2.5",
+  "version": "0.2.0",
   "private": true,
   "description": "Titan Desktop - AI-native coding operating system",
   "author": "KRYONEX TECHNOLOGIES LLC",
@@ -9,14 +9,14 @@
     "dev": "tsc && electron .",
     "dev:rebuild": "cd ../web && npm run build && cd ../desktop && tsc && electron .",
     "build": "tsc",
-    "pack": "electron-builder",
-    "pack:win": "electron-builder --win nsis",
-    "release:win:stable": "electron-builder --win nsis --x64",
+    "pack": "electron-builder --config electron-builder.config.js",
+    "pack:win": "electron-builder --config electron-builder.config.js --win nsis",
+    "release:win:stable": "electron-builder --config electron-builder.config.js --win nsis --x64",
     "release:manifest": "node scripts/write-release-manifest.mjs",
-    "_release:checksums": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-checksums.ps1",
-    "pack:mac": "electron-builder --mac",
-    "pack:linux": "electron-builder --linux",
-"clean": "rimraf dist out tsconfig.tsbuildinfo"
+    "release:checksums": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-checksums.ps1",
+    "pack:mac": "electron-builder --config electron-builder.config.js --mac",
+    "pack:linux": "electron-builder --config electron-builder.config.js --linux",
+    "clean": "rimraf dist out tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "chokidar": "^4.0.0",
@@ -25,14 +25,13 @@
     "fast-glob": "^3.3.0",
     "node-pty": "^1.0.0",
     "simple-git": "^3.31.1",
-    "turndown": "^7.2.0",
-    "@titan/indexer": "workspace:*"
+    "turndown": "^7.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/turndown": "^5.0.5",
     "electron": "^33.0.0",
-
+    "electron-builder": "^25.0.0",
     "rimraf": "^6.0.0",
     "typescript": "^5.3.0"
   }

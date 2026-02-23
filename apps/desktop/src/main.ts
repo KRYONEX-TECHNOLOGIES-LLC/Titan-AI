@@ -121,6 +121,10 @@ function setupAutoUpdater(): void {
   autoUpdater.checkForUpdatesAndNotify().catch((error) => {
     console.error('[Updater] checkForUpdatesAndNotify failed:', error);
   });
+
+  setInterval(() => {
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+  }, 30 * 60 * 1000);
 }
 
 function isPortInUse(port: number): Promise<boolean> {
