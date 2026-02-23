@@ -69,8 +69,8 @@ jobs:
           rm -f apps/desktop/tsconfig.tsbuildinfo
         shell: bash
 
-      - name: Build all packages
-        run: pnpm build
+      - name: Build desktop app and dependencies
+        run: pnpm turbo run build --filter=@titan/desktop...
 
       - name: Publish desktop app (Windows)
         if: matrix.platform == 'win32'

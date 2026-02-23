@@ -185,14 +185,14 @@ async function startNextJsServer(port: number): Promise<void> {
 }
 
 function registerIpcHandlers(browserWindow: BrowserWindow): void {
-  registerToolHandlers(browserWindow);
-  registerTerminalHandlers(browserWindow);
-  registerFilesystemHandlers(browserWindow);
-  registerGitHandlers();
-  registerLinterHandlers();
-  registerSearchHandlers();
-  registerWebHandlers();
-  registerAuthHandlers(browserWindow);
+  registerToolHandlers(ipcMain, browserWindow);
+  registerTerminalHandlers(ipcMain, browserWindow);
+  registerFilesystemHandlers(ipcMain, browserWindow);
+  registerGitHandlers(ipcMain);
+  registerLinterHandlers(ipcMain, browserWindow);
+  registerSearchHandlers(ipcMain);
+  registerWebHandlers(ipcMain);
+  registerAuthHandlers(ipcMain, browserWindow);
   setupIndexerIPC();
 }
 
@@ -228,9 +228,9 @@ app.whenReady().then(async () => {
   const windowState = restoreWindowState(store);
   mainWindow = createMainWindow(windowState);
 
-  mainWindow.on('resize', () => saveWindowState(store, mainWindow));
-  mainWindow.on('move', () => saveWindowState(store, mainWindow));
-  mainWindow.on('close', () => saveWindowState(store, mainWindow));
+  mainWindow.on('resize', () => { if (mainWindow) saveWindowState(mainWindow, store); });
+  mainWindow.on('move', () => { if (mainWindow) saveWindowState(mainWindow, store); });
+  mainWindow.on('close', () => { if (mainWindow) saveWindowState(mainWindow, store); });
 
   // Intercept new window requests (e.g., from external links) and open them in the default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -258,7 +258,7 @@ app.whenReady().then(async () => {
     }
   });
 
-  createAppMenu(store);
+  createAppMenu(mainWindow);
   setupAutoUpdater();
 
   const workspacePath = store.get('lastOpenedFolder') as string;
