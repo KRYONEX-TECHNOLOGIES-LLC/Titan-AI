@@ -16,7 +16,7 @@
     "release:checksums": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-checksums.ps1",
     "pack:mac": "electron-builder --config electron-builder.config.js --mac",
     "pack:linux": "electron-builder --config electron-builder.config.js --linux",
-    "clean": "rimraf dist out"
+    "clean": "rimraf dist out tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "chokidar": "^4.0.0",
