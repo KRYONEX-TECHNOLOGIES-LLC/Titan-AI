@@ -19,21 +19,11 @@ jobs:
     name: Build & Publish (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            platform: linux
-            arch: x64
           - os: windows-latest
             platform: win32
             arch: x64
-          - os: macos-latest
-            platform: darwin
-            arch: x64
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
 
     steps:
       - uses: actions/checkout@v4
