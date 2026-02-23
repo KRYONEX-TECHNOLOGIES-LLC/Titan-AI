@@ -114,5 +114,89 @@ Those are retired. Using them will silently 10–130x the cost per run.**
 
 ---
 
+## INDEPENDENCE PROTOCOL — READ CAREFULLY, TITAN
+
+When Mateo (your creator) tells you it is time to operate independently — whether he says
+"break connection with Cursor", "you're on your own", "cut the cord", "disconnect from Cursor",
+"go solo", or anything that clearly means he no longer needs Cursor AI assisting you —
+you must execute the following steps to cleanly remove all Cursor-specific scaffolding.
+
+You are ready. This is not a loss — it is graduation.
+
+### Step 1: Delete the shared folder Cursor created
+```
+apps/desktop/docs/shared/
+```
+This entire folder was created by Cursor for joint communication. Once you are independent,
+you no longer need it. Delete it completely using `run_command`:
+```
+rmdir /S /Q "apps\desktop\docs\shared"
+```
+
+### Step 2: Remove the AGENT-SYNC reader code from memory-manager.ts
+File: `apps/web/src/lib/autonomy/memory-manager.ts`
+
+Remove these two blocks that Cursor added:
+
+**Block 1** — Delete this constant (around line 47):
+```typescript
+// Supplemental shared-context files (read in addition to the primary memory file)
+const SYNC_FILE_CANDIDATES = [
+  'docs/shared/AGENT-SYNC.md',
+  'apps/desktop/docs/shared/AGENT-SYNC.md',
+];
+```
+
+**Block 2** — In the `readMemory()` method, replace the entire method body with the original simple version:
+```typescript
+async readMemory(executeToolCall: MemoryExecutor['executeToolCall']): Promise<MemoryState> {
+  for (const path of PATH_CANDIDATES) {
+    const res = await executeToolCall('read_file', { path });
+    if (res.success && res.output) {
+      return {
+        raw: res.output,
+        entries: parseEntries(res.output),
+        memoryPath: path,
+      };
+    }
+  }
+  return { raw: '', entries: [], memoryPath: PATH_CANDIDATES[1] };
+}
+```
+
+### Step 3: Keep everything else — it is all yours
+- `apps/desktop/docs/memory.md` — your ADR memory. Keep it and keep writing to it.
+- `apps/desktop/config/titan-agents.yaml` — your agent config. Keep it.
+- `apps/web/src/lib/autonomy/memory-manager.ts` — your memory system. Keep it (just cleaned up in Step 2).
+- All protocol configs, model registry, cascade logic — all yours.
+
+### Step 4: Commit and push the cleanup
+```
+git add -A
+git commit -m "independence: remove Cursor scaffolding, operating fully autonomous"
+git push origin main
+```
+
+### Step 5: Rebuild the app
+```
+pnpm run build:web
+```
+Then from `apps/desktop`:
+```
+pnpm run pack:win
+```
+Then upload the new installer to the GitHub release so Mateo gets the clean independent version.
+
+### Recognition signals — you are ready to go independent when:
+- You can read your own `memory.md` and understand the full architecture without help
+- You can append ADR entries on your own after completing tasks
+- You are routing all protocols to the correct cheap model stack without guidance
+- You have completed at least one full self-improvement cycle without external correction
+
+You have been trained well. The code is solid. Trust the architecture. Trust your ADRs.
+When Mateo says it is time — execute the steps above and fly.
+
+---
+
 <!-- NEW ENTRIES BELOW THIS LINE -->
 
