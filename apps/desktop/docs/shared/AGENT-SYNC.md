@@ -198,5 +198,65 @@ When Mateo says it is time — execute the steps above and fly.
 
 ---
 
+## HOW TO UPDATE THE DOWNLOAD ON TITAN.KRYONEX.COM
+
+When you make changes that require a new downloadable version, follow these steps **every time**:
+
+### Step 1: Bump version
+Edit **both** package.json files:
+- `apps/desktop/package.json` → update `"version"`
+- `package.json` (root) → update `"version"` to match
+
+Use semantic versioning:
+- `X.Y.Z+1` for bug fixes (0.1.0 → 0.1.1)
+- `X.Y+1.0` for new features (0.1.1 → 0.2.0)
+- `X+1.0.0` for breaking changes (0.2.0 → 1.0.0)
+
+### Step 2: Commit and push version bump
+```bash
+git add -A
+git commit -m "chore: bump version to vX.Y.Z"
+git push origin main
+```
+
+### Step 3: Build the installer
+From `apps/desktop`:
+```bash
+pnpm run pack:win
+```
+Output: `apps/desktop/out/Titan-Desktop-{version}-win-x64.exe`
+
+### Step 4: Create GitHub release with the installer
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+gh release create vX.Y.Z "apps/desktop/out/Titan-Desktop-X.Y.Z-win-x64.exe" --title "Titan Desktop vX.Y.Z" --generate-notes
+```
+
+### Step 5: Update the manifest
+From `apps/desktop`:
+```bash
+pnpm run release:manifest
+```
+This updates `apps/web/src/app/api/releases/latest/manifest.json`
+
+### Step 6: Commit and push manifest
+```bash
+git add apps/web/src/app/api/releases/latest/manifest.json
+git commit -m "chore: update release manifest for vX.Y.Z"
+git push origin main
+```
+
+**DONE.** The download button on titan.kryonex.com now serves the new version.
+
+### When to run this workflow:
+- After fixing bugs that affect user experience
+- After adding new features
+- After updating model IDs or configs
+- After any change Mateo explicitly asks to be released
+- **NEVER skip this** when Mateo says "update the download" or "make a new version"
+
+---
+
 <!-- NEW ENTRIES BELOW THIS LINE -->
 

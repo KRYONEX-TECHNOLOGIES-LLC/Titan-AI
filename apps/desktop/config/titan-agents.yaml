@@ -32,7 +32,7 @@ agents:
 
   verifier:
     model: deepseek-reasoner
-    fallback: qwen3.5-plus-2026-02-15
+    fallback: qwen/qwen-max
     role: Adversarial Quality Assassin
     reads: [checklist.md, plan.md]
     writes: [quality.log]
@@ -189,12 +189,12 @@ protocol_omega:
   description: "Omega governance — Architect + Specialist Cadre + Sentinel + Operator with AST-aware changes, predictive scaffolding, and zero-trust execution"
 
   agents:
-    architect_model: qwen3.5-plus-2026-02-15
+    architect_model: qwen/qwen-max
     sentinel_model: deepseek-reasoner
     operator_model: deepseek-reasoner
     specialist_low_risk: gemini-2.0-flash
     specialist_medium_risk: qwen3-coder-next
-    specialist_high_risk: qwen3.5-plus-2026-02-15
+    specialist_high_risk: qwen/qwen-max
 
   limits:
     max_concurrent_specialists: 4

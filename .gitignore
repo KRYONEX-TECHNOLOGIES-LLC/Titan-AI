@@ -77,3 +77,6 @@ vscode-core/.profile-oss
 *.key
 credentials.json
 secrets.json
+
+# Desktop build artifacts
+apps/desktop/out-new/
