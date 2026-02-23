@@ -102,7 +102,7 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
       ]);
       const WORKSPACE_REQUIRED_TOOLS = new Set([
         ...PATH_BASED_TOOLS,
-        'auto_debug', 'git_branch', 'git_commit', 'git_sync', 'memory_read', 'memory_write',
+        'auto_debug', 'git_branch', 'git_commit', 'git_sync', 'git_checkpoint', 'git_restore_checkpoint', 'memory_read', 'memory_write',
       ]);
       if (WORKSPACE_REQUIRED_TOOLS.has(tool) && !workspacePath) {
         return setLast({
@@ -331,6 +331,31 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
           return setLast({ success: res.success, output: res.output, metadata: res as unknown as Record<string, unknown>, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
+        case 'git_checkpoint': {
+          const label = args.label ? String(args.label) : 'auto';
+          const res = await (window as Window & { electronAPI?: { git: { checkpoint: (p: string, l: string) => Promise<{ success: boolean; tag?: string; error?: string }> } } }).electronAPI?.git.checkpoint(workspacePath!, label);
+          if (!res) return setLast({ success: false, output: '', error: 'electronAPI not available', meta: { ...baseMeta, durationMs: Date.now() - start } });
+          return setLast({
+            success: res.success,
+            output: res.success ? `Checkpoint created: ${res.tag}` : `Checkpoint failed: ${res.error}`,
+            metadata: res as unknown as Record<string, unknown>,
+            meta: { ...baseMeta, durationMs: Date.now() - start },
+          });
+        }
+
+        case 'git_restore_checkpoint': {
+          const tag = String(args.tag || '');
+          if (!tag) return setLast({ success: false, output: '', error: 'tag is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
+          const res = await (window as Window & { electronAPI?: { git: { restoreCheckpoint: (p: string, t: string) => Promise<{ success: boolean; error?: string }> } } }).electronAPI?.git.restoreCheckpoint(workspacePath!, tag);
+          if (!res) return setLast({ success: false, output: '', error: 'electronAPI not available', meta: { ...baseMeta, durationMs: Date.now() - start } });
+          return setLast({
+            success: res.success,
+            output: res.success ? `Restored to checkpoint: ${tag}` : `Restore failed: ${res.error}`,
+            metadata: res as unknown as Record<string, unknown>,
+            meta: { ...baseMeta, durationMs: Date.now() - start },
+          });
+        }
+
         case 'memory_read': {
           const state = await sharedMemoryManager.readMemory(executeToolCall);
           return setLast({
@@ -492,6 +517,10 @@ export function toolCallSummary(tool: string, args: Record<string, unknown>): st
       return `Git commit ${args.type || 'feat'}: ${(args.message as string || '').slice(0, 40)}`;
     case 'git_sync':
       return `Git sync ${args.branch || 'main'}`;
+    case 'git_checkpoint':
+      return `Git checkpoint: ${args.label || 'auto'}`;
+    case 'git_restore_checkpoint':
+      return `Git restore checkpoint: ${args.tag}`;
     case 'memory_read':
       return 'Read architectural memory';
     case 'memory_write':

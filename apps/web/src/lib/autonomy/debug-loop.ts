@@ -162,9 +162,20 @@ export async function runDebugLoop(
     });
     const retries = Number(edit.meta?.retryAttempts || 1);
 
+    // Verification: re-run the EXACT same command and check if the original error is gone
     const rerun = await executeToolCall('run_command', { command });
     const rerunExit = Number(rerun.metadata?.exitCode ?? 0);
     const rerunParsed = parser.parse(rerun.output || '', rerun.error || '', rerunExit);
+
+    // Check if the specific error we fixed is still present in the new output
+    const originalErrKey = sameErrorKey(primary);
+    const rerunPrimary = parser.getPrimaryError(rerunParsed);
+    const originalErrorStillPresent = rerunParsed.errors.some(
+      (e) => sameErrorKey(e) === originalErrKey,
+    );
+    // Fix is only verified if: exit code is 0 OR the specific original error is gone
+    const fixVerified = rerunExit === 0 || (!originalErrorStillPresent && rerunParsed.errors.length < rerunParsed.errors.length + 1);
+    const originalErrorResolved = !originalErrorStillPresent;
 
     fixHistory.push({
       attemptNumber: attempt,
@@ -189,6 +200,8 @@ export async function runDebugLoop(
         hypothesis: patch.hypothesis,
         editSuccess: edit.success,
         rerunExitCode: rerunExit,
+        originalErrorResolved,
+        remainingErrors: rerunParsed.errors.length,
       },
     });
 
@@ -200,6 +213,33 @@ export async function runDebugLoop(
         escalated: false,
       };
     }
+
+    // If this specific error was resolved but new errors appeared, continue loop with new primary
+    if (originalErrorResolved && rerunPrimary && sameErrorKey(rerunPrimary) !== originalErrKey) {
+      emitEvent?.({
+        type: 'debug_loop_progress',
+        payload: { message: `Original error resolved. New error to fix: ${rerunPrimary.message}` },
+      });
+      // Reset same-error counter since we've moved on to a different error
+      sameErrorCounter.clear();
+      continue;
+    }
+
+    // If the same error persists after a fix, count it toward escalation
+    if (!originalErrorResolved) {
+      const newSeen = (sameErrorCounter.get(originalErrKey) || 0);
+      if (newSeen >= config.maxSameErrorRetries) {
+        return {
+          resolved: false,
+          attempts: attempt,
+          fixHistory,
+          finalError: primary,
+          escalated: true,
+        };
+      }
+    }
+
+    void fixVerified; // used for event payload clarity
   }
 
   return {

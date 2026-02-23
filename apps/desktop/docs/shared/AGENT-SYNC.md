@@ -320,3 +320,41 @@ Users running Titan Desktop will see an update popup within 30 minutes (or on ne
   - Root cause: TypeScript incremental cache (`apps/desktop/tsconfig.tsbuildinfo`) can survive cleans and cause `tsc` to skip emitting compiled files, leaving `dist/` missing `ipc/*.js` in the packaged app.
   - Permanent fix: update desktop clean script to delete `tsconfig.tsbuildinfo` (`rimraf dist out tsconfig.tsbuildinfo`), then rebuild (`pnpm run pack:win`) and re-upload the installer asset to the GitHub release.
 
+### 2026-02-23 | Cursor AI — Elite Performance Optimization (Titan system upgrade)
+**Summary:** Full upgrade of Titan AI's reliability, memory, and engineering discipline.
+
+**Changes made:**
+
+1. **System Prompt — 3 new sections added** (`apps/web/src/app/api/chat/continue/route.ts`)
+   - Section 15: Pre-Commit Verification — mandatory checklist before every git commit (lint check, tsc --noEmit, sanity-read changed files, config file guard)
+   - Section 16: Engineering Discipline — 7 rules: smallest possible change, never remove code you don't understand, config files are sacred, dependencies are not optional, one change per commit, never version-bump without a working build, understand before acting
+   - Section 17: Self-Verification Protocol — step-by-step verification after every edit, after 3+ file edits, after build pipeline changes, and a "Done Checklist" before claiming completion
+
+2. **Mistakes Ledger created** (`apps/desktop/docs/shared/mistakes.md`)
+   - 9 documented past failures with root causes, what broke, and rules added
+   - Auto-loaded every session alongside AGENT-SYNC.md via memory-manager.ts
+   - Triggered by broader keyword set: build, electron, package.json, ipc, ci, github.actions, etc.
+
+3. **Git Checkpoint/Restore added** (`apps/desktop/src/ipc/git.ts`, `preload.ts`, `useAgentTools.ts`)
+   - New IPC handlers: `git:checkpoint` (creates lightweight tag), `git:restore-checkpoint` (hard reset to tag), `git:stash`, `git:stash-pop`, `git:list-checkpoints`
+   - Two new tools exposed to Titan: `git_checkpoint` and `git_restore_checkpoint`
+   - Titan should call `git_checkpoint` before any task modifying 3+ files or build config
+   - Titan should call `git_restore_checkpoint` after 2 failed fix attempts
+
+4. **LLM API Retry Logic added** (`apps/web/src/app/api/chat/continue/route.ts`)
+   - `fetchWithRetry` helper: 3 attempts, exponential backoff (1s → 2s → 4s)
+   - Retries on: 429 (rate limit), 500/502/503/504 (server errors), network timeouts
+   - Non-retryable errors (400, 401, 403) fail fast immediately
+
+5. **Debug Loop Verification improved** (`apps/web/src/lib/autonomy/debug-loop.ts`)
+   - After each fix attempt, now explicitly checks whether the ORIGINAL error is still present
+   - If original error gone but new errors appeared: continues loop targeting new error (resets counter)
+   - If same error persists after fix: escalates earlier instead of wasting attempts
+   - Emits new `debug_loop_progress` event when switching to a new error target
+
+**What Titan MUST do now:**
+- Before any task modifying build system: `git_checkpoint("before-task-name")`
+- Before any commit: run tsc --noEmit on changed TypeScript files
+- Before claiming "Done": run the Done Checklist from Section 17
+- Read mistakes.md if working on: electron, IPC, build scripts, package.json, CI, model IDs
+

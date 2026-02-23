@@ -130,4 +130,68 @@ export function registerGitHandlers(ipcMain: IpcMain): void {
     if (!git) throw new Error('Repository not found');
     await git.checkout(branch);
   });
+
+  // Checkpoint: create a lightweight tag as a named restore point before risky changes
+  ipcMain.handle('git:checkpoint', async (_e, repoPath: string, label?: string) => {
+    try {
+      const git = await getGit(repoPath);
+      if (!git) throw new Error('Repository not found');
+      const ts = Date.now();
+      const tagName = `checkpoint/${label ? label.replace(/[^a-z0-9-]/gi, '-') : 'auto'}-${ts}`;
+      await git.tag([tagName]);
+      return { success: true, tag: tagName };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // Restore: hard-reset to a checkpoint tag
+  ipcMain.handle('git:restore-checkpoint', async (_e, repoPath: string, tag: string) => {
+    try {
+      const git = await getGit(repoPath);
+      if (!git) throw new Error('Repository not found');
+      await git.reset(['--hard', tag]);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // Stash: save uncommitted work
+  ipcMain.handle('git:stash', async (_e, repoPath: string, message?: string) => {
+    try {
+      const git = await getGit(repoPath);
+      if (!git) throw new Error('Repository not found');
+      const args = message ? ['push', '-m', message] : ['push'];
+      await git.stash(args);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // Stash pop: restore last stashed work
+  ipcMain.handle('git:stash-pop', async (_e, repoPath: string) => {
+    try {
+      const git = await getGit(repoPath);
+      if (!git) throw new Error('Repository not found');
+      await git.stash(['pop']);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // List checkpoints
+  ipcMain.handle('git:list-checkpoints', async (_e, repoPath: string) => {
+    try {
+      const git = await getGit(repoPath);
+      if (!git) return [];
+      const tags = await git.tags();
+      return tags.all.filter((t: string) => t.startsWith('checkpoint/'));
+    } catch (err) {
+      console.warn('[git:list-checkpoints] Error:', (err as Error).message);
+      return [];
+    }
+  });
 }

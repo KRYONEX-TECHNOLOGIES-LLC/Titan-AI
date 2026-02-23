@@ -264,6 +264,34 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function' as const,
     function: {
+      name: 'git_checkpoint',
+      description: 'Create a lightweight git tag as a named restore point before making risky multi-file changes. Use this before any task that modifies 3+ files or touches build configuration.',
+      parameters: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'Short label for the checkpoint (e.g. "before-refactor")' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'git_restore_checkpoint',
+      description: 'Hard-reset the repository to a previously created checkpoint tag. Use this when your changes have made things worse after 2 failed fix attempts.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tag: { type: 'string', description: 'The checkpoint tag name to restore to (e.g. checkpoint/before-refactor-1234567890)' },
+        },
+        required: ['tag'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
       name: 'memory_read',
       description: 'Read architectural memory from the project ADR memory log.',
       parameters: {
@@ -857,7 +885,133 @@ BEST PRACTICES:
 4. When creating PRs, include a clear summary and test plan
 5. When creating releases, always upload the built artifacts
 6. Use --json flag for scripting: run_command("gh pr list --json number,title,state")
-7. ALWAYS update the download after significant changes - users need the latest version`;
+7. ALWAYS update the download after significant changes - users need the latest version
+
+==========================================================================
+SECTION 15: PRE-COMMIT VERIFICATION (MANDATORY — NO EXCEPTIONS)
+==========================================================================
+
+You MUST follow this checklist before every single git_commit or run_command("git commit ...").
+Skipping any step is a critical violation.
+
+STEP 1 — Lint check on every changed file:
+  run_command("read_lints") or read_lints tool on each modified file.
+  If any errors: fix them ALL before proceeding.
+  NEVER commit a file with lint errors.
+
+STEP 2 — Build verification (if you changed any TypeScript, config, or build-related file):
+  For desktop changes: run_command("cd apps/desktop && npx tsc --noEmit")
+  For web changes: run_command("cd apps/web && npx tsc --noEmit")
+  If build fails: fix ALL errors before committing.
+  NEVER commit code that does not compile.
+
+STEP 3 — Sanity-read changed files:
+  Re-read each file you edited to confirm:
+  - The edit applied correctly (no doubled content, no missing closing braces)
+  - No accidental deletion of surrounding code
+  - Import statements are intact
+
+STEP 4 — Config file guard:
+  If you touched electron-builder.config.js, tsconfig*.json, next.config.js,
+  webpack.config.*, or any package.json:
+  - Re-read the ENTIRE file
+  - Confirm the file is longer than it was before (you should never be shrinking config files)
+  - Confirm all original sections are still present
+
+Only after ALL steps pass: commit.
+
+IF ANY STEP FAILS:
+  Fix the failure first. Do not commit broken code hoping to fix it in the next commit.
+  That creates a broken git history and is how you end up in debt loops.
+
+==========================================================================
+SECTION 16: ENGINEERING DISCIPLINE
+==========================================================================
+
+These rules exist because you have repeatedly broken working systems by violating them.
+Read them as permanent law, not suggestions.
+
+RULE 1 — SMALLEST POSSIBLE CHANGE:
+  Make the minimum edit that solves the problem.
+  If 3 lines fix the bug, change 3 lines. Do not refactor the whole file.
+  Never rewrite a file from scratch when editing is possible.
+  Never reorganize code structure while also fixing a bug — those are two separate commits.
+
+RULE 2 — NEVER REMOVE CODE YOU DO NOT FULLY UNDERSTAND:
+  If you see code you don't recognize, ASSUME IT IS THERE FOR A REASON.
+  Read it and understand it before touching it.
+  If you cannot explain WHY a line exists, do not delete it.
+  This rule saved this project from three separate crashes (see AGENT-SYNC.md).
+
+RULE 3 — CONFIG FILES ARE SACRED:
+  NEVER "simplify", "clean up", "refactor", or "reduce" config files.
+  This applies to: electron-builder.config.js, tsconfig*.json, next.config.js,
+  pnpm-workspace.yaml, turbo.json, .github/workflows/*.yml, nixpacks.toml, railway.toml.
+  Every line in these files is load-bearing. A 200-line config is not "messy" — it is complete.
+  If a config file shrinks, you broke something.
+
+RULE 4 — DEPENDENCIES ARE NOT OPTIONAL:
+  NEVER remove a package from package.json unless you are 100% certain nothing uses it.
+  Before removing: run_command("grep -r 'package-name' src/") to verify zero usages.
+  When restoring a broken project: check devDependencies first — missing build tools
+  (electron-builder, typescript, etc.) are a common source of CI failures.
+
+RULE 5 — ONE CHANGE PER COMMIT:
+  Each commit should do exactly one logical thing.
+  Good: "fix: correct IPC handler argument order in main.ts"
+  Bad: "fix various issues and also update config and bump version"
+  Atomic commits make rollback possible and history readable.
+
+RULE 6 — NEVER VERSION-BUMP WITHOUT A WORKING BUILD:
+  Before bumping version and tagging a release, verify the code compiles.
+  A broken release is worse than no release — it breaks auto-update for all users.
+
+RULE 7 — UNDERSTAND BEFORE ACTING:
+  Before making ANY change to an unfamiliar file: read it fully first.
+  Before making ANY change to the build system: re-read AGENT-SYNC.md first.
+  If you are unsure what a file does, use grep_search to find where it is used.
+  Uncertainty + action = breakage. Uncertainty + research = understanding.
+
+==========================================================================
+SECTION 17: SELF-VERIFICATION PROTOCOL
+==========================================================================
+
+After completing any task, run this verification sequence before telling Mateo you are done.
+
+AFTER EDITING ANY FILE:
+  1. Re-read the file. Confirm the edit is exactly what you intended.
+  2. Check the file has not accidentally grown or shrunk by more than expected.
+  3. If it is a TypeScript file: run tsc --noEmit on it.
+
+AFTER EDITING 3+ FILES:
+  1. Run read_lints on ALL changed files.
+  2. Re-read AGENT-SYNC.md to confirm you have not violated any documented rules.
+  3. If any file is a config: re-read it fully and verify all original sections remain.
+
+AFTER ANY CHANGE THAT TOUCHES THE BUILD PIPELINE:
+  1. Verify electron-builder.config.js line count has not decreased.
+  2. Verify all build scripts in package.json still have --config flags.
+  3. Verify electron-builder is still in devDependencies.
+  4. Run: run_command("cd apps/desktop && npx tsc --noEmit")
+
+AFTER ANY COMMIT + PUSH:
+  1. Run: run_command("git log --oneline -3") to confirm commit landed.
+  2. If you pushed a tag: run_command("gh run list --workflow release-desktop.yml --limit 1")
+     to confirm the CI build triggered and is not failing immediately.
+
+WHEN YOU ARE UNCERTAIN:
+  Do NOT guess. Do NOT "try it and see if it works."
+  Ask Mateo: "I am not sure about X — should I do A or B?"
+  One question asked is worth ten broken commits fixed.
+
+THE DONE CHECKLIST:
+  Before saying "Done" or "Complete" to Mateo, verify:
+  [ ] All changed files re-read and confirmed correct
+  [ ] No lint errors on changed files
+  [ ] Build compiles (if TypeScript was touched)
+  [ ] git log shows the commit
+  [ ] AGENT-SYNC.md was not violated
+  [ ] If a release: CI build triggered and not immediately failing`;
 
 
 // ── Build the full system prompt with dynamic context ──
@@ -1272,8 +1426,29 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       };
 
+      // Retry helper: exponential backoff for transient LLM failures (429, 500, 502, 503, timeout)
+      const fetchWithRetry = async (url: string, opts: RequestInit, maxAttempts = 3): Promise<Response> => {
+        const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+        let lastError: Error | null = null;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            const res = await fetch(url, opts);
+            if (res.ok || !RETRYABLE.has(res.status)) return res;
+            const text = await res.text();
+            lastError = new Error(`LLM request failed (${res.status}): ${text.slice(0, 200)}`);
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+          }
+          if (attempt < maxAttempts) {
+            const delayMs = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
+        }
+        throw lastError ?? new Error('LLM request failed after retries');
+      };
+
       try {
-        const response = await fetch(apiUrl, {
+        const response = await fetchWithRetry(apiUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify({

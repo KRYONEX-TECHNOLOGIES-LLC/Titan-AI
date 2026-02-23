@@ -122,6 +122,16 @@ const electronAPI = {
       }>>,
     checkout: (repoPath: string, branch: string) =>
       ipcRenderer.invoke('git:checkout', repoPath, branch) as Promise<void>,
+    checkpoint: (repoPath: string, label?: string) =>
+      ipcRenderer.invoke('git:checkpoint', repoPath, label) as Promise<{ success: boolean; tag?: string; error?: string }>,
+    restoreCheckpoint: (repoPath: string, tag: string) =>
+      ipcRenderer.invoke('git:restore-checkpoint', repoPath, tag) as Promise<{ success: boolean; error?: string }>,
+    stash: (repoPath: string, message?: string) =>
+      ipcRenderer.invoke('git:stash', repoPath, message) as Promise<{ success: boolean; error?: string }>,
+    stashPop: (repoPath: string) =>
+      ipcRenderer.invoke('git:stash-pop', repoPath) as Promise<{ success: boolean; error?: string }>,
+    listCheckpoints: (repoPath: string) =>
+      ipcRenderer.invoke('git:list-checkpoints', repoPath) as Promise<string[]>,
   },
 
   linter: {

@@ -49,6 +49,12 @@ const SYNC_FILE_CANDIDATES = [
   'apps/desktop/docs/shared/AGENT-SYNC.md',
 ];
 
+// Mistakes ledger — anti-patterns from past failures, auto-loaded every session
+const MISTAKES_FILE_CANDIDATES = [
+  'docs/shared/mistakes.md',
+  'apps/desktop/docs/shared/mistakes.md',
+];
+
 function parseEntries(raw: string): ADREntry[] {
   const blocks = raw.split(/\n##\s+/).slice(1);
   const entries: ADREntry[] = [];
@@ -100,7 +106,17 @@ export class MemoryManager {
       }
     }
 
-    const combinedRaw = primaryRaw + syncRaw;
+    // Also read the mistakes ledger so Titan never repeats past failures
+    let mistakesRaw = '';
+    for (const path of MISTAKES_FILE_CANDIDATES) {
+      const res = await executeToolCall('read_file', { path });
+      if (res.success && res.output) {
+        mistakesRaw = `\n\n---\n[MISTAKES LEDGER — Anti-Patterns From Past Failures — READ BEFORE ACTING]\n${res.output}`;
+        break;
+      }
+    }
+
+    const combinedRaw = primaryRaw + syncRaw + mistakesRaw;
     return {
       raw: combinedRaw,
       entries: parseEntries(combinedRaw),
@@ -165,6 +181,6 @@ export class MemoryManager {
   }
 
   shouldReadMemory(userMessage: string): boolean {
-    return /architecture|database|protocol|framework|infrastructure|migration|deployment|redis|cache|decision|adr|rationale|model|models|cost|price|pricing|stack|qwen|deepseek|gemini|opus|gpt|claude|tokens|token/i.test(userMessage);
+    return /architecture|database|protocol|framework|infrastructure|migration|deployment|redis|cache|decision|adr|rationale|model|models|cost|price|pricing|stack|qwen|deepseek|gemini|opus|gpt|claude|tokens|token|build|electron|package\.json|electron-builder|ipc|railway|vercel|ci|github.actions|release|version|bump|tag|config|tsconfig|webpack|pnpm|npm|yarn/i.test(userMessage);
   }
 }
