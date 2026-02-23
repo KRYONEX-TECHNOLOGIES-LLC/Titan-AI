@@ -128,7 +128,7 @@ export class PromptBuilder {
     return this;
   }
 
-  responseFormat(format: PromptConfig['responseFormat']): PromptBuilder {
+  responseFormat(format: 'text' | 'json' | 'markdown' | 'code'): PromptBuilder {
     this.config.responseFormat = format;
     return this;
   }
@@ -193,9 +193,10 @@ export class PromptBuilder {
       if (lastUserIdx !== -1) {
         const codeBlock = `\n\n\`\`\`${this.context.language || ''}\n${this.context.code}\n\`\`\``;
         const fileInfo = this.context.filePath ? `\nFile: ${this.context.filePath}\n` : '';
+        const msg = messages[lastUserIdx]!;
         messages[lastUserIdx] = {
-          ...messages[lastUserIdx],
-          content: `${fileInfo}${messages[lastUserIdx].content}${codeBlock}`,
+          ...msg,
+          content: `${fileInfo}${msg.content}${codeBlock}`,
         };
       }
     }

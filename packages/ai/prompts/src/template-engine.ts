@@ -102,7 +102,7 @@ export class TemplateEngine {
   private processConditionals(template: string, variables: Record<string, unknown>): string {
     const conditionalRegex = /\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
     
-    return template.replace(conditionalRegex, (match, varName, content) => {
+    return template.replace(conditionalRegex, (_match, varName, content) => {
       const value = variables[varName];
       const isTruthy = value !== undefined && value !== null && value !== false && value !== '';
       
@@ -117,7 +117,7 @@ export class TemplateEngine {
   private processLoops(template: string, variables: Record<string, unknown>): string {
     const loopRegex = /\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g;
     
-    return template.replace(loopRegex, (match, varName, content) => {
+    return template.replace(loopRegex, (_match, varName, content) => {
       const items = variables[varName];
       
       if (!Array.isArray(items)) {
