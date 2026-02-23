@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @titan/web exec next build"
+buildCommand = "npm i -g pnpm@9 && pnpm install --frozen-lockfile && pnpm --filter @titan/web exec next build"
 
 [deploy]
 startCommand = "node apps/web/.next/standalone/apps/web/server.js"
