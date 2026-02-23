@@ -68,7 +68,7 @@ async function main() {
   const minScore = parseInt(getArg('min-score') || '6', 10);
   const dryRun = hasFlag('dry-run');
 
-  const validSources = ['all', 'github', 'stackoverflow', 'docs', 'blog'];
+  const validSources = ['all', 'github', 'stackoverflow', 'docs', 'blog', 'dataset'];
   if (!validSources.includes(sourceArg)) {
     console.error(`Invalid source: ${sourceArg}. Use: ${validSources.join(', ')}`);
     process.exit(1);
@@ -98,12 +98,13 @@ async function main() {
   const result = await runFilterPipeline(scraped, batchId, minScore);
 
   console.log('\n=== Harvest Complete ===');
-  console.log(`Scraped:       ${result.total_input}`);
-  console.log(`After rules:   ${result.after_pass1}`);
-  console.log(`After AI judge:${result.after_pass2}`);
-  console.log(`After format:  ${result.after_pass3}`);
-  console.log(`After dedup:   ${result.after_pass4}`);
-  console.log(`Saved to DB:   ${result.saved}`);
+  console.log(`Scraped:          ${result.total_input}`);
+  console.log(`After rules:      ${result.after_pass1}`);
+  console.log(`AI content blocked: ${result.ai_rejected}`);
+  console.log(`After AI judge:   ${result.after_pass2}`);
+  console.log(`After format:     ${result.after_pass3}`);
+  console.log(`After dedup:      ${result.after_pass4}`);
+  console.log(`Saved to DB:      ${result.saved}`);
 }
 
 main().catch((err) => {

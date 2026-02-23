@@ -53,13 +53,14 @@ jobs:
             echo "topic=${{ inputs.topic }}" >> $GITHUB_OUTPUT
             echo "limit=${{ inputs.limit }}" >> $GITHUB_OUTPUT
           else
-            # Rotate sources daily: Mon=github, Tue=stackoverflow, Wed=docs, Thu=blog, Fri-Sun=all
+            # Rotate sources daily: Mon=github, Tue=stackoverflow, Wed=docs, Thu=blog, Fri=dataset, Sat-Sun=all
             DAY=$(date +%u)
             case $DAY in
               1) SRC="github" ;;
               2) SRC="stackoverflow" ;;
               3) SRC="docs" ;;
               4) SRC="blog" ;;
+              5) SRC="dataset" ;;
               *) SRC="all" ;;
             esac
             echo "source=$SRC" >> $GITHUB_OUTPUT

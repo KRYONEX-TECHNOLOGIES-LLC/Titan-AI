@@ -11,3 +11,5 @@ export { ForgeEvaluator } from './eval.js';
 export { ForgeVault } from './vault.js';
 export { ForgeHarvester, forgeHarvester } from './harvester.js';
 export { runFilterPipeline } from './harvester-filter.js';
+export { detectAIContent, detectAIHeuristic } from './ai-content-detector.js';
+export { samplePublicDatasets, sampleFineWebEdu, sampleTheStack, sampleThePile, sampleCodeSearchNet } from './harvester-datasets.js';

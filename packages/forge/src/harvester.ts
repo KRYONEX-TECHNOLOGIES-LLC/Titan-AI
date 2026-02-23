@@ -5,6 +5,7 @@
 
 import { createHash } from 'crypto';
 import { ForgeDB } from './db.js';
+import { samplePublicDatasets } from './harvester-datasets.js';
 import type { HarvestSource, HarvestSample } from './types.js';
 
 const db = new ForgeDB();
@@ -14,6 +15,7 @@ const RATE_LIMIT_MS: Record<HarvestSource, number> = {
   stackoverflow: 1500,
   docs: 1000,
   blog: 1500,
+  dataset: 600,
 };
 
 function sleep(ms: number): Promise<void> {
@@ -296,6 +298,12 @@ export class ForgeHarvester {
       const blogs = await scrapeBlogs(topic, limit);
       scraped.push(...blogs);
       console.log(`[harvester] Blogs: ${blogs.length} items`);
+    }
+
+    if (source === 'all' || source === 'dataset') {
+      const ds = await samplePublicDatasets(topic, limit);
+      scraped.push(...ds);
+      console.log(`[harvester] Public Datasets: ${ds.length} items`);
     }
 
     console.log(`[harvester] Total scraped: ${scraped.length} items`);

@@ -199,7 +199,7 @@ export interface ExportStats {
 
 // ── Harvest types (web scraper) ──
 
-export type HarvestSource = 'github' | 'stackoverflow' | 'docs' | 'blog';
+export type HarvestSource = 'github' | 'stackoverflow' | 'docs' | 'blog' | 'dataset';
 export type HarvestStatus = 'pending' | 'approved' | 'rejected' | 'migrated';
 
 export interface HarvestSample {

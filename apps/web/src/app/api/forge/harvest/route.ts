@@ -21,9 +21,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       total_input: result.total_input,
       after_pass1: result.after_pass1,
+      after_pass1_5: result.after_pass1_5,
       after_pass2: result.after_pass2,
       after_pass3: result.after_pass3,
       after_pass4: result.after_pass4,
+      ai_rejected: result.ai_rejected,
       saved: result.saved,
     });
   } catch (err) {

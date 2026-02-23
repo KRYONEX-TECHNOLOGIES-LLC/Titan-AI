@@ -29,7 +29,7 @@ interface ForgeStats {
 interface HarvestJob {
   status: 'idle' | 'scraping' | 'filtering' | 'complete' | 'error';
   message: string;
-  progress?: { scraped: number; filtered: number; saved: number };
+  progress?: { scraped: number; filtered: number; saved: number; aiRejected?: number };
 }
 
 export function ForgeDashboard() {
@@ -82,7 +82,12 @@ export function ForgeDashboard() {
       setHarvestJob({
         status: 'complete',
         message: `Harvest complete!`,
-        progress: { scraped: data.total_input, filtered: data.after_pass4, saved: data.saved },
+        progress: {
+          scraped: data.total_input,
+          filtered: data.after_pass4,
+          saved: data.saved,
+          aiRejected: data.ai_rejected || 0,
+        },
       });
 
       fetchStats();
@@ -259,11 +264,12 @@ export function ForgeDashboard() {
             value={harvestSource}
             onChange={(e) => setHarvestSource(e.target.value)}
           >
-            <option value="all">All Sources</option>
+            <option value="all">All Sources (Web + Datasets)</option>
             <option value="github">GitHub (Top Repos)</option>
             <option value="stackoverflow">Stack Overflow</option>
             <option value="docs">Official Docs</option>
             <option value="blog">Engineering Blogs</option>
+            <option value="dataset">Public Datasets (FineWeb, Stack, Pile, CodeSearchNet)</option>
           </select>
         </div>
 
@@ -340,8 +346,14 @@ export function ForgeDashboard() {
                   <span style={{ ...statLabelStyle, fontSize: '11px' }}>Scraped</span>
                   <span style={{ ...statValueStyle, fontSize: '11px' }}>{harvestJob.progress.scraped}</span>
                 </div>
+                {harvestJob.progress.aiRejected !== undefined && harvestJob.progress.aiRejected > 0 && (
+                  <div style={{ ...statCardStyle, padding: '2px 0' }}>
+                    <span style={{ ...statLabelStyle, fontSize: '11px', color: '#f44336' }}>AI Content Blocked</span>
+                    <span style={{ ...statValueStyle, fontSize: '11px', color: '#f44336' }}>{harvestJob.progress.aiRejected}</span>
+                  </div>
+                )}
                 <div style={{ ...statCardStyle, padding: '2px 0' }}>
-                  <span style={{ ...statLabelStyle, fontSize: '11px' }}>Passed Filters</span>
+                  <span style={{ ...statLabelStyle, fontSize: '11px' }}>Passed All Filters</span>
                   <span style={{ ...statValueStyle, fontSize: '11px' }}>{harvestJob.progress.filtered}</span>
                 </div>
                 <div style={{ ...statCardStyle, padding: '2px 0' }}>
