@@ -148,7 +148,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     supportsStreaming: true,
   },
   {
-    id: 'deepseek-reasoner',
+    id: 'deepseek-r1',
     provider: 'deepseek',
     tier: 'standard',
     contextWindow: 64000,
@@ -208,7 +208,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
   // QWEN MODELS
   // ============================================
   {
-    id: 'qwen3.5-plus-2026-02-15',
+    id: 'qwen3.5-plus-02-15',
     provider: 'qwen',
     tier: 'frontier',
     contextWindow: 1000000,

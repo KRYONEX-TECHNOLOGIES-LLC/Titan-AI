@@ -219,9 +219,9 @@ export class CascadeLogic {
  */
 export function createDefaultCascade(): CascadeConfig {
   // Frontier: Qwen3.5-Plus — frontier reasoning at economy price
-  const frontier = MODEL_REGISTRY.find(m => m.id === 'qwen3.5-plus-2026-02-15');
+  const frontier = MODEL_REGISTRY.find(m => m.id === 'qwen3.5-plus-02-15');
   // Standard: DeepSeek-Reasoner — chain-of-thought verification and planning
-  const standard = MODEL_REGISTRY.find(m => m.id === 'deepseek-reasoner');
+  const standard = MODEL_REGISTRY.find(m => m.id === 'deepseek-r1');
   // Economy: Qwen3-Coder-Next — purpose-built code generation
   const economy = MODEL_REGISTRY.find(m => m.id === 'qwen3-coder-next');
   // Local: free Ollama model for trivial tasks

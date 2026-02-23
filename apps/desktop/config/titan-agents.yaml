@@ -1,9 +1,11 @@
 # Titan-Governance Agent Configuration v2.0
 # All model IDs must match MODEL_REGISTRY in apps/web/src/lib/model-registry.ts
+# Last updated: 2026-02-23 — migrated from qwen/qwen-max + deepseek-reasoner
+# to qwen3.5-plus-02-15 + deepseek-r1 (valid OpenRouter IDs, 50x cheaper)
 
 agents:
   supervisor:
-    model: qwen/qwen-max
+    model: qwen3.5-plus-02-15
     fallback: claude-sonnet-4.6
     role: Supreme Architect & Task Decomposer
     reads: [memory.md, plan.md, checklist.md]
@@ -12,7 +14,7 @@ agents:
     max_reasoning: true
 
   executor:
-    model: deepseek-reasoner
+    model: deepseek-r1
     fallback: gemini-2.0-flash
     role: Principal Engineer & Tool Specialist
     reads: [plan.md]
@@ -23,7 +25,7 @@ agents:
 
   coder:
     model: qwen3-coder-next
-    fallback: qwen/qwen-max
+    fallback: qwen3.5-plus-02-15
     role: Technical Implementation Worker
     reads: []  # Receives only what Supervisor sends
     writes: []  # Output goes to Verifier, not to disk
@@ -31,8 +33,8 @@ agents:
     forbidden: [placeholders, todos, stubs, happy_path_only]
 
   verifier:
-    model: deepseek-reasoner
-    fallback: qwen/qwen-max
+    model: deepseek-r1
+    fallback: qwen3.5-plus-02-15
     role: Adversarial Quality Assassin
     reads: [checklist.md, plan.md]
     writes: [quality.log]
@@ -72,8 +74,8 @@ logging:
   violation_log: logs/violation.log
 
 cost_optimization:
-  cheap_models: [qwen3-coder-next, gemini-2.0-flash, deepseek-reasoner]
-  expensive_models: [qwen/qwen-max]
+  cheap_models: [qwen3-coder-next, gemini-2.0-flash, deepseek-r1]
+  expensive_models: [qwen3.5-plus-02-15]
   compute_split: "80-90% cheap workers, 10-20% planning + verification"
 
 # ═══ TITAN PROTOCOL v2: PARALLEL LANE CONFIGURATION ═══
@@ -92,12 +94,12 @@ protocol_v2:
     lane_timeout_ms: 300000  # 5 minutes per lane
 
   agents:
-    supervisor_model: qwen/qwen-max
+    supervisor_model: qwen3.5-plus-02-15
     default_worker_model: qwen3-coder-next
-    default_verifier_model: deepseek-reasoner
+    default_verifier_model: deepseek-r1
     executor_model: gemini-2.0-flash
-    worker_fallback: qwen/qwen-max
-    verifier_fallback: qwen/qwen-max
+    worker_fallback: qwen3.5-plus-02-15
+    verifier_fallback: qwen3.5-plus-02-15
 
   lane_lifecycle:
     statuses:
@@ -146,8 +148,8 @@ protocol_supreme:
   description: "Overseer/Operator/Primary Worker/Secondary Worker governance loop with zero-trust controls"
 
   agents:
-    overseer_model: qwen/qwen-max
-    operator_model: deepseek-reasoner
+    overseer_model: qwen3.5-plus-02-15
+    operator_model: deepseek-r1
     primary_worker_model: qwen3-coder-next
     secondary_worker_model: gemini-2.0-flash
 
@@ -189,12 +191,12 @@ protocol_omega:
   description: "Omega governance — Architect + Specialist Cadre + Sentinel + Operator with AST-aware changes, predictive scaffolding, and zero-trust execution"
 
   agents:
-    architect_model: qwen/qwen-max
-    sentinel_model: deepseek-reasoner
-    operator_model: deepseek-reasoner
+    architect_model: qwen3.5-plus-02-15
+    sentinel_model: deepseek-r1
+    operator_model: deepseek-r1
     specialist_low_risk: gemini-2.0-flash
     specialist_medium_risk: qwen3-coder-next
-    specialist_high_risk: qwen/qwen-max
+    specialist_high_risk: qwen3.5-plus-02-15
 
   limits:
     max_concurrent_specialists: 4

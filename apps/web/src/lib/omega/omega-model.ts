@@ -189,13 +189,13 @@ export const DEFAULT_OMEGA_CONFIG: OmegaConfig = {
   // Medium-risk specialist uses Qwen3-Coder-Next ($0.12/$0.75) — standard feature implementation.
   // High-risk specialist uses Qwen3.5-Plus ($0.40/$2.40) — complex logic, security-sensitive code.
   //   Previously used Opus ($15/$75) for high-risk — now 37x cheaper with equivalent reasoning depth.
-  architectModel: 'qwen3.5-plus-2026-02-15',
-  sentinelModel: 'deepseek-reasoner',
-  operatorModel: 'deepseek-reasoner',
+  architectModel: 'qwen3.5-plus-02-15',
+  sentinelModel: 'deepseek-r1',
+  operatorModel: 'deepseek-r1',
   specialistModels: {
     lowRisk: 'gemini-2.0-flash',
     mediumRisk: 'qwen3-coder-next',
-    highRisk: 'qwen3.5-plus-2026-02-15',
+    highRisk: 'qwen3.5-plus-02-15',
   },
   maxConcurrentSpecialists: 4,
   maxReworkAttempts: 2,

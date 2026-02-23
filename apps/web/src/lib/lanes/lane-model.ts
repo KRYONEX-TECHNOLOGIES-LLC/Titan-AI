@@ -274,9 +274,9 @@ export const DEFAULT_PROTOCOL_V2_CONFIG: ProtocolV2Config = {
   // Workers use Qwen3-Coder-Next ($0.12/$0.75) — purpose-built for code generation.
   // Verifiers use DeepSeek-Reasoner ($0.55/$2.19) — chain-of-thought verification at near-zero cost.
   // Executor uses Gemini 2.0 Flash ($0.075/$0.30) — fastest, cheapest tool-call executor available.
-  supervisorModel: 'qwen3.5-plus-2026-02-15',
+  supervisorModel: 'qwen3.5-plus-02-15',
   defaultWorkerModel: 'qwen3-coder-next',
-  defaultVerifierModel: 'deepseek-reasoner',
+  defaultVerifierModel: 'deepseek-r1',
   executorModel: 'gemini-2.0-flash',
 };
 

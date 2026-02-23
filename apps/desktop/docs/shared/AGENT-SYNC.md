@@ -27,13 +27,17 @@ changes.
 - Agent/role assignments live in `apps/desktop/config/titan-agents.yaml`
 - Architectural memory (ADRs) lives in `apps/desktop/docs/memory.md`
 
-### Current Model Stack (as of 2026-02-23)
-| Role | Model ID | Why |
-|------|----------|-----|
-| Supervisor / Architect / Overseer / Planner | `qwen3.5-plus-2026-02-15` | Frontier-class at $0.30/$1.20 — 37x cheaper than Opus |
-| Worker / Primary / Coder | `qwen3-coder-next` | Code-specialized, ~free at $0.20/$0.80 |
-| Verifier / Operator / Sentinel / Tool-Caller | `deepseek-reasoner` | Visible chain-of-thought verification at $0.70/$2.50 |
-| Executor / Secondary / Low-Risk | `gemini-2.0-flash` | Fastest tool-call executor at $0.075/$0.30 |
+### Current Model Stack (as of 2026-02-23 — CORRECTED OpenRouter IDs)
+| Role | Model ID (use this) | OpenRouter path | Why |
+|------|---------------------|-----------------|-----|
+| Supervisor / Architect / Overseer / Planner | `qwen3.5-plus-02-15` | `qwen/qwen3.5-plus-02-15` | Frontier-class at $0.30/$1.20 — 37x cheaper than Opus |
+| Worker / Primary / Coder | `qwen3-coder-next` | `qwen/qwen3-coder-next` | Code-specialized, near-free at $0.12/$0.75 |
+| Verifier / Operator / Sentinel / Tool-Caller | `deepseek-r1` | `deepseek/deepseek-r1` | Visible chain-of-thought at $0.70/$2.50 |
+| Executor / Secondary / Low-Risk | `gemini-2.0-flash` | `google/gemini-2.0-flash-001` | Fastest tool-call executor at $0.075/$0.30 |
+
+**CRITICAL — these old IDs caused HTTP 400 errors and must NEVER be used again:**
+- ~~`qwen3.5-plus-2026-02-15`~~ → was NOT a valid OpenRouter ID. Use `qwen3.5-plus-02-15`
+- ~~`deepseek-reasoner`~~ → was NOT a valid OpenRouter ID. Use `deepseek-r1`
 
 **DO NOT route back to `claude-opus-4.6`, `gpt-5.3`, or `qwen3-coder` (old version).
 Those are retired. Using them will silently 10–130x the cost per run.**
@@ -260,7 +264,26 @@ git push origin main
 
 <!-- NEW ENTRIES BELOW THIS LINE -->
 
-### 2026-02-23 | Cursor AI
+### 2026-02-23 | Cursor AI — OpenRouter model ID fix (CRITICAL)
+- **Error encountered:** `Titan Protocol v2 — Supervisor LLM call failed (400): qwen/qwen3.5-plus-2026-02-15 is not a valid model ID`
+- **Root cause:** We were using wrong OpenRouter model IDs throughout all protocol configs. The suffix format was wrong for Qwen3.5 Plus, and `deepseek-reasoner` is not a real OpenRouter path.
+- **All files fixed (verified zero remaining bad IDs):**
+  - `apps/web/src/lib/model-registry.ts` — removed duplicate `deepseek-reasoner` entry, fixed Qwen ID
+  - `apps/web/src/lib/lanes/lane-model.ts` — supervisor + verifier model IDs corrected
+  - `apps/web/src/lib/supreme/supreme-model.ts` — overseer + operator model IDs corrected
+  - `apps/web/src/lib/omega/omega-model.ts` — architect + sentinel + operator + highRisk IDs corrected
+  - `apps/web/src/hooks/useChat.ts` — TITAN_PLANNER + TITAN_TOOL_CALLER constants corrected
+  - `packages/ai/gateway/src/model-registry.ts` — IDs corrected
+  - `packages/ai/router/src/cascade-logic.ts` — IDs corrected
+  - `apps/desktop/config/titan-agents.yaml` — all agent + protocol section IDs corrected
+- **Correct IDs (commit to memory):**
+  - Supervisor/Architect/Overseer: `qwen3.5-plus-02-15` → `qwen/qwen3.5-plus-02-15`
+  - Verifier/Sentinel/Operator: `deepseek-r1` → `deepseek/deepseek-r1`
+  - Worker/Coder: `qwen3-coder-next` → `qwen/qwen3-coder-next`
+  - Executor/Flash: `gemini-2.0-flash` → `google/gemini-2.0-flash-001`
+- Aliases added to `MODEL_ID_ALIASES` so old stored sessions auto-redirect.
+
+### 2026-02-23 | Cursor AI — packaged-app crash fix
 - Fix for packaged-app crash: `Cannot find module './ipc/tools.js'`
   - Root cause: TypeScript incremental cache (`apps/desktop/tsconfig.tsbuildinfo`) can survive cleans and cause `tsc` to skip emitting compiled files, leaving `dist/` missing `ipc/*.js` in the packaged app.
   - Permanent fix: update desktop clean script to delete `tsconfig.tsbuildinfo` (`rimraf dist out tsconfig.tsbuildinfo`), then rebuild (`pnpm run pack:win`) and re-upload the installer asset to the GitHub release.

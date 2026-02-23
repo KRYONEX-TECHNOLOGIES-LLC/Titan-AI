@@ -188,8 +188,8 @@ export const DEFAULT_SUPREME_CONFIG: SupremeConfig = {
   // Primary Worker uses Qwen3-Coder-Next ($0.12/$0.75) — purpose-built code generation.
   // Secondary Worker uses Gemini 2.0 Flash ($0.075/$0.30) — fastest, cheapest for docs/formatting tasks.
   models: {
-    overseer: 'qwen3.5-plus-2026-02-15',
-    operator: 'deepseek-reasoner',
+    overseer: 'qwen3.5-plus-02-15',
+    operator: 'deepseek-r1',
     primaryWorker: 'qwen3-coder-next',
     secondaryWorker: 'gemini-2.0-flash',
   },

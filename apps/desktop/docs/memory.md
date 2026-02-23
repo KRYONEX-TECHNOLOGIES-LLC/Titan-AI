@@ -96,5 +96,34 @@
 | qwen3-coder | qwen3-coder-next | Newer version, better code quality |
 | llama-4-maverick | gemini-2.0-flash | Faster, cheaper, Google-hosted reliability |
 
+## ADR-009: Model ID Correction — OpenRouter 400 Errors
+- **Decision:** The model IDs `qwen3.5-plus-2026-02-15` and `deepseek-reasoner` are NOT valid OpenRouter model IDs and must never be used. The correct IDs are `qwen3.5-plus-02-15` and `deepseek-r1`.
+- **Rationale:** Titan Protocol v2 crashed at runtime with HTTP 400 "not a valid model ID" errors because we were using wrong ID format. Verified against OpenRouter documentation.
+- **Date:** 2026-02-23
+- **Task ID:** MODEL-ID-FIX-001
+- **Status:** ACTIVE
+- **Supersedes:** Part of ADR-008 (the model ID column was wrong, the model names were right)
+
+### Canonical Model ID Table (use ONLY these)
+
+| Role | Internal ID | OpenRouter Path | Cost In | Cost Out |
+|------|-------------|-----------------|---------|----------|
+| Supervisor / Architect / Overseer | `qwen3.5-plus-02-15` | `qwen/qwen3.5-plus-02-15` | $0.30/M | $1.20/M |
+| Worker / Primary / Coder | `qwen3-coder-next` | `qwen/qwen3-coder-next` | $0.12/M | $0.75/M |
+| Verifier / Operator / Sentinel | `deepseek-r1` | `deepseek/deepseek-r1` | $0.70/M | $2.50/M |
+| Executor / Secondary / Low-Risk | `gemini-2.0-flash` | `google/gemini-2.0-flash-001` | $0.075/M | $0.30/M |
+
+### Files updated in this fix
+- `apps/web/src/lib/model-registry.ts`
+- `apps/web/src/lib/lanes/lane-model.ts`
+- `apps/web/src/lib/supreme/supreme-model.ts`
+- `apps/web/src/lib/omega/omega-model.ts`
+- `apps/web/src/hooks/useChat.ts`
+- `packages/ai/gateway/src/model-registry.ts`
+- `packages/ai/router/src/cascade-logic.ts`
+- `apps/desktop/config/titan-agents.yaml`
+
+---
+
 <!-- NEW ENTRIES BELOW THIS LINE -->
 

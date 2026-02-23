@@ -27,6 +27,9 @@ export const MODEL_ID_ALIASES: Record<string, string> = {
   'claude-4.6-sonnet': 'claude-sonnet-4.6',
   'gemini-2.0-pro': 'gemini-2.5-pro',
   'titan-supreme': 'titan-supreme-protocol',
+  // Old incorrect model IDs — redirect to verified OpenRouter IDs
+  'qwen3.5-plus-2026-02-15': 'qwen3.5-plus-02-15',
+  'deepseek-reasoner': 'deepseek-r1',
 };
 
 export function normalizeModelId(modelId: string): string {
@@ -69,8 +72,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
 
   // ═══ DEEPSEEK ═══
   { id: 'deepseek-chat', providerModelId: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'DeepSeek', tier: 'economy', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.14, costPer1MOutput: 0.28, description: 'Excellent code generation' },
-  { id: 'deepseek-r1', providerModelId: 'deepseek/deepseek-r1', name: 'DeepSeek R1', provider: 'DeepSeek', tier: 'standard', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.7, costPer1MOutput: 2.5, description: 'Reasoning with chain-of-thought' },
-  { id: 'deepseek-reasoner', providerModelId: 'deepseek/deepseek-reasoner', name: 'DeepSeek Reasoner', provider: 'DeepSeek', tier: 'standard', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.7, costPer1MOutput: 2.5, description: 'Chain-of-thought verification with visible reasoning trace' },
+  { id: 'deepseek-r1', providerModelId: 'deepseek/deepseek-r1', name: 'DeepSeek R1', provider: 'DeepSeek', tier: 'standard', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.7, costPer1MOutput: 2.5, description: 'Chain-of-thought verification with visible reasoning trace' },
   { id: 'deepseek-v3.2', providerModelId: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', provider: 'DeepSeek', tier: 'standard', contextWindow: 163840, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.26, costPer1MOutput: 0.38, description: 'GPT-5 class reasoning, gold-medal IMO/IOI performance' },
 
   // ═══ MISTRAL ═══
@@ -93,7 +95,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
 
   // ═══ QWEN ═══
   { id: 'qwen3-max-thinking', providerModelId: 'qwen/qwen3-max-thinking', name: 'Qwen3 Max Thinking', provider: 'Qwen', tier: 'frontier', contextWindow: 262000, maxOutputTokens: 16384, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 1.2, costPer1MOutput: 6, description: 'Flagship Qwen3 reasoning model — deep multi-step thinking, top-tier factual accuracy and agentic behavior' },
-  { id: 'qwen3.5-plus-2026-02-15', providerModelId: 'qwen/qwen3.5-plus-2026-02-15', name: 'Qwen3.5 Plus', provider: 'Qwen', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.4, costPer1MOutput: 2.4, description: 'Frontier reasoning with 1M context at economy price' },
+  { id: 'qwen3.5-plus-02-15', providerModelId: 'qwen/qwen3.5-plus-02-15', name: 'Qwen3.5 Plus', provider: 'Qwen', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.4, costPer1MOutput: 2.4, description: 'Frontier reasoning with 1M context at economy price' },
   { id: 'qwen3.5-397b-a17b', providerModelId: 'qwen/qwen3.5-397b-a17b-20260216', name: 'Qwen3.5 397B A17B', provider: 'Qwen', tier: 'frontier', contextWindow: 262000, maxOutputTokens: 16384, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.15, costPer1MOutput: 1, description: 'Massive 397B MoE — SOTA across reasoning, code, vision, and agent tasks at near-economy pricing' },
   { id: 'qwen3-coder', providerModelId: 'qwen/qwen3-coder', name: 'Qwen3 Coder', provider: 'Qwen', tier: 'frontier', contextWindow: 256000, maxOutputTokens: 65536, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.4, costPer1MOutput: 1.6, description: 'Top-tier open coding model' },
   { id: 'qwen3-coder-next', providerModelId: 'qwen/qwen3-coder-next', name: 'Qwen3 Coder Next', provider: 'Qwen', tier: 'economy', contextWindow: 262000, maxOutputTokens: 16384, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.12, costPer1MOutput: 0.75, description: 'Purpose-built code generation at near-zero cost' },
