@@ -43,6 +43,12 @@ const PATH_CANDIDATES = [
   'apps/desktop/docs/memory.md',
 ];
 
+// Supplemental shared-context files (read in addition to the primary memory file)
+const SYNC_FILE_CANDIDATES = [
+  'docs/shared/AGENT-SYNC.md',
+  'apps/desktop/docs/shared/AGENT-SYNC.md',
+];
+
 function parseEntries(raw: string): ADREntry[] {
   const blocks = raw.split(/\n##\s+/).slice(1);
   const entries: ADREntry[] = [];
@@ -72,17 +78,34 @@ function nextAdrId(entries: ADREntry[]): string {
 
 export class MemoryManager {
   async readMemory(executeToolCall: MemoryExecutor['executeToolCall']): Promise<MemoryState> {
+    let primaryRaw = '';
+    let primaryPath = PATH_CANDIDATES[1];
+
     for (const path of PATH_CANDIDATES) {
       const res = await executeToolCall('read_file', { path });
       if (res.success && res.output) {
-        return {
-          raw: res.output,
-          entries: parseEntries(res.output),
-          memoryPath: path,
-        };
+        primaryRaw = res.output;
+        primaryPath = path;
+        break;
       }
     }
-    return { raw: '', entries: [], memoryPath: PATH_CANDIDATES[1] };
+
+    // Also read the shared AGENT-SYNC file and append it as supplemental context
+    let syncRaw = '';
+    for (const path of SYNC_FILE_CANDIDATES) {
+      const res = await executeToolCall('read_file', { path });
+      if (res.success && res.output) {
+        syncRaw = `\n\n---\n[AGENT-SYNC — Shared Change Log]\n${res.output}`;
+        break;
+      }
+    }
+
+    const combinedRaw = primaryRaw + syncRaw;
+    return {
+      raw: combinedRaw,
+      entries: parseEntries(combinedRaw),
+      memoryPath: primaryPath,
+    };
   }
 
   async appendDecision(
