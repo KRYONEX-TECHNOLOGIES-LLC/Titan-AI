@@ -119,4 +119,24 @@ before ignoring to clean the index.
 - After making a mistake: append a new entry using the format above
 - Append new entries at the bottom, never edit existing entries
 
+---
+
+## MISTAKE-010: Forgot to push tag after version bump — no release triggered
+**Date:** 2026-02-23
+**What happened:** Titan bumped the version and pushed the commit to main, but forgot to
+create and push the `v*` tag. No GitHub Actions build triggered. No installer was built.
+No update was published. The download button on titan.kryonex.com still served the old version.
+Mateo had to come to Cursor to trigger the release manually.
+**What broke:** The entire auto-update pipeline was dead — no new download, no update popup.
+**Root cause:** Did not follow the complete 5-step release workflow. Skipped Step 4 (tag) and Step 5 (verify).
+**Rule added:** After EVERY version bump commit+push, you MUST immediately:
+  1. `git tag vX.Y.Z`
+  2. `git push origin vX.Y.Z`
+  3. `gh run list --workflow release-desktop.yml --limit 1` to confirm pipeline started
+Without the tag push, NOTHING happens. The tag is the trigger. No exceptions.
+**Self-project fingerprint (so you never confuse this with a user project):**
+  GitHub Repo ID: R_kgDORSBKiA | Owner: KRYONEX-TECHNOLOGIES-LLC | Repo: Titan-AI
+  Detection: `git remote get-url origin` must contain "KRYONEX-TECHNOLOGIES-LLC/Titan-AI"
+**Recovery cost:** Manual tag creation and push by Cursor, wasted user time.
+
 <!-- NEW MISTAKES BELOW THIS LINE -->

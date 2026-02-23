@@ -1,0 +1,88 @@
+name: Forge Harvest
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Every day at 2:00 AM UTC
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Source to scrape (all, github, stackoverflow, docs, blog)'
+        default: 'all'
+        required: false
+      topic:
+        description: 'Topic to focus on'
+        default: 'all'
+        required: false
+      limit:
+        description: 'Max items to scrape per source'
+        default: '20'
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build forge package
+        run: pnpm --filter @titan/forge run build
+
+      - name: Determine source for scheduled runs
+        id: source
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "source=${{ inputs.source }}" >> $GITHUB_OUTPUT
+            echo "topic=${{ inputs.topic }}" >> $GITHUB_OUTPUT
+            echo "limit=${{ inputs.limit }}" >> $GITHUB_OUTPUT
+          else
+            # Rotate sources daily: Mon=github, Tue=stackoverflow, Wed=docs, Thu=blog, Fri-Sun=all
+            DAY=$(date +%u)
+            case $DAY in
+              1) SRC="github" ;;
+              2) SRC="stackoverflow" ;;
+              3) SRC="docs" ;;
+              4) SRC="blog" ;;
+              *) SRC="all" ;;
+            esac
+            echo "source=$SRC" >> $GITHUB_OUTPUT
+            echo "topic=all" >> $GITHUB_OUTPUT
+            echo "limit=30" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run harvest
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pnpm --filter @titan/forge run harvest -- \
+            --source ${{ steps.source.outputs.source }} \
+            --topic "${{ steps.source.outputs.topic }}" \
+            --limit ${{ steps.source.outputs.limit }}
+
+      - name: Print stats
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm --filter @titan/forge run harvest -- --stats

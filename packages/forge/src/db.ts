@@ -11,6 +11,7 @@ import type {
   SampleOutcome,
   TrainingRunStatus,
   EvalMetrics,
+  HarvestSample,
 } from './types.js';
 
 let _client: SupabaseClient | null = null;
@@ -338,6 +339,196 @@ export class ForgeDB {
     } catch (err) {
       console.error('[forge/db] getEvalSummary threw:', (err as Error).message);
       return null;
+    }
+  }
+
+  // ── Harvest (web scraper) ──
+
+  async insertHarvest(
+    sample: Omit<HarvestSample, 'id' | 'created_at'>,
+  ): Promise<string | null> {
+    try {
+      const db = getClient();
+      const { data, error } = await db
+        .from('forge_harvest')
+        .insert({
+          source: sample.source,
+          source_url: sample.source_url,
+          batch_id: sample.batch_id,
+          instruction: sample.instruction,
+          response: sample.response,
+          quality_score: sample.quality_score,
+          quality_reason: sample.quality_reason,
+          tags: sample.tags,
+          language: sample.language,
+          char_count: sample.char_count,
+          status: sample.status,
+          prompt_hash: sample.prompt_hash,
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('[forge/db] insertHarvest failed:', error.message);
+        return null;
+      }
+      return (data as { id: string }).id;
+    } catch (err) {
+      console.error('[forge/db] insertHarvest threw:', (err as Error).message);
+      return null;
+    }
+  }
+
+  async harvestDedupCheck(promptHash: string): Promise<boolean> {
+    try {
+      const db = getClient();
+      const { data } = await db
+        .from('forge_harvest')
+        .select('id')
+        .eq('prompt_hash', promptHash)
+        .limit(1);
+      return (data?.length ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  async getHarvestForReview(
+    limit: number = 50,
+  ): Promise<HarvestSample[]> {
+    try {
+      const db = getClient();
+      const { data, error } = await db
+        .from('forge_harvest')
+        .select('*')
+        .eq('status', 'pending')
+        .order('quality_score', { ascending: false })
+        .limit(limit);
+
+      if (error) return [];
+      return (data as HarvestSample[]) || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async approveHarvest(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    try {
+      const db = getClient();
+      const { error } = await db
+        .from('forge_harvest')
+        .update({ status: 'approved' })
+        .in('id', ids);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  async rejectHarvest(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    try {
+      const db = getClient();
+      const { error } = await db
+        .from('forge_harvest')
+        .update({ status: 'rejected' })
+        .in('id', ids);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  async insertHarvestBatch(batch: {
+    id: string;
+    source: string;
+    topic: string | null;
+    total_scraped: number;
+    passed_filter: number;
+    rejected: number;
+    status: string;
+  }): Promise<boolean> {
+    try {
+      const db = getClient();
+      const { error } = await db
+        .from('forge_harvest_batches')
+        .insert({
+          id: batch.id,
+          source: batch.source,
+          topic: batch.topic,
+          total_scraped: batch.total_scraped,
+          passed_filter: batch.passed_filter,
+          rejected: batch.rejected,
+          status: batch.status,
+        });
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  async updateHarvestBatch(
+    batchId: string,
+    updates: { passed_filter?: number; rejected?: number; status?: string },
+  ): Promise<boolean> {
+    try {
+      const db = getClient();
+      const row: Record<string, unknown> = { ...updates };
+      if (updates.status === 'completed' || updates.status === 'failed') {
+        row.completed_at = new Date().toISOString();
+      }
+      const { error } = await db
+        .from('forge_harvest_batches')
+        .update(row)
+        .eq('id', batchId);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  async getHarvestStats(): Promise<{
+    total: number;
+    approved: number;
+    migrated: number;
+    rejected: number;
+    pending: number;
+    bySource: Record<string, number>;
+    byLanguage: Record<string, number>;
+    recentBatches: Array<Record<string, unknown>>;
+  }> {
+    try {
+      const db = getClient();
+      const [totalRes, approvedRes, migratedRes, rejectedRes, pendingRes, sourceRes, batchRes] = await Promise.all([
+        db.from('forge_harvest').select('id', { count: 'exact', head: true }),
+        db.from('forge_harvest').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
+        db.from('forge_harvest').select('id', { count: 'exact', head: true }).eq('status', 'migrated'),
+        db.from('forge_harvest').select('id', { count: 'exact', head: true }).eq('status', 'rejected'),
+        db.from('forge_harvest').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        db.from('forge_harvest').select('source, language'),
+        db.from('forge_harvest_batches').select('*').order('started_at', { ascending: false }).limit(10),
+      ]);
+
+      const bySource: Record<string, number> = {};
+      const byLanguage: Record<string, number> = {};
+      for (const row of (sourceRes.data || []) as Array<{ source: string; language: string }>) {
+        bySource[row.source] = (bySource[row.source] || 0) + 1;
+        byLanguage[row.language] = (byLanguage[row.language] || 0) + 1;
+      }
+
+      return {
+        total: totalRes.count || 0,
+        approved: approvedRes.count || 0,
+        migrated: migratedRes.count || 0,
+        rejected: rejectedRes.count || 0,
+        pending: pendingRes.count || 0,
+        bySource,
+        byLanguage,
+        recentBatches: (batchRes.data || []) as Array<Record<string, unknown>>,
+      };
+    } catch {
+      return { total: 0, approved: 0, migrated: 0, rejected: 0, pending: 0, bySource: {}, byLanguage: {}, recentBatches: [] };
     }
   }
 }

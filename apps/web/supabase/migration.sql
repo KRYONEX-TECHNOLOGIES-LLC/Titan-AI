@@ -148,14 +148,58 @@ CREATE TABLE IF NOT EXISTS forge_evals (
 CREATE INDEX IF NOT EXISTS idx_forge_evals_run     ON forge_evals(run_id);
 CREATE INDEX IF NOT EXISTS idx_forge_evals_created ON forge_evals(created_at DESC);
 
+-- forge_harvest: Web-scraped training data (from Forge Harvester)
+CREATE TABLE IF NOT EXISTS forge_harvest (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  source           TEXT NOT NULL CHECK (source IN ('github', 'stackoverflow', 'docs', 'blog')),
+  source_url       TEXT NOT NULL DEFAULT '',
+  batch_id         TEXT NOT NULL,
+  instruction      TEXT NOT NULL DEFAULT '',
+  response         TEXT NOT NULL DEFAULT '',
+  quality_score    SMALLINT NOT NULL DEFAULT 0 CHECK (quality_score >= 0 AND quality_score <= 10),
+  quality_reason   TEXT NOT NULL DEFAULT '',
+  tags             JSONB NOT NULL DEFAULT '[]'::jsonb,
+  language         TEXT NOT NULL DEFAULT 'general',
+  char_count       INTEGER NOT NULL DEFAULT 0,
+  status           TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'migrated')),
+  prompt_hash      TEXT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_forge_harvest_status   ON forge_harvest(status);
+CREATE INDEX IF NOT EXISTS idx_forge_harvest_source   ON forge_harvest(source);
+CREATE INDEX IF NOT EXISTS idx_forge_harvest_score    ON forge_harvest(quality_score DESC);
+CREATE INDEX IF NOT EXISTS idx_forge_harvest_hash     ON forge_harvest(prompt_hash);
+CREATE INDEX IF NOT EXISTS idx_forge_harvest_batch    ON forge_harvest(batch_id);
+CREATE INDEX IF NOT EXISTS idx_forge_harvest_created  ON forge_harvest(created_at DESC);
+
+-- forge_harvest_batches: Metadata for each scraping run
+CREATE TABLE IF NOT EXISTS forge_harvest_batches (
+  id               TEXT PRIMARY KEY,
+  source           TEXT NOT NULL,
+  topic            TEXT,
+  started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at     TIMESTAMPTZ,
+  total_scraped    INTEGER NOT NULL DEFAULT 0,
+  passed_filter    INTEGER NOT NULL DEFAULT 0,
+  rejected         INTEGER NOT NULL DEFAULT 0,
+  status           TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_forge_harvest_batches_status ON forge_harvest_batches(status);
+
 -- RLS for Forge tables (service role bypasses, no public access)
 ALTER TABLE forge_samples ENABLE ROW LEVEL SECURITY;
 ALTER TABLE forge_runs    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE forge_evals   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forge_harvest ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forge_harvest_batches ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Service role full access" ON forge_samples FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON forge_runs    FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Service role full access" ON forge_evals   FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access" ON forge_harvest FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access" ON forge_harvest_batches FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================================================
 -- Row-Level Security policies (optional but recommended)

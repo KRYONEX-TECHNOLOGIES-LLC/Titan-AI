@@ -74,3 +74,8 @@ secrets.json
 
 # Desktop build artifacts
 apps/desktop/out-new/
+
+# Forge backups (pushed to forge-backups branch by CI, not main)
+packages/forge/backups/
+packages/forge/training-data/
+packages/forge/output/

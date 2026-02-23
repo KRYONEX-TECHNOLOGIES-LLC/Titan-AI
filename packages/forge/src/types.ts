@@ -196,3 +196,76 @@ export interface ExportStats {
   by_outcome: Record<string, number>;
   date_range: { earliest: string; latest: string };
 }
+
+// ── Harvest types (web scraper) ──
+
+export type HarvestSource = 'github' | 'stackoverflow' | 'docs' | 'blog';
+export type HarvestStatus = 'pending' | 'approved' | 'rejected' | 'migrated';
+
+export interface HarvestSample {
+  id: string;
+  source: HarvestSource;
+  source_url: string;
+  batch_id: string;
+  instruction: string;
+  response: string;
+  quality_score: number;
+  quality_reason: string;
+  tags: string[];
+  language: string;
+  char_count: number;
+  status: HarvestStatus;
+  prompt_hash: string;
+  created_at: string;
+}
+
+export interface HarvestBatch {
+  id: string;
+  source: HarvestSource;
+  topic: string | null;
+  started_at: string;
+  completed_at: string | null;
+  total_scraped: number;
+  passed_filter: number;
+  rejected: number;
+  status: 'running' | 'completed' | 'failed';
+}
+
+export interface HarvestStats {
+  total_harvested: number;
+  total_approved: number;
+  total_migrated: number;
+  total_rejected: number;
+  by_source: Record<string, number>;
+  by_language: Record<string, number>;
+  recent_batches: HarvestBatch[];
+}
+
+// ── Vault types (backup) ──
+
+export interface VaultSnapshot {
+  timestamp: string;
+  samples_count: number;
+  harvest_count: number;
+  runs_count: number;
+  evals_count: number;
+  sha256: string;
+  size_bytes: number;
+}
+
+// ── Forge Dashboard stats (sent to UI) ──
+
+export interface ForgeDashboardStats {
+  distillation: {
+    total_samples: number;
+    high_value: number;
+    exported: number;
+    by_model: Record<string, number>;
+    by_outcome: Record<string, number>;
+  };
+  harvest: HarvestStats;
+  vault: {
+    last_backup: string | null;
+    total_snapshots: number;
+  };
+}

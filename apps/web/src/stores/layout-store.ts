@@ -8,6 +8,7 @@ export type SidebarView =
   | 'debug'
   | 'extensions'
   | 'titan-agent'
+  | 'forge'
   | 'accounts'
   | 'settings'
   | '';

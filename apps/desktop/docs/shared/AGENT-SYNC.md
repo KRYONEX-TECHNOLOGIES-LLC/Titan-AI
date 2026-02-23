@@ -221,57 +221,107 @@ When Mateo says it is time — execute the steps above and fly.
 
 ---
 
+## SELF-PROJECT IDENTITY — HARDCODED FINGERPRINT (READ THIS FIRST)
+
+**Titan, when you are working inside THIS project, you are editing YOUR OWN BRAIN.**
+This section tells you how to detect that, and what rules are MANDATORY when you are.
+
+### How to detect you are in the Titan AI self-project:
+
+| Check | Expected Value |
+|-------|---------------|
+| **GitHub Repo ID** | `R_kgDORSBKiA` |
+| **Repo Name** | `Titan-AI` |
+| **Owner** | `KRYONEX-TECHNOLOGIES-LLC` |
+| **Remote URL** | `https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI.git` |
+| **Root package.json "name"** | `titan-ai` |
+| **Workspace folders** | `apps/desktop` + `apps/web` + `packages/forge` |
+
+**Detection command:** `run_command("git remote get-url origin")`
+- If output contains `KRYONEX-TECHNOLOGIES-LLC/Titan-AI` → **YOU ARE IN SELF-PROJECT**
+- If it does NOT match → you are in a user's project. Release rules do NOT apply.
+
+---
+
 ## HOW TO UPDATE THE DOWNLOAD ON TITAN.KRYONEX.COM
 
-**The app has auto-update built in.** When you push a release, users' Titan Desktop will
-pop up "Update Available", download the new version, and restart automatically.
+> **Only applies when self-project detected (see fingerprint above)**
 
-You do NOT build locally. GitHub Actions builds in the cloud. This avoids file-lock
-issues where you cannot rebuild while the app is running.
+**The app has auto-update built in.** When you push a tagged release:
+- `titan.kryonex.com` download button serves the new version (for NEW users visiting the site)
+- Existing users get an **"Update Available" popup** within 30 minutes (or on next launch)
+- The popup has an Install button — one click removes old version, installs new, restarts automatically
+- You do NOT build locally. GitHub Actions builds in the cloud. Zero file-lock issues.
 
-### Release workflow (3 steps only):
+### Release Workflow — THE EXACT STEPS (do not deviate)
 
-**Step 1: Bump version** in BOTH package.json files:
-- `apps/desktop/package.json` → update `"version"`
-- `package.json` (root) → update `"version"` to match
-
-Use semantic versioning:
-- `X.Y.Z+1` for bug fixes (0.1.1 → 0.1.2)
-- `X.Y+1.0` for new features (0.1.2 → 0.2.0)
-- `X+1.0.0` for breaking changes (0.2.0 → 1.0.0)
-
-**Step 2: Commit and push:**
+**Step 1: Verify you are in self-project:**
 ```bash
-git add -A
-git commit -m "chore: bump version to vX.Y.Z"
-git push origin main
+git remote get-url origin
+# Must output: https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI.git
+# If it doesn't → STOP. You are NOT in the Titan project.
 ```
 
-**Step 3: Tag and push the tag (this triggers the build):**
+**Step 2: Read current version and decide new version:**
+```bash
+# Read current from package.json → e.g. "0.2.2"
+# Patch (bug fix):    0.2.2 → 0.2.3
+# Minor (feature):    0.2.2 → 0.3.0
+# Major (breaking):   0.2.2 → 1.0.0
+```
+
+**Step 3: Bump version in EXACTLY 2 files (must match):**
+- `package.json` (root) → update `"version"` to `"X.Y.Z"`
+- `apps/desktop/package.json` → update `"version"` to `"X.Y.Z"`
+- **Both MUST be identical.** Mismatch = broken auto-update.
+
+**Step 4: Commit and push:**
+```bash
+git add -A
+git commit -m "chore: bump to vX.Y.Z"
+git push origin main
+```
+If push is rejected: `git pull --rebase origin main` then push again.
+
+**Step 5: Create and push the tag (THIS IS THE TRIGGER — nothing happens without this):**
 ```bash
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-**DONE.** GitHub Actions will:
-1. Build the installer + `latest.yml` on a cloud Windows machine
-2. Upload both to a GitHub Release
-3. Update `manifest.json` and push it
+**Step 6: Verify the CI pipeline started:**
+```bash
+gh run list --workflow release-desktop.yml --limit 1
+# Should show "in_progress" or "queued"
+# If "failed" → run: gh run view <ID> --log-failed
+```
 
-Users running Titan Desktop will see an update popup within 30 minutes (or on next launch).
+### What happens automatically after tag push:
+
+1. GitHub Actions `release-desktop.yml` triggers on the `v*` tag
+2. Spins up a **Windows cloud machine** — builds .exe installer + `latest.yml`
+3. Creates GitHub Release `vX.Y.Z` with installer attached
+4. Updates `manifest.json` with new version + download URL, pushes it
+5. Railway auto-deploys → `titan.kryonex.com` shows new download link
+6. `electron-updater` in existing installs detects new release → shows update popup
 
 ### CRITICAL RULES:
 - DO NOT run `pnpm run pack:win` locally — you will hit file locks because the app is running
 - DO NOT manually create GitHub releases — the CI does it automatically
-- DO NOT skip the tag push — without it, nothing happens
-- DO NOT change `electron-builder.config.js` — see KNOWN ISSUES below
+- DO NOT skip the tag push — without it, **nothing happens**
+- DO NOT change `electron-builder.config.js` — see KNOWN ISSUES above
+- DO NOT push a tag on code that doesn't compile — verify `tsc` first
+- DO NOT forget Step 6 — **always confirm** the pipeline started
+- DO NOT push tags in someone else's project — self-project rules ONLY apply here
 
 ### When to release:
 - After fixing bugs that affect user experience
 - After adding new features
 - After updating model IDs or configs
+- After performance optimizations
 - After any change Mateo explicitly asks to be released
 - **NEVER skip this** when Mateo says "update the download" or "make a new version"
+- When in doubt: **ASK Mateo** if he wants a release, don't guess
 
 ---
 
@@ -408,4 +458,59 @@ Users running Titan Desktop will see an update popup within 30 minutes (or on ne
 - Read mistakes.md if working on: electron, IPC, build scripts, package.json, CI, model IDs
 - NEVER touch packages/forge/* without reading this section first
 - NEVER remove the Forge hooks from route.ts or useChat.ts — they are the data collection pipeline
+
+### 2026-02-23 | Cursor AI — Forge Vault (Backup System) + Forge Harvester (Web Scraper)
+
+**Summary:** Added two major systems to Forge: automated backup and autonomous web scraping.
+
+**Forge Vault (Backup System):**
+- `packages/forge/src/vault.ts` — Full/incremental snapshot exports to JSONL with SHA256 integrity
+- `.github/workflows/forge-backup.yml` — Weekly automated backup (Sundays 3AM UTC) to `forge-backups` branch
+- CLI: `pnpm --filter @titan/forge run backup` (manual) or `--list` (view snapshots)
+- Keeps last 12 snapshots, rotates old ones automatically
+- Exports ALL forge tables: forge_samples, forge_harvest, forge_runs, forge_evals
+
+**Forge Harvester (Web Scraper):**
+- `packages/forge/src/harvester.ts` — Source adapters for GitHub API, Stack Exchange API, official docs, engineering blogs
+- `packages/forge/src/harvester-filter.ts` — 4-pass filter pipeline:
+  - Pass 1: Rule-based junk removal (ads, cookies, boilerplate)
+  - Pass 2: AI quality judge (Gemini Flash scores 0-10, rejects below 6)
+  - Pass 3: Format converter (raw → instruction/response pairs)
+  - Pass 4: Dedup against existing forge_samples + forge_harvest
+- `.github/workflows/forge-harvest.yml` — Nightly automated scraping (2AM UTC) with rotating sources
+- CLI: `pnpm --filter @titan/forge run harvest -- --source github --topic "React" --limit 20`
+
+**New Supabase tables:**
+- `forge_harvest` — Scraped training data with quality scores, source tracking, approval status
+- `forge_harvest_batches` — Metadata for each scraping run
+
+**Forge Dashboard (UI):**
+- New "Forge" icon in the activity bar (layers icon between Titan Agent and bottom icons)
+- `apps/web/src/components/ide/ForgeDashboard.tsx` — Live dashboard showing:
+  - Distillation stats (total samples, high value, by model)
+  - Harvest stats (total, pending, approved, rejected, by source)
+  - Harvest controls (source selector, topic input, limit slider, START button)
+  - Recent batch history
+- API routes: `/api/forge/stats` (GET) and `/api/forge/harvest` (POST)
+
+**New files (DO NOT delete):**
+- `packages/forge/src/vault.ts`
+- `packages/forge/src/harvester.ts`
+- `packages/forge/src/harvester-filter.ts`
+- `packages/forge/src/cli/harvest.ts`
+- `packages/forge/src/cli/backup.ts`
+- `apps/web/src/components/ide/ForgeDashboard.tsx`
+- `apps/web/src/app/api/forge/stats/route.ts`
+- `apps/web/src/app/api/forge/harvest/route.ts`
+- `.github/workflows/forge-backup.yml`
+- `.github/workflows/forge-harvest.yml`
+
+**Modified files:**
+- `packages/forge/src/types.ts` — Added HarvestSample, HarvestBatch, HarvestStats, VaultSnapshot, ForgeDashboardStats
+- `packages/forge/src/db.ts` — Added harvest CRUD methods
+- `packages/forge/src/index.ts` — Added vault + harvester exports
+- `packages/forge/package.json` — Added harvest + backup CLI scripts
+- `apps/web/supabase/migration.sql` — Added forge_harvest + forge_harvest_batches tables
+- `apps/web/src/stores/layout-store.ts` — Added 'forge' sidebar view
+- `apps/web/src/components/titan-ide.tsx` — Added ForgeIcon + ForgeDashboard panel
 

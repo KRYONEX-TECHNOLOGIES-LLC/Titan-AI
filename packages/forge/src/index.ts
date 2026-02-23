@@ -8,3 +8,6 @@ export { QualityGate } from './quality-gate.js';
 export { ForgeSignals, forgeSignals } from './signals.js';
 export { ForgeExporter } from './exporter.js';
 export { ForgeEvaluator } from './eval.js';
+export { ForgeVault } from './vault.js';
+export { ForgeHarvester, forgeHarvester } from './harvester.js';
+export { runFilterPipeline } from './harvester-filter.js';
