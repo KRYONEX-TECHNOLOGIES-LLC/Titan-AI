@@ -1,21 +1,35 @@
-MIT License
+Copyright (c) 2026 KRYONEX TECHNOLOGIES LLC. All Rights Reserved.
 
-Copyright (c) 2026 KRYONEX TECHNOLOGIES LLC
+PROPRIETARY SOFTWARE LICENSE
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software and associated documentation files (the "Software") are the
+exclusive property of KRYONEX TECHNOLOGIES LLC ("Company").
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+NO PERMISSION IS GRANTED to any person or entity to use, copy, modify, merge,
+publish, distribute, sublicense, sell, or create derivative works of the
+Software, in whole or in part, without prior written authorization from the
+Company.
+
+VIEWING ONLY: The source code of this Software is made publicly available for
+transparency and educational reference ONLY. Public availability of the source
+code does NOT constitute a grant of any license or right to use the Software.
+
+PROHIBITED WITHOUT WRITTEN CONSENT:
+  - Commercial use of any kind
+  - Redistribution in any form
+  - Modification or creation of derivative works
+  - Use in competing products or services
+  - Embedding, linking, or incorporating into other software
+  - Training AI models on this codebase
+
+ENFORCEMENT: Any unauthorized use, reproduction, or distribution of the
+Software will be prosecuted to the fullest extent of applicable law, including
+but not limited to claims under the United States Copyright Act (17 U.S.C.),
+the Computer Fraud and Abuse Act (18 U.S.C. § 1030), and applicable state and
+international intellectual property laws.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+IMPLIED. IN NO EVENT SHALL KRYONEX TECHNOLOGIES LLC BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY ARISING FROM UNAUTHORIZED USE OF THE SOFTWARE.
+
+For licensing inquiries, contact: shadowunitk9@gmail.com
