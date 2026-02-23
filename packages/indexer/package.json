@@ -1,0 +1,23 @@
+{
+  "name": "@titan/indexer",
+  "version": "0.1.0",
+  "description": "Codebase vector index and AST analysis system",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc -w",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@titan/ai-speculative": "workspace:*",
+    "chromadb": "^1.4.0",
+    "typescript": "^5.3.3",
+    "sqlite3": "^5.1.6",
+    "fast-glob": "^3.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "vitest": "^1.3.1"
+  }
+}

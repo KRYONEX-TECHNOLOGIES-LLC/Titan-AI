@@ -23,7 +23,9 @@ import { registerSearchHandlers } from './ipc/search.js';
 import { registerWebHandlers } from './ipc/web.js';
 import { registerAuthHandlers } from './auth/github.js';
 import { createAppMenu } from './menu/app-menu.js';
+import { setupIndexerIPC } from './ipc/indexer.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
+import * as chokidar from 'chokidar';
 
 // Enforce single instance — if another copy is already running, focus it and exit this one.
 // Use only app.quit() — process.exit() can conflict with elevated NSIS post-install launch.
@@ -134,284 +136,62 @@ function isPortInUse(port: number): Promise<boolean> {
   });
 }
 
-async function startNextServer(port: number): Promise<void> {
-  const { spawn } = await import('child_process');
-  const isDev = !app.isPackaged;
+async function startNextJsServer(port: number): Promise<void> {
+  const isDev = process.env.NODE_ENV !== 'production';
+  const webAppPath = isDev
+    ? path.join(__dirname, '../../web') // In dev, it's a sibling project
+    : path.join(process.resourcesPath, 'app/apps/web'); // In prod, it's in the ASAR archive
 
-  // If something is already listening on this port (e.g. a stale server from a
-  // previous crash), skip spawning — the existing server will be reused.
-  const portOccupied = await isPortInUse(port);
-  if (portOccupied) {
-    console.log(`[Next.js] Port ${port} already in use — reusing existing server.`);
-    return;
+  console.log(`[Next.js] Starting server in ${isDev ? 'development' : 'production'} mode...`);
+  console.log(`[Next.js] Web app path: ${webAppPath}`);
+
+  const command = 'npx';
+  const args = ['next', isDev ? 'dev' : 'start', '-p', String(port)];
+
+  try {
+    const { spawn } = await import('child_process');
+    nextServerProcess = spawn(command, args, {
+      cwd: webAppPath,
+      stdio: 'pipe',
+      shell: process.platform === 'win32',
+    });
+
+    nextServerProcess.stdout?.on('data', (data) => {
+      console.log(`[Next.js] ${data.toString().trim()}`);
+    });
+
+    nextServerProcess.stderr?.on('data', (data) => {
+      console.error(`[Next.js] Error: ${data.toString().trim()}`);
+    });
+
+    nextServerProcess.on('close', (code) => {
+      console.log(`[Next.js] Server process exited with code ${code}`);
+      nextServerProcess = null;
+    });
+
+    process.on('exit', () => {
+      if (nextServerProcess) {
+        console.log('[Next.js] Killing server process on app exit.');
+        nextServerProcess.kill();
+      }
+    });
+  } catch (error) {
+    console.error('[Next.js] Failed to start server:', error);
   }
-
-  // Dev: apps/desktop/dist/../../web => apps/web/
-  // Packaged: Next.js standalone copies the monorepo structure, so server.js lives at
-  //           resources/web-server/apps/web/server.js (mirrors outputFileTracingRoot layout)
-  const webDir = isDev
-    ? path.join(__dirname, '..', '..', 'web')
-    : path.join(process.resourcesPath, 'web-server', 'apps', 'web');
-
-  return new Promise((resolve, reject) => {
-    const env = {
-      ...process.env,
-      PORT: String(port),
-      HOSTNAME: 'localhost',
-      NODE_ENV: isDev ? 'development' : 'production',
-      ELECTRON: 'true',
-      NEXTAUTH_URL: `http://localhost:${port}`,
-      AUTH_TRUST_HOST: 'true',
-    };
-
-    if (isDev) {
-      const nextArgs = ['next', 'dev', '-p', String(port), '--turbopack'];
-      nextServerProcess = spawn('npx', nextArgs, {
-        cwd: webDir,
-        env,
-        shell: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    } else {
-      // Use Electron's own bundled Node (process.execPath) to run the standalone server.
-      // ELECTRON_RUN_AS_NODE=1 is critical: without it, process.execPath launches a full
-      // Electron window instead of behaving as Node, causing infinite window spawning.
-      // Use relative path — absolute paths with spaces (e.g. "C:\Program Files\...")
-      // get split by Electron's ELECTRON_RUN_AS_NODE argument parser on Windows.
-      nextServerProcess = spawn(process.execPath, ['./server.js'], {
-        cwd: webDir,
-        env: { ...env, ELECTRON_RUN_AS_NODE: '1' },
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
-    }
-
-    let resolved = false;
-
-    nextServerProcess.stdout?.on('error', () => {});
-    nextServerProcess.stderr?.on('error', () => {});
-    nextServerProcess.stdin?.on('error', () => {});
-
-    nextServerProcess.stdout?.on('data', (data: Buffer) => {
-      const output = data.toString();
-      console.log('[Next.js]', output);
-      if (!resolved && (output.includes('Ready') || output.includes('started server') || output.includes('Listening on'))) {
-        resolved = true;
-        resolve();
-      }
-    });
-
-    nextServerProcess.stderr?.on('data', (data: Buffer) => {
-      console.error('[Next.js Error]', data.toString());
-    });
-
-    nextServerProcess.on('error', (err) => {
-      if (!resolved) {
-        resolved = true;
-        reject(err);
-      }
-    });
-
-    nextServerProcess.on('exit', (code) => {
-      if (!resolved) {
-        resolved = true;
-        reject(new Error(`Next.js server exited with code ${code}`));
-      }
-    });
-
-    setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        resolve();
-      }
-    }, 8000);
-  });
 }
 
-function openAuthPopup(authUrl: string, parent: BrowserWindow): void {
-  const popup = new BrowserWindow({
-    width: 520,
-    height: 720,
-    parent,
-    modal: true,
-    title: 'Sign In — Titan AI',
-    backgroundColor: '#0a0a14',
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
-  popup.setMenuBarVisibility(false);
-  popup.loadURL(authUrl);
-
-  const emitOAuthError = (message: string) => {
-    const safeMessage = JSON.stringify(message || 'OAuth sign-in failed.');
-    const script = `window.dispatchEvent(new CustomEvent('titan-oauth-error', { detail: { message: ${safeMessage} } }));`;
-    parent.webContents.executeJavaScript(script).catch(() => {});
-  };
-
-  const interceptCallback = (event: Electron.Event, navUrl: string) => {
-    if (navUrl.startsWith(`http://localhost:${DESKTOP_PORT}/auth/callback`)) {
-      event.preventDefault();
-      popup.close();
-      parent.loadURL(navUrl);
-    }
-  };
-
-  popup.webContents.on('will-navigate', interceptCallback);
-  popup.webContents.on('will-redirect', interceptCallback);
-
-  popup.webContents.on('did-finish-load', async () => {
-    const currentUrl = popup.webContents.getURL();
-    if (!currentUrl.includes('.supabase.co/auth')) return;
-
-    try {
-      const bodyText = await popup.webContents.executeJavaScript('document.body?.innerText || ""');
-      const raw = typeof bodyText === 'string' ? bodyText.trim() : '';
-      if (!raw.startsWith('{') || !raw.endsWith('}')) return;
-
-      const parsed = JSON.parse(raw) as {
-        error_description?: string;
-        msg?: string;
-        error?: string;
-      };
-      const errMsg =
-        parsed.error_description ||
-        parsed.msg ||
-        parsed.error ||
-        'OAuth provider is not configured correctly.';
-      popup.close();
-      emitOAuthError(errMsg);
-    } catch {
-      // Non-JSON body or cross-origin read error means the provider page loaded normally.
-    }
-  });
-
-  popup.webContents.on('did-fail-load', () => {
-    popup.close();
-    emitOAuthError('OAuth sign-in failed to load. Please try again.');
-  });
+function registerIpcHandlers(browserWindow: BrowserWindow): void {
+  registerToolHandlers(browserWindow);
+  registerTerminalHandlers(browserWindow);
+  registerFilesystemHandlers(browserWindow);
+  registerGitHandlers();
+  registerLinterHandlers();
+  registerSearchHandlers();
+  registerWebHandlers();
+  registerAuthHandlers(browserWindow);
+  setupIndexerIPC();
 }
 
-function setupOAuthInterceptor(win: BrowserWindow): void {
-  win.webContents.on('will-navigate', (event, url) => {
-    if (
-      url.includes('.supabase.co/auth/v1/authorize') ||
-      url.includes('accounts.google.com/o/oauth2') ||
-      url.includes('appleid.apple.com/auth/authorize')
-    ) {
-      event.preventDefault();
-      openAuthPopup(url, win);
-    }
-  });
-
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (
-      url.includes('.supabase.co/auth') ||
-      url.includes('accounts.google.com') ||
-      url.includes('appleid.apple.com')
-    ) {
-      openAuthPopup(url, win);
-      return { action: 'deny' };
-    }
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
-      return { action: 'deny' };
-    }
-    return { action: 'deny' };
-  });
-}
-
-const LOADING_HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Titan AI</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a14;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}.wrap{text-align:center}.logo{font-size:1.8rem;font-weight:700;margin-bottom:.75rem;letter-spacing:-.02em}.sub{color:#8b8ba8;font-size:.9rem;margin-bottom:2rem}.dots span{display:inline-block;width:8px;height:8px;border-radius:50%;background:#6c5ce7;margin:0 4px;animation:bounce 1.2s infinite}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-10px)}}</style></head><body><div class="wrap"><div class="logo">Titan AI</div><div class="sub">Starting up…</div><div class="dots"><span></span><span></span><span></span></div></div></body></html>`;
-
-const ERROR_HTML = (port: number) => `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Titan AI — Error</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a14;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}.wrap{text-align:center;max-width:440px;padding:0 1.5rem}.title{font-size:1.6rem;font-weight:700;margin-bottom:.75rem}.msg{color:#8b8ba8;font-size:.9rem;line-height:1.6;margin-bottom:2rem}button{background:#6c5ce7;color:#fff;border:none;padding:.7rem 2rem;border-radius:8px;font-size:.95rem;cursor:pointer}button:hover{background:#5a4bd1}</style></head><body><div class="wrap"><div class="title">Unable to start</div><div class="msg">Titan AI's internal server could not start on port ${port}.<br>Close any other copies of the app and try again.</div><button onclick="window.location.reload()">Restart</button></div></body></html>`;
-
-async function loadWithRetry(win: BrowserWindow, url: string, maxRetries = 5): Promise<void> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      await win.loadURL(url);
-      return;
-    } catch {
-      console.log(`[Main] loadURL attempt ${attempt}/${maxRetries} failed, retrying in 500ms...`);
-      if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 500));
-      }
-    }
-  }
-  console.error(`[Main] All ${maxRetries} loadURL attempts failed for ${url}`);
-  await win.loadURL(`data:text/html,${encodeURIComponent(ERROR_HTML(DESKTOP_PORT))}`);
-}
-
-async function createWindow(): Promise<void> {
-  const windowState = restoreWindowState(store);
-
-  mainWindow = createMainWindow(windowState);
-
-  mainWindow.on('close', () => {
-    if (mainWindow) {
-      saveWindowState(mainWindow, store);
-    }
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  registerAllIPC(mainWindow);
-  createAppMenu(mainWindow);
-  setupOAuthInterceptor(mainWindow);
-
-  // Show a loading screen immediately so the user sees the app right away
-  // instead of waiting up to 15 s with nothing on screen.
-  await mainWindow.loadURL(`data:text/html,${encodeURIComponent(LOADING_HTML)}`);
-}
-
-function registerAllIPC(win: BrowserWindow): void {
-  registerToolHandlers(ipcMain, win);
-  registerTerminalHandlers(ipcMain, win);
-  registerFilesystemHandlers(ipcMain, win);
-  registerGitHandlers(ipcMain);
-  registerLinterHandlers(ipcMain, win);
-  registerSearchHandlers(ipcMain);
-  registerWebHandlers(ipcMain);
-  registerAuthHandlers(ipcMain, win);
-
-  ipcMain.handle('app:getVersion', () => app.getVersion());
-  ipcMain.handle('app:getPlatform', () => process.platform);
-  ipcMain.handle('app:isElectron', () => true);
-
-  ipcMain.handle('store:get', (_e, key: string) => store.get(key));
-  ipcMain.handle('store:set', (_e, key: string, value: unknown) => store.set(key, value));
-
-  ipcMain.handle('recent-folders:get', () => store.get('recentFolders', []));
-  ipcMain.handle('recent-folders:add', (_e, folderPath: string) => {
-    const recent = store.get('recentFolders', []) as string[];
-    const updated = [folderPath, ...recent.filter((f: string) => f !== folderPath)].slice(0, 10);
-    store.set('recentFolders', updated);
-    store.set('lastOpenedFolder', folderPath);
-    return updated;
-  });
-
-  ipcMain.handle('shell:openExternal', async (_e, url: string) => {
-    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-      await shell.openExternal(url);
-    }
-  });
-
-  ipcMain.handle('shell:showItemInFolder', async (_e, itemPath: string) => {
-    if (itemPath) {
-      shell.showItemInFolder(itemPath);
-    }
-  });
-}
-
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'titan-ai',
-    privileges: { secure: true, standard: true, supportFetchAPI: true },
-  },
-]);
-
-// When a second instance tries to launch, bring the existing window to front instead.
 app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
@@ -419,77 +199,86 @@ app.on('second-instance', () => {
   }
 });
 
-app.whenReady().then(async () => {
-  try {
-    app.setName('Titan AI');
-    if (process.platform === 'win32') {
-      // Must match electron-builder appId exactly — Windows uses this to associate
-      // the taskbar icon, Start menu entry, and window grouping.
-      app.setAppUserModelId('com.kryonex.titan-desktop');
-    }
-
-    // Show the window immediately with a loading screen so the user
-    // always sees something — no more invisible 15-second wait.
-    await createWindow();
-
-    console.log(`Starting Next.js on port ${DESKTOP_PORT}...`);
-    await startNextServer(DESKTOP_PORT);
-    console.log('Next.js server ready');
-
-    // Navigate the already-visible window to the real app.
-    if (mainWindow) {
-      await loadWithRetry(mainWindow, `http://localhost:${DESKTOP_PORT}/editor`);
-    }
-
-    setupAutoUpdater();
-  } catch (err) {
-    console.error('Failed to start:', err);
-    dialog.showErrorBox(
-      'Titan AI — Startup Failed',
-      `The internal server could not start.\n\nError: ${err instanceof Error ? err.message : String(err)}\n\nPlease close any other copies of Titan AI and try again.`
-    );
-    app.quit();
-  }
-});
-
-function killServerProcess() {
-  if (!nextServerProcess) return;
-  const pid = nextServerProcess.pid;
-  nextServerProcess.removeAllListeners();
-  try {
-    if (process.platform === 'win32' && pid) {
-      // Force-kill the entire process tree on Windows — .kill() only sends
-      // SIGTERM which Node/Windows silently ignores, leaving zombie processes.
-      require('child_process').execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore' });
-    } else {
-      nextServerProcess.kill('SIGKILL');
-    }
-  } catch {
-    // Process may already be gone — that's fine
-  }
-  nextServerProcess = null;
-}
-
 app.on('window-all-closed', () => {
-  killServerProcess();
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-app.on('activate', async () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    await createWindow();
+app.on('will-quit', () => {
+  killAllTerminals();
+  killAllBackground();
+  if (nextServerProcess) {
+    nextServerProcess.kill();
   }
 });
 
-app.on('before-quit', () => {
-  killAllTerminals();
-  killAllBackground();
-  killServerProcess();
-});
+app.whenReady().then(async () => {
+  const portInUse = await isPortInUse(DESKTOP_PORT);
+  if (portInUse) {
+    console.log(`[Main] Port ${DESKTOP_PORT} is in use. Assuming web server is already running.`);
+  } else {
+    await startNextJsServer(DESKTOP_PORT);
+  }
 
-// Final safety net: if the main process exits for any reason, take the server with it
-process.on('exit', () => {
-  killServerProcess();
+  const windowState = restoreWindowState(store);
+  mainWindow = createMainWindow(windowState);
+
+  mainWindow.on('resize', () => saveWindowState(store, mainWindow));
+  mainWindow.on('move', () => saveWindowState(store, mainWindow));
+  mainWindow.on('close', () => saveWindowState(store, mainWindow));
+
+  // Intercept new window requests (e.g., from external links) and open them in the default browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Serve the Next.js app
+  const url = `http://127.0.0.1:${DESKTOP_PORT}`;
+  mainWindow.loadURL(url).catch((err) => {
+    console.error('[Main] Failed to load URL:', err);
+    // Optional: Add retry logic or a fallback page
+  });
+
+  registerIpcHandlers(mainWindow);
+
+  protocol.registerFileProtocol('file', (request, callback) => {
+    const pathname = decodeURI(request.url.replace('file:///', ''));
+    callback(pathname);
+  });
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createMainWindow(restoreWindowState(store));
+    }
+  });
+
+  createAppMenu(store);
+  setupAutoUpdater();
+
+  const workspacePath = store.get('lastOpenedFolder') as string;
+  if (workspacePath) {
+    const watcher = chokidar.watch(workspacePath, {
+      ignored: /(^|[\/\\])\../, // ignore dotfiles
+      persistent: true
+    });
+
+    watcher
+      .on('add', path => {
+        if (mainWindow) {
+          mainWindow.webContents.send('indexer:file-added', { filePath: path });
+        }
+      })
+      .on('change', path => {
+        if (mainWindow) {
+          mainWindow.webContents.send('indexer:file-changed', { filePath: path });
+        }
+      })
+      .on('unlink', path => {
+        if (mainWindow) {
+          mainWindow.webContents.send('indexer:file-deleted', { filePath: path });
+        }
+      });
+  }
 });
