@@ -4,6 +4,7 @@
 packages:
   # Core packages
   - "packages/core/*"
+  - "packages/indexer"
   
   # AI packages
   - "packages/ai/*"

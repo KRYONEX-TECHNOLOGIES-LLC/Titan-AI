@@ -104,7 +104,7 @@ export class AIHooks extends EventEmitter {
       type: 'suggest',
       terminalId,
       command: partialCommand,
-      context,
+      ...(context && { context }),
     };
 
     return this.sendRequest(request);

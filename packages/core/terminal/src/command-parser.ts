@@ -95,7 +95,7 @@ export class CommandParser {
     const parts = command.split('|');
     if (parts.length <= 1) return [];
     
-    return parts.slice(1).map(p => p.trim().split(/[<>]/)[0].trim());
+    return parts.slice(1).map(p => (p.trim().split(/[<>]/)[0] ?? '').trim());
   }
 
   /**
@@ -152,18 +152,19 @@ export class CommandParser {
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
 
-      // Long flag with value (--flag=value)
-      if (arg.startsWith('--') && arg.includes('=')) {
+      if (arg?.startsWith('--') && arg.includes('=')) {
         const [key, value] = arg.slice(2).split('=');
-        flags[key] = value;
+        if (key) {
+          flags[key] = value ?? true;
+        }
         continue;
       }
 
       // Long flag (--flag)
-      if (arg.startsWith('--')) {
+      if (arg?.startsWith('--')) {
         const key = arg.slice(2);
         // Check if next arg is a value
-        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        if (i + 1 < args.length && !args[i + 1]?.startsWith('-')) {
           flags[key] = args[++i];
         } else {
           flags[key] = true;
@@ -172,10 +173,10 @@ export class CommandParser {
       }
 
       // Short flag (-f)
-      if (arg.startsWith('-') && arg.length === 2) {
+      if (arg?.startsWith('-') && arg.length === 2) {
         const key = arg.slice(1);
         // Check if next arg is a value
-        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        if (i + 1 < args.length && !args[i + 1]?.startsWith('-')) {
           flags[key] = args[++i];
         } else {
           flags[key] = true;
@@ -184,7 +185,7 @@ export class CommandParser {
       }
 
       // Combined short flags (-abc)
-      if (arg.startsWith('-') && arg.length > 2) {
+      if (arg?.startsWith('-') && arg.length > 2) {
         const chars = arg.slice(1).split('');
         for (const char of chars) {
           flags[char] = true;
