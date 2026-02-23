@@ -23,9 +23,9 @@ const MAX_TOOL_RESULT_LEN = 6000;
 const TOKEN_BATCH_MS = 80;
 const TOKEN_BUDGET_CHARS = 120000;
 
-const TITAN_PLANNER = 'claude-opus-4.6';
-const TITAN_TOOL_CALLER = 'gpt-5.3';
-const TITAN_WORKER = 'qwen3-coder';
+const TITAN_PLANNER = 'qwen3.5-plus-2026-02-15';
+const TITAN_TOOL_CALLER = 'deepseek-reasoner';
+const TITAN_WORKER = 'qwen3-coder-next';
 const TITAN_PROTOCOL_IDS = new Set(['titan-protocol']);
 const CODE_WRITE_TOOLS = new Set(['edit_file', 'create_file']);
 

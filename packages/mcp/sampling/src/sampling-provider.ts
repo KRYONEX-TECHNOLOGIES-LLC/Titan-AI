@@ -27,7 +27,7 @@ export class DefaultSamplingProvider extends EventEmitter implements SamplingPro
   constructor(config: Partial<SamplingProviderConfig> = {}) {
     super();
     this.config = {
-      defaultModel: 'claude-4.6-sonnet',
+      defaultModel: 'claude-sonnet-4.6',
       maxTokens: 4096,
       temperature: 0.7,
       timeout: 60000,
@@ -106,11 +106,11 @@ export class DefaultSamplingProvider extends EventEmitter implements SamplingPro
     }
 
     if (preferences.speedPriority !== undefined && preferences.speedPriority > 0.7) {
-      return 'claude-3.5-sonnet'; // Faster model
+      return 'gemini-2.0-flash'; // Faster model
     }
 
     if (preferences.intelligencePriority !== undefined && preferences.intelligencePriority > 0.8) {
-      return 'claude-4.6-opus'; // Most capable model
+      return 'qwen3.5-plus-2026-02-15'; // Most capable model in current stack
     }
 
     return this.config.defaultModel;

@@ -61,5 +61,40 @@
 - **Status:** BLOCKER
 
 ---
+## ADR-008: Titan Cost Architecture v2 (Protocol Model Stack)
+- **Decision:** Standardize Titan Protocol routing around role-based models: supervisor/architect/overseer=`qwen3.5-plus-2026-02-15`, worker/primary=`qwen3-coder-next`, verifier/operator/sentinel=`deepseek-reasoner`, executor/secondary/low-risk=`gemini-2.0-flash`.
+- **Rationale:** Previous protocol defaults could silently fall back to frontier-expensive models (Opus, GPT-5.3). This role split preserves governance (independent verification + merge authority) while keeping default runs economically viable and predictable.
+- **Date:** 2026-02-23
+- **Task ID:** COST-ARCH-V2
+- **Status:** ACTIVE
+- **References:** Canonical protocol configs: `apps/web/src/lib/lanes/lane-model.ts`, `apps/web/src/lib/supreme/supreme-model.ts`, `apps/web/src/lib/omega/omega-model.ts`. Routing defaults: `packages/ai/router/src/cascade-logic.ts`. Agent YAML: `apps/desktop/config/titan-agents.yaml`. UI model list/pricing: `apps/web/src/lib/model-registry.ts`.
+
+### Current Model Stack (as of 2026-02-23)
+
+| Role | Model ID | OpenRouter ID | Cost/1M In | Cost/1M Out |
+|------|----------|---------------|-----------|-------------|
+| Supervisor / Architect / Overseer | qwen3.5-plus-2026-02-15 | qwen/qwen3.5-plus-02-15 | $0.30 | $1.20 |
+| Worker / Primary / Coder | qwen3-coder-next | qwen/qwen3-coder-next | $0.20 | $0.80 |
+| Verifier / Operator / Sentinel | deepseek-reasoner | deepseek/deepseek-r1 | $0.70 | $2.50 |
+| Executor / Secondary / Low-Risk | gemini-2.0-flash | google/gemini-2.0-flash-001 | $0.10 | $0.40 |
+
+### Protocol Blended Cost Estimates (per run, ~15 LLM turns)
+
+| Protocol | Est. Cost/Run | Notes |
+|----------|---------------|-------|
+| Titan Protocol (basic) | ~$0.10–$0.20 | Single-thread, planner + worker mix |
+| Titan Protocol v2 (parallel lanes) | ~$0.15–$0.35 | 4 lanes, supervisor + worker + verifier |
+| Titan Supreme Protocol | ~$0.15–$0.35 | 4-role debate council |
+| Titan Omega Protocol | ~$0.15–$0.40 | Architect + specialist cadre |
+
+### What Replaced What
+
+| Old Model (retired) | New Model | Reason |
+|---------------------|-----------|--------|
+| claude-opus-4.6 ($15/$75) | qwen3.5-plus-2026-02-15 ($0.30/$1.20) | 50x cheaper, 80-90% equivalent on planning/supervision tasks |
+| gpt-5.3 ($10/$40) | deepseek-reasoner ($0.70/$2.50) | Stronger reasoning, 10x cheaper |
+| qwen3-coder | qwen3-coder-next | Newer version, better code quality |
+| llama-4-maverick | gemini-2.0-flash | Faster, cheaper, Google-hosted reliability |
+
 <!-- NEW ENTRIES BELOW THIS LINE -->
 

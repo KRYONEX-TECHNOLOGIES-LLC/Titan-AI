@@ -3,7 +3,7 @@
 
 agents:
   supervisor:
-    model: claude-opus-4.6
+    model: qwen3.5-plus-2026-02-15
     fallback: claude-sonnet-4.6
     role: Supreme Architect & Task Decomposer
     reads: [memory.md, plan.md, checklist.md]
@@ -12,8 +12,8 @@ agents:
     max_reasoning: true
 
   executor:
-    model: gpt-5.3
-    fallback: gpt-4o
+    model: deepseek-reasoner
+    fallback: gemini-2.0-flash
     role: Principal Engineer & Tool Specialist
     reads: [plan.md]
     writes: [execution.log]
@@ -22,8 +22,8 @@ agents:
     idempotency_check: required
 
   coder:
-    model: qwen-2.5-coder-72b
-    fallback: claude-sonnet-4.6
+    model: qwen3-coder-next
+    fallback: qwen3.5-plus-2026-02-15
     role: Technical Implementation Worker
     reads: []  # Receives only what Supervisor sends
     writes: []  # Output goes to Verifier, not to disk
@@ -31,8 +31,8 @@ agents:
     forbidden: [placeholders, todos, stubs, happy_path_only]
 
   verifier:
-    model: claude-opus-4.6
-    fallback: claude-sonnet-4.6
+    model: deepseek-reasoner
+    fallback: qwen3.5-plus-2026-02-15
     role: Adversarial Quality Assassin
     reads: [checklist.md, plan.md]
     writes: [quality.log]
@@ -72,8 +72,8 @@ logging:
   violation_log: logs/violation.log
 
 cost_optimization:
-  cheap_models: [qwen-2.5-coder-72b, qwen3-coder, gpt-5.3]
-  expensive_models: [claude-opus-4.6]
+  cheap_models: [qwen3-coder-next, gemini-2.0-flash, deepseek-reasoner]
+  expensive_models: [qwen3.5-plus-2026-02-15]
   compute_split: "80-90% cheap workers, 10-20% planning + verification"
 
 # ═══ TITAN PROTOCOL v2: PARALLEL LANE CONFIGURATION ═══
@@ -92,12 +92,12 @@ protocol_v2:
     lane_timeout_ms: 300000  # 5 minutes per lane
 
   agents:
-    supervisor_model: claude-opus-4.6
-    default_worker_model: qwen3-coder
-    default_verifier_model: claude-opus-4.6
-    executor_model: gpt-5.3
-    worker_fallback: claude-sonnet-4.6
-    verifier_fallback: claude-sonnet-4.6
+    supervisor_model: qwen3.5-plus-2026-02-15
+    default_worker_model: qwen3-coder-next
+    default_verifier_model: deepseek-reasoner
+    executor_model: gemini-2.0-flash
+    worker_fallback: qwen3.5-plus-2026-02-15
+    verifier_fallback: qwen3.5-plus-2026-02-15
 
   lane_lifecycle:
     statuses:
@@ -146,10 +146,10 @@ protocol_supreme:
   description: "Overseer/Operator/Primary Worker/Secondary Worker governance loop with zero-trust controls"
 
   agents:
-    overseer_model: claude-opus-4.6
-    operator_model: gpt-5.3
-    primary_worker_model: qwen3-coder
-    secondary_worker_model: llama-4-maverick
+    overseer_model: qwen3.5-plus-2026-02-15
+    operator_model: deepseek-reasoner
+    primary_worker_model: qwen3-coder-next
+    secondary_worker_model: gemini-2.0-flash
 
   limits:
     max_overseer_iterations: 30
@@ -189,12 +189,12 @@ protocol_omega:
   description: "Omega governance — Architect + Specialist Cadre + Sentinel + Operator with AST-aware changes, predictive scaffolding, and zero-trust execution"
 
   agents:
-    architect_model: claude-opus-4.6
-    sentinel_model: gpt-5.3
-    operator_model: gpt-5.3
-    specialist_low_risk: llama-4-maverick
-    specialist_medium_risk: qwen3-coder
-    specialist_high_risk: claude-opus-4.6
+    architect_model: qwen3.5-plus-2026-02-15
+    sentinel_model: deepseek-reasoner
+    operator_model: deepseek-reasoner
+    specialist_low_risk: gemini-2.0-flash
+    specialist_medium_risk: qwen3-coder-next
+    specialist_high_risk: qwen3.5-plus-2026-02-15
 
   limits:
     max_concurrent_specialists: 4

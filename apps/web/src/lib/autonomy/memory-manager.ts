@@ -142,6 +142,6 @@ export class MemoryManager {
   }
 
   shouldReadMemory(userMessage: string): boolean {
-    return /architecture|database|protocol|framework|infrastructure|migration|deployment|redis|cache|decision|adr|rationale/i.test(userMessage);
+    return /architecture|database|protocol|framework|infrastructure|migration|deployment|redis|cache|decision|adr|rationale|model|models|cost|price|pricing|stack|qwen|deepseek|gemini|opus|gpt|claude|tokens|token/i.test(userMessage);
   }
 }
