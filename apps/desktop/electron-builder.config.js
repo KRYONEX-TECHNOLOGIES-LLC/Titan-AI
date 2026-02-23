@@ -94,7 +94,9 @@ module.exports = {
   copyright: 'Copyright © 2026 Kryonex Technologies LLC',
   npmRebuild: false,
   nodeGypRebuild: false,
-  buildDependenciesFromSource: false,
+    buildDependenciesFromSource: false,
+
+
 
   directories: {
     output: 'out',
@@ -138,6 +140,13 @@ module.exports = {
     // signAndEditExecutable must NOT be false — electron-builder needs to rewrite the
     // exe's resource table to embed the Titan icon, product name, and company metadata.
     // Leaving it false means the exe ships as stock "Electron" with the default icon.
+  },
+
+  publish: {
+    provider: 'github',
+    owner: 'shadowunitk9',
+    repo: 'titan-ai-desktop',
+    releaseType: 'release',
   },
 
   nsis: {
