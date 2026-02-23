@@ -69,5 +69,8 @@
     "*.{json,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "cross-env": "10.1.0"
   }
 }

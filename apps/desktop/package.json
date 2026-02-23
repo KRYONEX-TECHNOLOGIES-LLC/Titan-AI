@@ -9,15 +9,15 @@
     "dev": "tsc && electron .",
     "dev:rebuild": "cd ../web && npm run build && cd ../desktop && tsc && electron .",
     "build": "tsc",
-    "pack": "electron-builder --config electron-builder.config.js",
-    "pack:win": "electron-builder --config electron-builder.config.js --win nsis",
-    "release:win:stable": "electron-builder --config electron-builder.config.js --win nsis --x64",
+    "pack": "electron-builder",
+    "pack:win": "electron-builder --win nsis",
+    "release:win:stable": "electron-builder --win nsis --x64",
     "release:manifest": "node scripts/write-release-manifest.mjs",
     "_release:checksums": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-checksums.ps1",
-    "pack:mac": "electron-builder --config electron-builder.config.js --mac",
-    "pack:linux": "electron-builder --config electron-builder.config.js --linux",
+    "pack:mac": "electron-builder --mac",
+    "pack:linux": "electron-builder --linux",
     "clean": "rimraf dist out tsconfig.tsbuildinfo"
-  },
+  }
   "dependencies": {
     "chokidar": "^4.0.0",
     "electron-store": "^8.2.0",
