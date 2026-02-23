@@ -77,6 +77,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
 
   // ═══ MISTRAL ═══
   { id: 'mistral-large', providerModelId: 'mistralai/mistral-large', name: 'Mistral Large', provider: 'Mistral', tier: 'standard', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 2, costPer1MOutput: 6, description: 'European frontier model' },
+  { id: 'mistral-large-2407', providerModelId: 'mistralai/mistral-large-2407', name: 'Mistral Large 2 (2407)', provider: 'Mistral', tier: 'standard', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: true, supportsTools: true, costPer1MInput: 2, costPer1MOutput: 6, description: 'Mistral Large 2 flagship — excels at reasoning, code, JSON, and 80+ languages. Strong distillation teacher.' },
   { id: 'codestral', providerModelId: 'mistralai/codestral-2508', name: 'Codestral', provider: 'Mistral', tier: 'standard', contextWindow: 256000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.3, costPer1MOutput: 0.9, description: 'Specialized for code' },
   { id: 'mistral-nemo', providerModelId: 'mistralai/mistral-nemo', name: 'Mistral Nemo', provider: 'Mistral', tier: 'economy', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.035, costPer1MOutput: 0.14, description: 'Fast and efficient' },
 

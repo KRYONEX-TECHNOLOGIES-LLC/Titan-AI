@@ -1309,6 +1309,8 @@ interface ContinueRequest {
   isDesktop?: boolean;
   osPlatform?: string;
   capabilities?: { runtime: string; workspaceOpen: boolean; toolsEnabled: boolean; reasonIfDisabled?: string };
+  sessionId?: string;
+  forgeId?: string;
 }
 
 
@@ -1559,7 +1561,8 @@ export async function POST(request: NextRequest) {
             ? 'frontier' as const
             : (normalizedModel.startsWith('ollama') ? 'local' as const : 'economy' as const);
           forgeCollector.capture({
-            sessionId: (body as { sessionId?: string }).sessionId ?? null,
+            id: body.forgeId,
+            sessionId: body.sessionId ?? null,
             modelId: normalizedModel,
             modelTier: forgeTier,
             systemPrompt: (messages[0]?.role === 'system' ? String(messages[0].content) : ''),

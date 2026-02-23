@@ -35,30 +35,32 @@ export class ForgeDB {
   // ── Samples ──
 
   async insertSample(
-    sample: Omit<ForgeSample, 'id' | 'created_at' | 'exported'>,
+    sample: Omit<ForgeSample, 'created_at' | 'exported'> & { id?: string },
   ): Promise<string | null> {
     try {
       const db = getClient();
+      const row: Record<string, unknown> = {
+        session_id: sample.session_id,
+        model_id: sample.model_id,
+        model_tier: sample.model_tier,
+        system_prompt: sample.system_prompt,
+        messages: sample.messages,
+        response: sample.response,
+        tool_calls: sample.tool_calls,
+        tool_results: sample.tool_results,
+        tokens_in: sample.tokens_in,
+        tokens_out: sample.tokens_out,
+        latency_ms: sample.latency_ms,
+        cost_usd: sample.cost_usd,
+        quality_score: sample.quality_score,
+        quality_signals: sample.quality_signals,
+        outcome: sample.outcome,
+        prompt_hash: sample.prompt_hash,
+      };
+      if (sample.id) row.id = sample.id;
       const { data, error } = await db
         .from('forge_samples')
-        .insert({
-          session_id: sample.session_id,
-          model_id: sample.model_id,
-          model_tier: sample.model_tier,
-          system_prompt: sample.system_prompt,
-          messages: sample.messages,
-          response: sample.response,
-          tool_calls: sample.tool_calls,
-          tool_results: sample.tool_results,
-          tokens_in: sample.tokens_in,
-          tokens_out: sample.tokens_out,
-          latency_ms: sample.latency_ms,
-          cost_usd: sample.cost_usd,
-          quality_score: sample.quality_score,
-          quality_signals: sample.quality_signals,
-          outcome: sample.outcome,
-          prompt_hash: sample.prompt_hash,
-        })
+        .insert(row)
         .select('id')
         .single();
 

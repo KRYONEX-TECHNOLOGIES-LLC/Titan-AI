@@ -9,11 +9,6 @@ import type { CollectorInput, ModelTier, ChatMessage } from './types.js';
 // Models that are "teachers" — only their outputs enter the training set.
 // Economy/local models are students — we NEVER train on their outputs.
 const TEACHER_MODEL_IDS = new Set([
-  // Titan Protocol (multi-agent — uses frontier models internally)
-  'titan-protocol',
-  'titan-protocol-v2',
-  'titan-supreme-protocol',
-  'titan-omega-protocol',
   // Claude family
   'claude-sonnet-4.6',
   'claude-opus-4.6',
@@ -38,6 +33,9 @@ const TEACHER_MODEL_IDS = new Set([
   'qwen3.5-397b',
   'qwen/qwen3.5-plus-02-15',
   'qwen/qwen3-max-thinking',
+  // Mistral frontier
+  'mistral-large-2407',
+  'mistralai/mistral-large-2407',
   // Others
   'grok-4',
   'x-ai/grok-4',
@@ -103,26 +101,24 @@ function enqueue(task: () => Promise<void>): void {
 }
 
 export class ForgeCollector {
-  // Map from session+turn to sample ID so signals can reference the right sample
-  private pendingSamples = new Map<string, string>();
-
   capture(input: CollectorInput): void {
     // Determine tier first — reject non-teachers immediately, no DB write
     const tier = input.modelTier || inferModelTier(input.modelId);
     if (tier !== 'frontier') return;
 
     const promptHash = computePromptHash(input.messages);
-    const captureKey = `${input.sessionId || 'unknown'}-${Date.now()}`;
+    // Use the pre-generated client-side ID if provided (preferred), otherwise defer to DB auto-id
+    const preGeneratedId = input.id ?? null;
 
     enqueue(async () => {
       // Dedup check: if we already have a high-scoring sample for this prompt, skip
       const existing = await db.dedupCheck(promptHash);
       if (existing.exists && (existing.score ?? 0) >= 8) {
-        // Already have elite-tier data for this prompt — don't store duplicates
         return;
       }
 
       const id = await db.insertSample({
+        id: preGeneratedId ?? undefined,
         session_id: input.sessionId,
         model_id: input.modelId,
         model_tier: tier,
@@ -142,19 +138,9 @@ export class ForgeCollector {
       });
 
       if (id) {
-        this.pendingSamples.set(captureKey, id);
-        // Expose for signal reporting (key returned to useChat.ts)
         console.log(`[forge] Captured sample ${id} from ${input.modelId}`);
       }
     });
-
-    // Return the captureKey synchronously so signals can reference it
-    // (stored in pendingSamples once DB write completes)
-  }
-
-  // Returns the sample ID for a capture key (used by signal reporters)
-  getSampleId(captureKey: string): string | undefined {
-    return this.pendingSamples.get(captureKey);
   }
 
   // Called when tool results come back from useChat.ts

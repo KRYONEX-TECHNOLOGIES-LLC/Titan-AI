@@ -85,6 +85,7 @@ export interface QualitySignals {
 
 // ── Input to the collector from route.ts ──
 export interface CollectorInput {
+  id?: string;           // Pre-generated UUID from client — allows signals to reference sample before DB insert completes
   sessionId: string | null;
   modelId: string;
   modelTier: ModelTier;

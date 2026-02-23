@@ -11,13 +11,16 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf dist",
+    "test": "vitest run",
     "export": "node dist/cli/export.js",
     "eval": "node dist/cli/eval.js"
   },
@@ -29,12 +32,19 @@
     "@types/node": "^20.17.10",
     "rimraf": "^5.0.0",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "4.0.18"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
-  "keywords": ["distillation", "llm", "training", "titan", "forge"],
+  "keywords": [
+    "distillation",
+    "llm",
+    "training",
+    "titan",
+    "forge"
+  ],
   "author": "KRYONEX TECHNOLOGIES LLC",
   "license": "SEE LICENSE IN LICENSE"
 }

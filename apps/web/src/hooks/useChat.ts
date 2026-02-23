@@ -412,6 +412,7 @@ export function useChat({
     messageAttachments?: { mediaType: string; base64: string }[],
     modelOverride?: string,
     titanProtocolMode?: boolean,
+    forgeId?: string,
   ): Promise<{ content: string; toolCalls: StreamToolCall[] }> {
     const gitStatus = await fetchGitStatus();
     const fileTree = serializeFileTree();
@@ -468,6 +469,8 @@ export function useChat({
         isDesktop: isDesktop || false,
         osPlatform: osPlatform || 'unknown',
         capabilities: { runtime: caps.runtime, workspaceOpen: caps.workspaceOpen, toolsEnabled: caps.toolsEnabled, reasonIfDisabled: caps.reasonIfDisabled },
+        sessionId,
+        forgeId,
       }),
     });
 
@@ -652,7 +655,7 @@ export function useChat({
         });
       } catch { /* best-effort */ }
     }
-    forgeTurnStartMs = Date.now();
+    const forgeTurnStartMs = Date.now();
 
     setIsThinking(true);
     thinkingStartRef.current = Date.now();
@@ -670,8 +673,11 @@ export function useChat({
     let nudgesUsed = 0;
     const MAX_NUDGES = 2;
     const PRODUCTIVE_TOOLS = new Set(['edit_file', 'create_file', 'delete_file', 'run_command', 'auto_debug', 'git_commit', 'git_sync', 'git_branch', 'memory_write']);
-    // Forge: track the active sample ID for this turn so signals can reference it
-    let forgeSampleId: string | null = null;
+    // Forge: pre-generate the sample ID so signals can reference it immediately,
+    // even before the async DB insert in route.ts completes.
+    const forgeSampleId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `forge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const isTitanProtocol = TITAN_PROTOCOL_IDS.has(activeModel);
     const touchedFiles = new Set<string>();
 
@@ -705,6 +711,7 @@ export function useChat({
             loopIterations === 1 ? readyAttachments : undefined,
             iterationModel,
             isTitanProtocol,
+            loopIterations === 1 ? forgeSampleId : undefined,
           );
         } catch (err) {
           if (abortedRef.current || controller.signal.aborted) break;
