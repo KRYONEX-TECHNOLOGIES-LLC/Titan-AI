@@ -142,22 +142,39 @@ function isPortInUse(port: number): Promise<boolean> {
 
 async function startNextJsServer(port: number): Promise<void> {
   const isDev = process.env.NODE_ENV !== 'production';
-  const webAppPath = isDev
-    ? path.join(__dirname, '../../web') // In dev, it's a sibling project
-    : path.join(process.resourcesPath, 'app/apps/web'); // In prod, it's in the ASAR archive
 
-  console.log(`[Next.js] Starting server in ${isDev ? 'development' : 'production'} mode...`);
-  console.log(`[Next.js] Web app path: ${webAppPath}`);
+  let command: string;
+  let args: string[];
+  let cwd: string;
+  let env: NodeJS.ProcessEnv;
 
-  const command = 'npx';
-  const args = ['next', isDev ? 'dev' : 'start', '-p', String(port)];
+  if (isDev) {
+    // Development: run next dev from the sibling web project directory
+    cwd = path.join(__dirname, '../../web');
+    command = 'npx';
+    args = ['next', 'dev', '-p', String(port)];
+    env = process.env;
+  } else {
+    // Production: electron-builder places extraResources at process.resourcesPath.
+    // The config copies .next/standalone -> resources/web-server, so the standalone
+    // server.js lives at resources/web-server/apps/web/server.js.
+    // We run it directly with Electron's bundled Node binary — no npx or next CLI needed.
+    cwd = path.join(process.resourcesPath, 'web-server', 'apps', 'web');
+    command = process.execPath;
+    args = [path.join(cwd, 'server.js')];
+    env = { ...process.env, PORT: String(port), HOSTNAME: '127.0.0.1', NODE_ENV: 'production' };
+  }
+
+  console.log(`[Next.js] Starting server (${isDev ? 'dev' : 'prod'})...`);
+  console.log(`[Next.js] cwd: ${cwd}`);
 
   try {
     const { spawn } = await import('child_process');
     nextServerProcess = spawn(command, args, {
-      cwd: webAppPath,
+      cwd,
       stdio: 'pipe',
-      shell: process.platform === 'win32',
+      shell: isDev && process.platform === 'win32',
+      env,
     });
 
     nextServerProcess.stdout?.on('data', (data) => {
@@ -165,7 +182,7 @@ async function startNextJsServer(port: number): Promise<void> {
     });
 
     nextServerProcess.stderr?.on('data', (data) => {
-      console.error(`[Next.js] Error: ${data.toString().trim()}`);
+      console.error(`[Next.js] ${data.toString().trim()}`);
     });
 
     nextServerProcess.on('close', (code) => {
@@ -175,13 +192,34 @@ async function startNextJsServer(port: number): Promise<void> {
 
     process.on('exit', () => {
       if (nextServerProcess) {
-        console.log('[Next.js] Killing server process on app exit.');
         nextServerProcess.kill();
       }
     });
   } catch (error) {
     console.error('[Next.js] Failed to start server:', error);
   }
+}
+
+// Poll http://127.0.0.1:{port} until it responds (server ready) or timeout is hit.
+function waitForServer(port: number, timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+        res.destroy();
+        resolve();
+      });
+      req.setTimeout(1000, () => req.destroy());
+      req.on('error', () => {
+        if (Date.now() - start >= timeoutMs) {
+          reject(new Error(`Server on port ${port} did not respond within ${timeoutMs}ms`));
+        } else {
+          setTimeout(check, 500);
+        }
+      });
+    };
+    check();
+  });
 }
 
 function registerIpcHandlers(browserWindow: BrowserWindow): void {
@@ -217,6 +255,29 @@ app.on('will-quit', () => {
   }
 });
 
+const LOADING_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0a0a;display:flex;flex-direction:column;align-items:center;
+       justify-content:center;height:100vh;
+       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#fff;
+       -webkit-app-region:drag}
+  .logo{font-size:2.8rem;font-weight:800;letter-spacing:4px;margin-bottom:.5rem;
+        background:linear-gradient(135deg,#7c3aed,#a78bfa);-webkit-background-clip:text;
+        -webkit-text-fill-color:transparent}
+  .sub{font-size:.85rem;color:#555;margin-bottom:2.5rem;letter-spacing:1px}
+  .spinner{width:32px;height:32px;border:3px solid #1e1e1e;border-top-color:#7c3aed;
+           border-radius:50%;animation:spin .75s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style></head>
+<body>
+  <div class="logo">TITAN</div>
+  <div class="sub">Starting up...</div>
+  <div class="spinner"></div>
+</body>
+</html>`)}`;
+
 app.whenReady().then(async () => {
   const portInUse = await isPortInUse(DESKTOP_PORT);
   if (portInUse) {
@@ -227,6 +288,9 @@ app.whenReady().then(async () => {
 
   const windowState = restoreWindowState(store);
   mainWindow = createMainWindow(windowState);
+
+  // Show branded loading screen immediately — window is never black while server boots
+  mainWindow.loadURL(LOADING_HTML).catch(() => {});
 
   // Debounce window state saves — writing to disk on every pixel of resize is wasteful
   let windowStateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -246,13 +310,6 @@ app.whenReady().then(async () => {
     return { action: 'deny' };
   });
 
-  // Serve the Next.js app
-  const url = `http://127.0.0.1:${DESKTOP_PORT}`;
-  mainWindow.loadURL(url).catch((err) => {
-    console.error('[Main] Failed to load URL:', err);
-    // Optional: Add retry logic or a fallback page
-  });
-
   registerIpcHandlers(mainWindow);
 
   protocol.registerFileProtocol('file', (request, callback) => {
@@ -267,7 +324,39 @@ app.whenReady().then(async () => {
   });
 
   createAppMenu(mainWindow);
-  setupAutoUpdater();
+
+  // Wait for the Next.js server to be ready before navigating to it
+  const appUrl = `http://127.0.0.1:${DESKTOP_PORT}`;
+  try {
+    console.log('[Main] Waiting for Next.js server to be ready...');
+    await waitForServer(DESKTOP_PORT, 20000);
+    console.log('[Main] Server ready.');
+  } catch (err) {
+    console.error('[Main] Server did not start in time:', err);
+    // Proceed anyway — maybe it's slow but alive
+  }
+
+  // Load the app URL with retries so a slow boot doesn't leave a dead window
+  const loadWithRetry = async (retries = 5, delayMs = 1500): Promise<void> => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        if (!mainWindow) return;
+        await mainWindow.loadURL(appUrl);
+        console.log('[Main] App loaded successfully.');
+        // Delay auto-updater so the popup never appears over a loading/blank screen
+        setTimeout(() => setupAutoUpdater(), 5000);
+        return;
+      } catch (err) {
+        console.error(`[Main] loadURL attempt ${attempt}/${retries} failed:`, err);
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, delayMs));
+        }
+      }
+    }
+    console.error('[Main] All loadURL attempts failed.');
+  };
+
+  await loadWithRetry();
 
   const workspacePath = store.get('lastOpenedFolder') as string;
   if (workspacePath) {
