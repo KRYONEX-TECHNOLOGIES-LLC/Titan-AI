@@ -647,7 +647,8 @@ export function useChat({
     const forgePrevTurnMs = (window as Window & { __forgePrevTurnMs?: number }).__forgePrevTurnMs || 0;
     if (forgePrevSampleId) {
       try {
-        const { forgeSignals } = await import('@titan/forge');
+        const forgePkg = '@titan' + '/forge';
+        const { forgeSignals } = await import(/* webpackIgnore: true */ forgePkg);
         forgeSignals.reportUserMessage({
           sampleId: forgePrevSampleId,
           message: msg,
@@ -771,7 +772,8 @@ export function useChat({
           // Forge: finalize quality scoring for this turn, store ID for next message
           if (forgeSampleId) {
             try {
-              const { forgeSignals } = await import('@titan/forge');
+              const forgePkg = '@titan' + '/forge';
+              const { forgeSignals } = await import(/* webpackIgnore: true */ forgePkg);
               forgeSignals.finalizeSample(forgeSampleId, { model_id: activeModel }).catch(() => {});
               (window as Window & { __forgePrevSampleId?: string; __forgePrevTurnMs?: number }).__forgePrevSampleId = forgeSampleId;
               (window as Window & { __forgePrevSampleId?: string; __forgePrevTurnMs?: number }).__forgePrevTurnMs = Date.now();
@@ -837,7 +839,8 @@ export function useChat({
           // Titan Forge: report tool outcome signals for quality scoring
           if (forgeSampleId) {
             try {
-              const { forgeSignals } = await import('@titan/forge');
+              const forgePkg = '@titan' + '/forge';
+              const { forgeSignals } = await import(/* webpackIgnore: true */ forgePkg);
               if (tc.tool === 'run_command') {
                 const exitCode = Number(result.metadata?.exitCode ?? (result.success ? 0 : 1));
                 forgeSignals.reportRunCommand({ sampleId: forgeSampleId, command: String(finalArgs.command || ''), exitCode });
