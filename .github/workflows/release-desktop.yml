@@ -69,19 +69,24 @@ jobs:
           rm -f apps/desktop/tsconfig.tsbuildinfo
         shell: bash
 
-      - name: Build desktop app and dependencies
-        run: pnpm turbo run build --filter=@titan/desktop...
+      - name: Build web app
+        run: pnpm --filter @titan/web exec next build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+
+      - name: Build desktop app
+        run: pnpm --filter @titan/desktop run build
 
       - name: Publish desktop app (Windows)
         if: matrix.platform == 'win32'
-        run: pnpm --filter @titan/desktop exec electron-builder --win --x64 --publish always
+        run: pnpm --filter @titan/desktop exec electron-builder --config electron-builder.config.js --win --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish desktop app (macOS x64)
         if: matrix.platform == 'darwin' && matrix.arch == 'x64'
-        run: pnpm --filter @titan/desktop exec electron-builder --mac --x64 --publish always
+        run: pnpm --filter @titan/desktop exec electron-builder --config electron-builder.config.js --mac --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,7 +98,7 @@ jobs:
 
       - name: Publish desktop app (macOS arm64)
         if: matrix.platform == 'darwin' && matrix.arch == 'arm64'
-        run: pnpm --filter @titan/desktop exec electron-builder --mac --arm64 --publish always
+        run: pnpm --filter @titan/desktop exec electron-builder --config electron-builder.config.js --mac --arm64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,7 +110,7 @@ jobs:
 
       - name: Publish desktop app (Linux)
         if: matrix.platform == 'linux'
-        run: pnpm --filter @titan/desktop exec electron-builder --linux --x64 --publish always
+        run: pnpm --filter @titan/desktop exec electron-builder --config electron-builder.config.js --linux --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
