@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import type * as Monaco from 'monaco-editor';
 
@@ -58,13 +58,9 @@ export default function TitanIDE() {
 
   const titanSession = useSession();
 
-  // Zustand stores
-  useLayoutStore();
-  useEditorStore();
-  useFileStore();
-  useTerminalStore();
-  useDebugStore();
-
+  // Initialize command registry once — use getState directly so we don't
+  // subscribe TitanIDE to the entire store (which would re-render on any
+  // store change across all five stores).
   useEffect(() => {
     initCommandRegistry({
       layout: useLayoutStore.getState,
@@ -522,15 +518,20 @@ export default function TitanIDE() {
     return () => clearTimeout(timeoutId);
   }, [chat.isThinking, chat.isStreaming]);
 
-  // Persist tabs/editor state
+  // Persist tabs/editor state — debounced so JSON.stringify doesn't block typing
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     if (!mounted) return;
-    try {
-      localStorage.setItem('titan-ide-state', JSON.stringify({
-        tabs: tabs.map(t => ({ name: t.name, icon: t.icon, color: t.color, modified: t.modified })),
-        activeTab, gitBranch,
-      }));
-    } catch { /* ignore */ }
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem('titan-ide-state', JSON.stringify({
+          tabs: tabs.map(t => ({ name: t.name, icon: t.icon, color: t.color, modified: t.modified })),
+          activeTab, gitBranch,
+        }));
+      } catch { /* ignore */ }
+    }, 500);
+    return () => { if (persistTimerRef.current) clearTimeout(persistTimerRef.current); };
   }, [mounted, tabs, activeTab, gitBranch]);
 
   useEffect(() => {

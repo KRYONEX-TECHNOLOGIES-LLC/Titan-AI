@@ -5,6 +5,9 @@ const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   reactStrictMode: true,
+  compress: true,
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
   transpilePackages: [],
   webpack: (config, { isServer }) => {
     // Handle Monaco Editor + WASM (Tree-sitter)

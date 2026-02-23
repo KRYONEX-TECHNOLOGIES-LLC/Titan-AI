@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock, GeneratedImage, FileAttachment } from '@/types/ide';
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
 import { useAgentTools, toolCallSummary } from './useAgentTools';
@@ -304,9 +304,11 @@ export function useChat({
     }));
   }, [updateMessage]);
 
-  function serializeFileTree(): string {
+  // Subscribe only to fileTree so we can memoize the serialized string.
+  // This avoids walking the entire tree on every chat send when files haven't changed.
+  const fileTree = useFileStore(s => s.fileTree);
+  const serializedFileTree = useMemo(() => {
     try {
-      const { fileTree } = useFileStore.getState();
       if (!fileTree || fileTree.length === 0) return '';
       const lines: string[] = [];
       function walk(nodes: typeof fileTree, depth = 0) {
@@ -319,7 +321,9 @@ export function useChat({
       walk(fileTree);
       return lines.slice(0, 200).join('\n');
     } catch { return ''; }
-  }
+  }, [fileTree]);
+
+  function serializeFileTree(): string { return serializedFileTree; }
 
   const addAttachments = useCallback((files: File[]) => {
     const imageFiles = files.filter(f => f.type.startsWith('image/'));

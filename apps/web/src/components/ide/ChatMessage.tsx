@@ -1,10 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { useVoiceStore } from '@/stores/voice.store';
 import { ttsService } from '@/lib/tts.service';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+// Memoized so it only re-parses/re-renders when content actually changes,
+// preventing spurious re-renders from parent state updates during streaming.
+const MemoizedMarkdown = memo(({ content }: { content: string }) => (
+  <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+));
 import type { ToolCallBlock as ToolCallBlockType, CodeDiffBlock as CodeDiffBlockType, GeneratedImage } from '@/types/ide';
 
 interface MessageAttachment {
@@ -192,9 +198,7 @@ export default function ChatMessage(props: ChatMessageProps) {
   const renderMessageContent = () => {
     return (
       <div className="prose prose-sm prose-invert max-w-none">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {renderableContent}
-        </ReactMarkdown>
+        <MemoizedMarkdown content={renderableContent} />
       </div>
     );
   };

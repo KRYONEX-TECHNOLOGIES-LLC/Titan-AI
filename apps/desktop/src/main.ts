@@ -223,7 +223,7 @@ async function startNextServer(port: number): Promise<void> {
         resolved = true;
         resolve();
       }
-    }, 15000);
+    }, 8000);
   });
 }
 
@@ -331,9 +331,9 @@ async function loadWithRetry(win: BrowserWindow, url: string, maxRetries = 5): P
       await win.loadURL(url);
       return;
     } catch {
-      console.log(`[Main] loadURL attempt ${attempt}/${maxRetries} failed, retrying in 2s...`);
+      console.log(`[Main] loadURL attempt ${attempt}/${maxRetries} failed, retrying in 500ms...`);
       if (attempt < maxRetries) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 500));
       }
     }
   }
