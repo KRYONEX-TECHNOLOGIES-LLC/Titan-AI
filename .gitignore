@@ -63,14 +63,8 @@ coverage/
 *.gguf
 *.bin
 
-# VS Code fork - track our modifications
-vscode-core/node_modules/
-vscode-core/out/
-vscode-core/out-build/
-vscode-core/out-vscode/
-vscode-core/.build/
-vscode-core/.git/
-vscode-core/.profile-oss
+# VS Code fork - ignore entirely (embedded repo)
+vscode-core/
 
 # Secrets (extra safety)
 *.pem
