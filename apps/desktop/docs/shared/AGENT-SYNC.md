@@ -260,3 +260,8 @@ git push origin main
 
 <!-- NEW ENTRIES BELOW THIS LINE -->
 
+### 2026-02-23 | Cursor AI
+- Fix for packaged-app crash: `Cannot find module './ipc/tools.js'`
+  - Root cause: TypeScript incremental cache (`apps/desktop/tsconfig.tsbuildinfo`) can survive cleans and cause `tsc` to skip emitting compiled files, leaving `dist/` missing `ipc/*.js` in the packaged app.
+  - Permanent fix: update desktop clean script to delete `tsconfig.tsbuildinfo` (`rimraf dist out tsconfig.tsbuildinfo`), then rebuild (`pnpm run pack:win`) and re-upload the installer asset to the GitHub release.
+
