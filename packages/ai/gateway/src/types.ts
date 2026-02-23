@@ -18,7 +18,8 @@ export type Provider =
   | 'mistral'
   | 'cohere'
   | 'google'
-  | 'azure';
+  | 'azure'
+  | 'qwen';
 
 // Model tiers for routing
 export type ModelTier = 'frontier' | 'standard' | 'economy' | 'local';

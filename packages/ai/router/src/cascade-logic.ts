@@ -159,7 +159,14 @@ export class CascadeLogic {
       // Check context window
       if (analysis.contextTokens > m.contextWindow) return false;
 
+      // Prefer models with similar capabilities
       return true;
+    })
+    // Sort by cost efficiency
+    .sort((a, b) => {
+      const aCost = a.costPer1MInput + a.costPer1MOutput;
+      const bCost = b.costPer1MInput + b.costPer1MOutput;
+      return aCost - bCost;
     });
   }
 
@@ -202,7 +209,7 @@ export class CascadeLogic {
  * Create default cascade configuration
  */
 export function createDefaultCascade(): CascadeConfig {
-  const frontier = MODEL_REGISTRY.find(m => m.id === 'claude-sonnet-4-20250514');
+  const frontier = MODEL_REGISTRY.find(m => m.id === 'claude-sonnet-4.6');
   const standard = MODEL_REGISTRY.find(m => m.id === 'claude-3-5-sonnet-20241022');
   const economy = MODEL_REGISTRY.find(m => m.id === 'deepseek-chat');
   const local = MODEL_REGISTRY.find(m => m.id === 'llama3.3:70b');
