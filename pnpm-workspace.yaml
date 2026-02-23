@@ -28,6 +28,9 @@ packages:
   
   # Project Midnight - Autonomous Factory
   - "packages/midnight"
+
+  # Titan Forge - Knowledge Distillation Engine
+  - "packages/forge"
   
   # Applications
   - "apps/*"

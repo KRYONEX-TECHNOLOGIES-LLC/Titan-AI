@@ -639,6 +639,21 @@ export function useChat({
         ? { ...s, messages: [...s.messages, userMessage, assistantMessage] }
         : s
     ));
+    // Forge: report user message as an acceptance/rejection signal for the previous turn
+    const forgePrevSampleId = (window as Window & { __forgePrevSampleId?: string }).__forgePrevSampleId;
+    const forgePrevTurnMs = (window as Window & { __forgePrevTurnMs?: number }).__forgePrevTurnMs || 0;
+    if (forgePrevSampleId) {
+      try {
+        const { forgeSignals } = await import('@titan/forge');
+        forgeSignals.reportUserMessage({
+          sampleId: forgePrevSampleId,
+          message: msg,
+          timeSinceTurnMs: Date.now() - forgePrevTurnMs,
+        });
+      } catch { /* best-effort */ }
+    }
+    forgeTurnStartMs = Date.now();
+
     setIsThinking(true);
     thinkingStartRef.current = Date.now();
 
@@ -655,6 +670,8 @@ export function useChat({
     let nudgesUsed = 0;
     const MAX_NUDGES = 2;
     const PRODUCTIVE_TOOLS = new Set(['edit_file', 'create_file', 'delete_file', 'run_command', 'auto_debug', 'git_commit', 'git_sync', 'git_branch', 'memory_write']);
+    // Forge: track the active sample ID for this turn so signals can reference it
+    let forgeSampleId: string | null = null;
     const isTitanProtocol = TITAN_PROTOCOL_IDS.has(activeModel);
     const touchedFiles = new Set<string>();
 
@@ -744,6 +761,15 @@ export function useChat({
             content: m.content || content || (productiveCallsMade > 0 ? 'Changes applied.' : 'No actionable changes were needed.'),
           }));
           taskCompletedSuccessfully = true;
+          // Forge: finalize quality scoring for this turn, store ID for next message
+          if (forgeSampleId) {
+            try {
+              const { forgeSignals } = await import('@titan/forge');
+              forgeSignals.finalizeSample(forgeSampleId, { model_id: activeModel }).catch(() => {});
+              (window as Window & { __forgePrevSampleId?: string; __forgePrevTurnMs?: number }).__forgePrevSampleId = forgeSampleId;
+              (window as Window & { __forgePrevSampleId?: string; __forgePrevTurnMs?: number }).__forgePrevTurnMs = Date.now();
+            } catch { /* best-effort */ }
+          }
           break;
         }
 
@@ -799,6 +825,36 @@ export function useChat({
 
           if (PRODUCTIVE_TOOLS.has(tc.tool) && result.success) {
             productiveCallsMade++;
+          }
+
+          // Titan Forge: report tool outcome signals for quality scoring
+          if (forgeSampleId) {
+            try {
+              const { forgeSignals } = await import('@titan/forge');
+              if (tc.tool === 'run_command') {
+                const exitCode = Number(result.metadata?.exitCode ?? (result.success ? 0 : 1));
+                forgeSignals.reportRunCommand({ sampleId: forgeSampleId, command: String(finalArgs.command || ''), exitCode });
+              } else if (tc.tool === 'read_lints') {
+                const diags = (result.metadata?.diagnostics as unknown[]) || [];
+                forgeSignals.reportLintResult({ sampleId: forgeSampleId, errorCount: diags.length });
+              } else if (tc.tool === 'git_commit') {
+                forgeSignals.reportGitCommit({ sampleId: forgeSampleId, success: result.success });
+              } else if (tc.tool === 'git_restore_checkpoint') {
+                forgeSignals.reportCheckpointRestore({ sampleId: forgeSampleId });
+              } else if (tc.tool === 'auto_debug') {
+                const loopResult = result.metadata?.loopResult as { resolved?: boolean } | undefined;
+                if (loopResult) forgeSignals.reportDebugResult({ sampleId: forgeSampleId, resolved: Boolean(loopResult.resolved) });
+              }
+              // Hallucination detection: tool call to a path that doesn't exist
+              if ((tc.tool === 'edit_file' || tc.tool === 'read_file') && !result.success) {
+                const errMsg = result.error || result.output || '';
+                if (errMsg.includes('not found') || errMsg.includes('ENOENT') || errMsg.includes('does not exist')) {
+                  forgeSignals.reportToolHallucination({ sampleId: forgeSampleId, path: String(finalArgs.path || '') });
+                }
+              }
+            } catch {
+              // Forge signal reporting is best-effort
+            }
           }
 
           if (typeof finalArgs.path === 'string' && finalArgs.path.trim().length > 0) {

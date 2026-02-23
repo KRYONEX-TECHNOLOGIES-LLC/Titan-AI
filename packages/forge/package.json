@@ -1,0 +1,40 @@
+{
+  "name": "@titan/forge",
+  "version": "0.1.0",
+  "description": "Titan Forge — Knowledge distillation pipeline for training a custom LLM from elite model outputs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "export": "node dist/cli/export.js",
+    "eval": "node dist/cli/eval.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.10",
+    "rimraf": "^5.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "keywords": ["distillation", "llm", "training", "titan", "forge"],
+  "author": "KRYONEX TECHNOLOGIES LLC",
+  "license": "SEE LICENSE IN LICENSE"
+}

@@ -1,0 +1,62 @@
+# ── Titan Forge — Phase 1: General Capability Training ──
+# Fine-tune on ALL high-value samples (score >= 7) to build broad capability.
+# Run with: axolotl train axolotl-phase1-general.yml
+#
+# Prerequisites:
+#   pip install axolotl[flash-attn,deepspeed]
+#   OR: pip install unsloth (faster, simpler)
+#
+# Cloud: Run on RunPod A100 80GB ($1.64/hr) or Lambda Labs H100 ($2.49/hr)
+# Expected training time: ~1-2 hours for 5000 samples
+
+base_model: Qwen/Qwen2.5-Coder-7B-Instruct
+model_type: AutoModelForCausalLM
+tokenizer_type: AutoTokenizer
+
+# 4-bit QLoRA (runs on single A100 80GB or RTX 4090)
+load_in_4bit: true
+adapter: qlora
+lora_r: 64
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_linear: true
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+
+# Training data (export this first with: pnpm --filter @titan/forge run export --format sharegpt)
+datasets:
+  - path: ./training-data/sharegpt-export.json
+    type: sharegpt
+    conversation: chatml
+
+# Sequence length — matches Titan's tool call patterns (long context)
+sequence_len: 8192
+sample_packing: true
+pad_to_sequence_len: true
+
+# Batch configuration for A100 80GB
+micro_batch_size: 2
+gradient_accumulation_steps: 4
+num_epochs: 3
+
+# Optimizer
+learning_rate: 0.0002
+optimizer: adamw_bnb_8bit
+lr_scheduler: cosine
+warmup_steps: 20
+
+# Output
+output_dir: ./output/titan-forge-v1-general
+logging_steps: 10
+eval_steps: 100
+save_steps: 500
+save_total_limit: 3
+
+# Reproducibility
+seed: 42

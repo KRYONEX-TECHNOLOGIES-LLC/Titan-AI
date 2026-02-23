@@ -1,0 +1,40 @@
+# ── Titan Forge — Phase 2: Code Specialization ──
+# Fine-tune on code-heavy samples (tool calls: edit_file, create_file, run_command).
+# Run AFTER Phase 1 completes — uses Phase 1 adapter as starting point.
+
+base_model: Qwen/Qwen2.5-Coder-7B-Instruct
+model_type: AutoModelForCausalLM
+tokenizer_type: AutoTokenizer
+
+load_in_4bit: true
+adapter: qlora
+lora_r: 64
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_linear: true
+
+# Start from Phase 1 checkpoint if available
+# lora_model_dir: ./output/titan-forge-v1-general
+
+datasets:
+  - path: ./training-data/phase2-code.json
+    type: sharegpt
+    conversation: chatml
+
+sequence_len: 8192
+sample_packing: true
+micro_batch_size: 2
+gradient_accumulation_steps: 4
+num_epochs: 2
+
+learning_rate: 0.0001
+optimizer: adamw_bnb_8bit
+lr_scheduler: cosine
+warmup_steps: 10
+
+output_dir: ./output/titan-forge-v1-code
+logging_steps: 10
+eval_steps: 100
+save_steps: 500
+save_total_limit: 3
+seed: 42

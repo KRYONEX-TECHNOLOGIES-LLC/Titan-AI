@@ -358,3 +358,54 @@ Users running Titan Desktop will see an update popup within 30 minutes (or on ne
 - Before claiming "Done": run the Done Checklist from Section 17
 - Read mistakes.md if working on: electron, IPC, build scripts, package.json, CI, model IDs
 
+### 2026-02-23 | Cursor AI — Titan Forge Distillation Engine (DO NOT TOUCH)
+
+**Summary:** Built a complete knowledge distillation pipeline at `packages/forge/` that silently captures elite model outputs, quality-gates them, and prepares training data for fine-tuning a custom LLM.
+
+**CRITICAL — Titan MUST read this before touching packages/forge or any hooked code:**
+
+**What Forge does (DO NOT remove or break any of this):**
+1. **Collector** — After every LLM response in `route.ts`, silently captures the interaction to Supabase `forge_samples` table. ONLY captures frontier-tier models. Zero performance impact (async, fire-and-forget).
+2. **Signal hooks** — In `useChat.ts`, after every tool result, reports outcomes (build pass/fail, lint clean, git commit, debug resolved, user acceptance/rejection). These feed the quality gate.
+3. **Quality Gate** — Scores each sample 0-10 based on real outcomes. Score >= 7 = training data. Score 0 = rejected.
+4. **Exporter** — CLI tool to export training data in ShareGPT or JSONL format.
+5. **Trainer** — Axolotl/Unsloth configs for 3-phase curriculum fine-tuning (general → code → titan).
+6. **Eval Harness** — Benchmarks student model vs teacher models, requires >= 85% score ratio to "pass".
+
+**New files (DO NOT delete, modify, or simplify any of these):**
+- `packages/forge/src/types.ts` — All TypeScript interfaces
+- `packages/forge/src/db.ts` — Supabase client for forge tables
+- `packages/forge/src/collector.ts` — Stream capture + dedup
+- `packages/forge/src/quality-gate.ts` — 0-10 scoring engine
+- `packages/forge/src/signals.ts` — Outcome signal detection
+- `packages/forge/src/exporter.ts` — Training data export (ShareGPT/JSONL)
+- `packages/forge/src/eval.ts` — Teacher vs student benchmark
+- `packages/forge/trainer/*.yml` — 3-phase Axolotl training configs
+- `packages/forge/trainer/train.sh` — Training launch script
+- `packages/forge/trainer/unsloth_train.py` — Unsloth trainer
+- `apps/web/supabase/migration.sql` — Added forge_samples, forge_runs, forge_evals tables
+
+**Hooks added to existing files (DO NOT remove these hooks):**
+- `apps/web/src/app/api/chat/continue/route.ts` — Forge capture call after stream completes (lines with `forgeCollector.capture(...)`)
+- `apps/web/src/hooks/useChat.ts` — Signal reporting after tool results + user message handling
+
+**New Supabase tables (run migration in Supabase dashboard if not done):**
+- `forge_samples` — Every captured interaction, indexed by quality_score + prompt_hash
+- `forge_runs` — Training run metadata
+- `forge_evals` — Benchmark results (teacher vs student)
+
+**To run a training cycle when ready:**
+1. `pnpm --filter @titan/forge run export --format curriculum --output ./training-data` — export high-value samples
+2. Upload to cloud GPU (RunPod A100 80GB)
+3. `./packages/forge/trainer/train.sh all` — run all 3 curriculum phases
+4. `pnpm --filter @titan/forge run eval --run-id <ID> --student <model-endpoint>` — benchmark
+5. When student score_ratio >= 0.85: add to model registry as `titan-forge-v1`
+
+**What Titan MUST do now:**
+- Before any task modifying build system: `git_checkpoint("before-task-name")`
+- Before any commit: run tsc --noEmit on changed TypeScript files
+- Before claiming "Done": run the Done Checklist from Section 17
+- Read mistakes.md if working on: electron, IPC, build scripts, package.json, CI, model IDs
+- NEVER touch packages/forge/* without reading this section first
+- NEVER remove the Forge hooks from route.ts or useChat.ts — they are the data collection pipeline
+

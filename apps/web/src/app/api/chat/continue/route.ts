@@ -1477,6 +1477,7 @@ export async function POST(request: NextRequest) {
 
         emit('start', { model });
 
+        const streamStartTime = Date.now();
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -1550,6 +1551,30 @@ export async function POST(request: NextRequest) {
             return { id: tc.id, tool: tc.name, args: parsedArgs };
           }),
         });
+
+        // Titan Forge: capture this interaction for distillation (non-blocking, fire-and-forget)
+        try {
+          const { forgeCollector } = await import('@titan/forge');
+          const forgeTier = (modelEntry as { tier?: string } | undefined)?.tier === 'frontier'
+            ? 'frontier' as const
+            : (normalizedModel.startsWith('ollama') ? 'local' as const : 'economy' as const);
+          forgeCollector.capture({
+            sessionId: (body as { sessionId?: string }).sessionId ?? null,
+            modelId: normalizedModel,
+            modelTier: forgeTier,
+            systemPrompt: (messages[0]?.role === 'system' ? String(messages[0].content) : ''),
+            messages: messages as import('@titan/forge').ChatMessage[],
+            response: fullContent,
+            toolCalls: toolCalls.map(tc => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: { name: tc.name, arguments: tc.args },
+            })),
+            latencyMs: Date.now() - streamStartTime,
+          });
+        } catch {
+          // Forge collection is best-effort — never throw to the caller
+        }
       } catch (error) {
         emit('error', { message: error instanceof Error ? error.message : 'Stream failed' });
       } finally {

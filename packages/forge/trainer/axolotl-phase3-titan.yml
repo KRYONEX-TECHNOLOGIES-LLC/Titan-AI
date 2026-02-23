@@ -1,0 +1,38 @@
+# ── Titan Forge — Phase 3: Titan Protocol Specialization ──
+# Fine-tune on Titan Protocol samples — multi-agent governance patterns,
+# checkpoint usage, quality gate patterns, AGENT-SYNC rules.
+# This phase gives the student Titan's specific operating style.
+
+base_model: Qwen/Qwen2.5-Coder-7B-Instruct
+model_type: AutoModelForCausalLM
+tokenizer_type: AutoTokenizer
+
+load_in_4bit: true
+adapter: qlora
+lora_r: 32
+lora_alpha: 16
+lora_dropout: 0.05
+lora_target_linear: true
+
+datasets:
+  - path: ./training-data/phase3-titan.json
+    type: sharegpt
+    conversation: chatml
+
+sequence_len: 8192
+sample_packing: true
+micro_batch_size: 2
+gradient_accumulation_steps: 4
+num_epochs: 5
+
+learning_rate: 0.00005
+optimizer: adamw_bnb_8bit
+lr_scheduler: cosine
+warmup_steps: 5
+
+output_dir: ./output/titan-forge-v1-titan
+logging_steps: 5
+eval_steps: 50
+save_steps: 200
+save_total_limit: 5
+seed: 42
