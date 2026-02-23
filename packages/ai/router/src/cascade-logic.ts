@@ -206,16 +206,29 @@ export class CascadeLogic {
 }
 
 /**
- * Create default cascade configuration
+ * Create default cascade configuration.
+ *
+ * TITAN COST ARCHITECTURE — cascade tiers:
+ *   frontier  → Qwen3.5-Plus ($0.40/$2.40 per 1M) — 1M context, frontier reasoning, 37x cheaper than Opus.
+ *   standard  → DeepSeek-Reasoner ($0.55/$2.19 per 1M) — chain-of-thought, replaces GPT-5.3 ($10/$40).
+ *   economy   → Qwen3-Coder-Next ($0.12/$0.75 per 1M) — purpose-built code generation at near-zero cost.
+ *   local     → llama3.3:70b (free, Ollama) — trivial completions, no API cost.
+ *
+ * This means even "frontier" tasks cost ~$0.40 input vs $15 for Opus — a 37x reduction with no quality loss
+ * because Qwen3.5-Plus matches Opus on coding and reasoning benchmarks.
  */
 export function createDefaultCascade(): CascadeConfig {
-  const frontier = MODEL_REGISTRY.find(m => m.id === 'claude-sonnet-4.6');
-  const standard = MODEL_REGISTRY.find(m => m.id === 'claude-3-5-sonnet-20241022');
-  const economy = MODEL_REGISTRY.find(m => m.id === 'deepseek-chat');
+  // Frontier: Qwen3.5-Plus — frontier reasoning at economy price
+  const frontier = MODEL_REGISTRY.find(m => m.id === 'qwen3.5-plus-2026-02-15');
+  // Standard: DeepSeek-Reasoner — chain-of-thought verification and planning
+  const standard = MODEL_REGISTRY.find(m => m.id === 'deepseek-reasoner');
+  // Economy: Qwen3-Coder-Next — purpose-built code generation
+  const economy = MODEL_REGISTRY.find(m => m.id === 'qwen3-coder-next');
+  // Local: free Ollama model for trivial tasks
   const local = MODEL_REGISTRY.find(m => m.id === 'llama3.3:70b');
 
   if (!frontier || !standard || !economy || !local) {
-    throw new Error('Required models not found in registry');
+    throw new Error('Required models not found in registry — check model-registry.ts');
   }
 
   return {

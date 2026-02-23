@@ -182,11 +182,16 @@ export const DEFAULT_SUPREME_CONFIG: SupremeConfig = {
     warningAt: 70,
   },
   cacheTTLMs: 600_000,
+  // TITAN SUPREME COST ARCHITECTURE:
+  // Overseer uses Qwen3.5-Plus ($0.40/$2.40) — frontier-class reasoning, 37x cheaper than Opus.
+  // Operator uses DeepSeek-Reasoner ($0.55/$2.19) — chain-of-thought planning, replaces GPT-5.3 ($10/$40).
+  // Primary Worker uses Qwen3-Coder-Next ($0.12/$0.75) — purpose-built code generation.
+  // Secondary Worker uses Gemini 2.0 Flash ($0.075/$0.30) — fastest, cheapest for docs/formatting tasks.
   models: {
-    overseer: 'claude-opus-4.6',
-    operator: 'gpt-5.3',
-    primaryWorker: 'qwen3-coder',
-    secondaryWorker: 'llama-4-maverick',
+    overseer: 'qwen3.5-plus-2026-02-15',
+    operator: 'deepseek-reasoner',
+    primaryWorker: 'qwen3-coder-next',
+    secondaryWorker: 'gemini-2.0-flash',
   },
 };
 

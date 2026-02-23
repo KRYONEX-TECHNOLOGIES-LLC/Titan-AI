@@ -181,13 +181,21 @@ export interface OmegaConfig {
 }
 
 export const DEFAULT_OMEGA_CONFIG: OmegaConfig = {
-  architectModel: 'claude-opus-4.6',
-  sentinelModel: 'gpt-5.3',
-  operatorModel: 'gpt-5.3',
+  // TITAN OMEGA COST ARCHITECTURE:
+  // Architect uses Qwen3.5-Plus ($0.40/$2.40) — 1M context, frontier reasoning, 37x cheaper than Opus.
+  // Sentinel uses DeepSeek-Reasoner ($0.55/$2.19) — chain-of-thought verification catches regressions.
+  // Operator uses DeepSeek-Reasoner ($0.55/$2.19) — structured planning with visible reasoning trace.
+  // Low-risk specialist uses Gemini 2.0 Flash ($0.075/$0.30) — trivial edits, formatting, docs.
+  // Medium-risk specialist uses Qwen3-Coder-Next ($0.12/$0.75) — standard feature implementation.
+  // High-risk specialist uses Qwen3.5-Plus ($0.40/$2.40) — complex logic, security-sensitive code.
+  //   Previously used Opus ($15/$75) for high-risk — now 37x cheaper with equivalent reasoning depth.
+  architectModel: 'qwen3.5-plus-2026-02-15',
+  sentinelModel: 'deepseek-reasoner',
+  operatorModel: 'deepseek-reasoner',
   specialistModels: {
-    lowRisk: 'llama-4-maverick',
-    mediumRisk: 'qwen3-coder',
-    highRisk: 'claude-opus-4.6',
+    lowRisk: 'gemini-2.0-flash',
+    mediumRisk: 'qwen3-coder-next',
+    highRisk: 'qwen3.5-plus-2026-02-15',
   },
   maxConcurrentSpecialists: 4,
   maxReworkAttempts: 2,
