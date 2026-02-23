@@ -66,18 +66,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
+      - name: Build all packages
         run: pnpm build
-
-      - name: Build web app (Next.js production build)
-        run: pnpm --filter @titan/web build
-
-      - name: Build native module
-        run: pnpm --filter @titan/indexer-native build
-        continue-on-error: true
-
-      - name: Compile desktop TypeScript
-        run: pnpm --filter @titan/desktop build
 
       - name: Publish desktop app (Windows)
         if: matrix.platform == 'win32'
