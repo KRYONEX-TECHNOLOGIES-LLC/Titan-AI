@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm ci && npm run build"
+buildCommand = "corepack enable && pnpm install --frozen-lockfile && pnpm --filter @titan/web exec next build"
 
 [deploy]
-startCommand = "npm run start"
+startCommand = "node apps/web/.next/standalone/apps/web/server.js"
 healthcheckPath = "/"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"

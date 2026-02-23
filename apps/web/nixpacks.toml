@@ -2,10 +2,10 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm ci --include=dev"]
+cmds = ["corepack enable && pnpm install --frozen-lockfile"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["pnpm --filter @titan/web exec next build"]
 
 [start]
-cmd = "npm run start"
+cmd = "node apps/web/.next/standalone/apps/web/server.js"
