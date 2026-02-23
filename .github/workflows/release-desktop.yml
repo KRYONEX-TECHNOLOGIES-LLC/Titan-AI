@@ -122,12 +122,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - name: Get version
         id: version
@@ -144,17 +140,17 @@ jobs:
           OWNER="${TITAN_GITHUB_OWNER:-KRYONEX-TECHNOLOGIES-LLC}"
           REPO="${TITAN_GITHUB_REPO:-Titan-AI}"
           BASE="https://github.com/${OWNER}/${REPO}/releases/download/v${VERSION}"
-          cat > apps/web/src/app/api/releases/latest/manifest.json << EOF
+          cat > apps/web/src/app/api/releases/latest/manifest.json << 'MANIFEST'
           {
             "product": "Titan Desktop",
             "channel": "stable",
-            "version": "${VERSION}",
-            "publishedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "version": "VERSION_PLACEHOLDER",
+            "publishedAt": "DATE_PLACEHOLDER",
             "downloads": {
               "windows": {
                 "available": true,
-                "url": "${BASE}/Titan-Desktop-${VERSION}-win-x64.exe",
-                "checksumUrl": "${BASE}/latest.yml",
+                "url": "URL_PLACEHOLDER",
+                "checksumUrl": "CHECKSUM_PLACEHOLDER",
                 "releaseNotesUrl": "/release-notes"
               },
               "macos": {
@@ -171,12 +167,15 @@ jobs:
               }
             }
           }
-          EOF
+          MANIFEST
+          sed -i "s|VERSION_PLACEHOLDER|${VERSION}|g" apps/web/src/app/api/releases/latest/manifest.json
+          sed -i "s|DATE_PLACEHOLDER|$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" apps/web/src/app/api/releases/latest/manifest.json
+          sed -i "s|URL_PLACEHOLDER|${BASE}/Titan-Desktop-${VERSION}-win-x64.exe|g" apps/web/src/app/api/releases/latest/manifest.json
+          sed -i "s|CHECKSUM_PLACEHOLDER|${BASE}/latest.yml|g" apps/web/src/app/api/releases/latest/manifest.json
 
-      - name: Commit updated manifest
+      - name: Commit and push updated manifest
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/web/src/app/api/releases/latest/manifest.json
-          git commit -m "chore: bump release manifest to v${{ steps.version.outputs.VERSION }}" || echo "No changes to commit"
-          git push || echo "Nothing to push"
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "chore: bump release manifest to v${{ steps.version.outputs.VERSION }}" && git push origin main)
