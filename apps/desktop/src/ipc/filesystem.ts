@@ -53,30 +53,29 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, win: BrowserWindow)
 
   ipcMain.handle('fs:readFile', async (_e, filePath: string) => {
     const resolved = path.resolve(filePath);
-    return fs.readFileSync(resolved, 'utf-8');
+    return fs.promises.readFile(resolved, 'utf-8');
   });
 
   ipcMain.handle('fs:writeFile', async (_e, filePath: string, content: string) => {
     const resolved = path.resolve(filePath);
     const dir = path.dirname(resolved);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(resolved, content, 'utf-8');
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(resolved, content, 'utf-8');
   });
 
   ipcMain.handle('fs:deleteFile', async (_e, filePath: string) => {
     const resolved = path.resolve(filePath);
-    if (fs.statSync(resolved).isDirectory()) {
-      fs.rmSync(resolved, { recursive: true, force: true });
+    const stat = await fs.promises.stat(resolved);
+    if (stat.isDirectory()) {
+      await fs.promises.rm(resolved, { recursive: true, force: true });
     } else {
-      fs.unlinkSync(resolved);
+      await fs.promises.unlink(resolved);
     }
   });
 
   ipcMain.handle('fs:stat', async (_e, filePath: string) => {
     const resolved = path.resolve(filePath);
-    const stat = fs.statSync(resolved);
+    const stat = await fs.promises.stat(resolved);
     return {
       size: stat.size,
       isFile: stat.isFile(),
@@ -86,12 +85,12 @@ export function registerFilesystemHandlers(ipcMain: IpcMain, win: BrowserWindow)
   });
 
   ipcMain.handle('fs:exists', async (_e, filePath: string) => {
-    return fs.existsSync(path.resolve(filePath));
+    return fs.promises.access(path.resolve(filePath)).then(() => true).catch(() => false);
   });
 
   ipcMain.handle('fs:mkdir', async (_e, dirPath: string) => {
     const resolved = path.resolve(dirPath);
-    fs.mkdirSync(resolved, { recursive: true });
+    await fs.promises.mkdir(resolved, { recursive: true });
   });
 
   ipcMain.handle('fs:watchFolder', async (_e, dirPath: string) => {
@@ -168,17 +167,9 @@ function readDirRecursive(dirPath: string, recursive: boolean, depth: number, ma
         }
         result.push(node);
       } else {
-        try {
-          const stat = fs.statSync(fullPath);
-          result.push({
-            name: item.name,
-            path: fullPath,
-            type: 'file',
-            size: stat.size,
-          });
-        } catch {
-          result.push({ name: item.name, path: fullPath, type: 'file' });
-        }
+        // Use the dirent's known fact that it's a file; skip extra stat call for size
+        // (size is cosmetic in the tree view, not worth a sync stat per file)
+        result.push({ name: item.name, path: fullPath, type: 'file' });
       }
     }
 

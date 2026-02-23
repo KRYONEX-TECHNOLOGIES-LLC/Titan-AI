@@ -20,8 +20,14 @@ const MAX_LOOP_ITERATIONS = 60;
 const MAX_TOTAL_FAILURES = 12;
 const MAX_HISTORY_ENTRIES = 60;
 const MAX_TOOL_RESULT_LEN = 6000;
-const TOKEN_BATCH_MS = 80;
+const TOKEN_BATCH_MS = 150;
 const TOKEN_BUDGET_CHARS = 120000;
+
+// Git status cache — re-fetching on every loop iteration is wasteful since
+// the workspace rarely changes mid-conversation.
+let gitStatusCacheValue: { branch?: string; modified?: string[]; untracked?: string[]; staged?: string[] } | undefined;
+let gitStatusCacheTime = 0;
+const GIT_STATUS_TTL_MS = 5000;
 
 const TITAN_PLANNER = 'qwen3.5-plus-02-15';
 const TITAN_TOOL_CALLER = 'deepseek-r1';
@@ -186,6 +192,7 @@ export function useChat({
   onNoToolsAvailable,
 }: UseChatOptions) {
   const [chatInput, setChatInput] = useState('');
+  const chatInputRef = useRef('');
   const [isThinking, setIsThinking] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -370,6 +377,10 @@ export function useChat({
   }, []);
 
   async function fetchGitStatus(): Promise<{ branch?: string; modified?: string[]; untracked?: string[]; staged?: string[] } | undefined> {
+    // Return cached result if fresh enough (5-second TTL)
+    if (gitStatusCacheValue && (Date.now() - gitStatusCacheTime) < GIT_STATUS_TTL_MS) {
+      return gitStatusCacheValue;
+    }
     try {
       const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
 
@@ -383,7 +394,10 @@ export function useChat({
           if (f.working_dir === 'M') modified.push(f.path);
           if (f.index === '?' && f.working_dir === '?') untracked.push(f.path);
         }
-        return { branch: status.current || undefined, modified, untracked, staged };
+        const result = { branch: status.current || undefined, modified, untracked, staged };
+        gitStatusCacheValue = result;
+        gitStatusCacheTime = Date.now();
+        return result;
       }
 
       const isServerPath = wsPath.startsWith('/') || /^[A-Z]:\\/i.test(wsPath);
@@ -395,12 +409,15 @@ export function useChat({
       if (!res.ok) return undefined;
       const data = await res.json();
       if (!data.isRepo) return undefined;
-      return {
+      const result = {
         branch: data.branch || data.current,
         modified: data.modified || [],
         untracked: data.untracked || data.not_added || [],
         staged: data.staged || [],
       };
+      gitStatusCacheValue = result;
+      gitStatusCacheTime = Date.now();
+      return result;
     } catch { return undefined; }
   }
 
@@ -413,12 +430,16 @@ export function useChat({
     modelOverride?: string,
     titanProtocolMode?: boolean,
     forgeId?: string,
+    isFirstIteration = true,
   ): Promise<{ content: string; toolCalls: StreamToolCall[] }> {
-    const gitStatus = await fetchGitStatus();
-    const fileTree = serializeFileTree();
     const wsPath = workspacePath || useFileStore.getState().workspacePath || '';
+
+    // Only fetch expensive context on the first iteration of a task.
+    // On subsequent iterations Titan already has this context in the conversation history.
+    const gitStatus = isFirstIteration ? await fetchGitStatus() : undefined;
+    const fileTree = isFirstIteration ? serializeFileTree() : undefined;
     const lastUserMessage = [...conversationHistory].reverse().find((m) => m.role === 'user' && typeof m.content === 'string');
-    const navigationPlan = lastUserMessage?.content
+    const navigationPlan = isFirstIteration && lastUserMessage?.content
       ? contextNavigatorRef.current.resolveTarget(lastUserMessage.content, {
           openTabs,
           recentlyEditedFiles,
@@ -426,12 +447,12 @@ export function useChat({
           workspacePath: wsPath,
         })
       : undefined;
-    const omegaContext = titanProtocolMode && lastUserMessage?.content
+    const omegaContext = isFirstIteration && titanProtocolMode && lastUserMessage?.content
       ? {
           workOrders: omegaFluencyRef.current.decomposeToWorkOrders(lastUserMessage.content, {
             workspacePath: wsPath,
             openTabs,
-            fileTree,
+            fileTree: fileTree ?? '',
             recentlyEditedFiles,
           }),
         }
@@ -449,21 +470,22 @@ export function useChat({
         model: modelOverride || activeModel,
         titanProtocol: !!titanProtocolMode,
         attachments: messageAttachments,
-        codeContext: {
+        // Heavy context: only on first iteration, already in history for subsequent ones
+        codeContext: isFirstIteration ? {
           file: activeTab,
           content: (editorInstance?.getValue() || fileContents[activeTab] || '').slice(0, 8000),
           language: getLanguageFromFilename(activeTab),
-        },
-        repoMap: typeof window !== 'undefined' ? (window as any).__titanRepoMap : undefined,
+        } : undefined,
+        repoMap: isFirstIteration && typeof window !== 'undefined' ? (window as any).__titanRepoMap : undefined,
         workspacePath: wsPath,
-        openTabs: openTabs || [],
+        openTabs: isFirstIteration ? (openTabs || []) : undefined,
         fileTree,
         gitStatus,
-        terminalHistory: terminalHistory?.slice(-5) || [],
-        cursorPosition: cursorPosition || undefined,
-        linterDiagnostics: linterDiagnostics?.slice(0, 10) || [],
-        recentlyEditedFiles: recentlyEditedFiles?.slice(0, 10) || [],
-        recentlyViewedFiles: recentlyViewedFiles?.slice(0, 10) || [],
+        terminalHistory: isFirstIteration ? (terminalHistory?.slice(-5) || []) : undefined,
+        cursorPosition: isFirstIteration ? (cursorPosition || undefined) : undefined,
+        linterDiagnostics: isFirstIteration ? (linterDiagnostics?.slice(0, 10) || []) : undefined,
+        recentlyEditedFiles: isFirstIteration ? (recentlyEditedFiles?.slice(0, 10) || []) : undefined,
+        recentlyViewedFiles: isFirstIteration ? (recentlyViewedFiles?.slice(0, 10) || []) : undefined,
         navigationHints: navigationPlan,
         omegaContext,
         isDesktop: isDesktop || false,
@@ -578,14 +600,15 @@ export function useChat({
   }
 
   const handleSend = useCallback(async () => {
-    if (!chatInput.trim() && attachments.length === 0) return;
-    const msg = chatInput.trim();
+    if (!chatInputRef.current.trim() && attachments.length === 0) return;
+    const msg = chatInputRef.current.trim();
     const caps = getCapabilities(workspacePath);
     if (requiresTools(msg) && !caps.toolsEnabled) {
       onNoToolsAvailable?.(caps.reasonIfDisabled ?? 'NO_WORKSPACE');
       return;
     }
     setChatInput('');
+    chatInputRef.current = '';
     abortedRef.current = false;
     agentTools.reset();
 
@@ -713,6 +736,7 @@ export function useChat({
             iterationModel,
             isTitanProtocol,
             loopIterations === 1 ? forgeSampleId : undefined,
+            loopIterations === 1,
           );
         } catch (err) {
           if (abortedRef.current || controller.signal.aborted) break;
@@ -1034,7 +1058,7 @@ export function useChat({
       activeStreamRef.current = null;
     }
   }, [
-    chatInput, editorInstance, activeTab, fileContents, activeSessionId, activeModel, attachments, clearAttachments,
+    editorInstance, activeTab, fileContents, activeSessionId, activeModel, attachments, clearAttachments,
     setSessions, updateMessage, appendToolCallToMessage, updateToolCallInMessage,
     appendCodeDiffToMessage, appendGeneratedImageToMessage, agentTools, flushTokens, workspacePath, openTabs, terminalHistory,
     cursorPosition, linterDiagnostics, recentlyEditedFiles, recentlyViewedFiles, isDesktop, osPlatform, onNoToolsAvailable,
@@ -1145,9 +1169,17 @@ export function useChat({
     };
   }
 
+  const setChatInputWithRef = useCallback((v: string | ((prev: string) => string)) => {
+    setChatInput(prev => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      chatInputRef.current = next;
+      return next;
+    });
+  }, []);
+
   return {
     chatInput,
-    setChatInput,
+    setChatInput: setChatInputWithRef,
     isThinking,
     isStreaming,
     handleSend,

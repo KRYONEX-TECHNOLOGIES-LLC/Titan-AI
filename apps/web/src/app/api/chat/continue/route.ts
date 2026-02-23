@@ -1322,6 +1322,37 @@ function envValue(...names: string[]): string {
   return '';
 }
 
+// Module-level system prompt cache — avoids rebuilding the 50k-char prompt on every
+// loop iteration. Key = sessionId, TTL = 10 minutes. Max 200 entries (LRU-style).
+const SYSTEM_PROMPT_CACHE_TTL_MS = 10 * 60 * 1000;
+const SYSTEM_PROMPT_CACHE_MAX = 200;
+const systemPromptCache = new Map<string, { prompt: string; ts: number }>();
+
+function getCachedOrBuildSystemPrompt(
+  sessionId: string | undefined,
+  body: ContinueRequest,
+  creatorContext: string,
+  selfWorkContext: string,
+  isTitanProtocol: boolean,
+): string {
+  const key = sessionId ?? '__nosession__';
+  const cached = systemPromptCache.get(key);
+  if (cached && (Date.now() - cached.ts) < SYSTEM_PROMPT_CACHE_TTL_MS) {
+    return cached.prompt;
+  }
+  let prompt = buildSystemPrompt(body, creatorContext, selfWorkContext);
+  if (isTitanProtocol) {
+    prompt = `[TITAN PROTOCOL MODE ACTIVE — Full Governance Architecture v2.0 Engaged]\n\n` + prompt;
+  }
+  // Evict oldest entry if cache is full
+  if (systemPromptCache.size >= SYSTEM_PROMPT_CACHE_MAX) {
+    const firstKey = systemPromptCache.keys().next().value;
+    if (firstKey) systemPromptCache.delete(firstKey);
+  }
+  systemPromptCache.set(key, { prompt, ts: Date.now() });
+  return prompt;
+}
+
 export async function POST(request: NextRequest) {
   let body: ContinueRequest;
   try {
@@ -1361,13 +1392,18 @@ export async function POST(request: NextRequest) {
     }), { status: 400 });
   }
 
-  // Build and inject system prompt with full context (including creator/self-work context)
+  // Build and inject system prompt with full context (including creator/self-work context).
+  // Uses a module-level cache keyed by sessionId (TTL 10 min) to avoid rebuilding the
+  // ~50k-char prompt on every loop iteration of the same conversation.
   if (messages[0]?.role !== 'system') {
     const { creatorContext, selfWorkContext } = await getCreatorContext(body.workspacePath);
-    let systemPrompt = buildSystemPrompt(body, creatorContext, selfWorkContext);
-    if (isTitanProtocol) {
-      systemPrompt = `[TITAN PROTOCOL MODE ACTIVE — Full Governance Architecture v2.0 Engaged]\n\n` + systemPrompt;
-    }
+    const systemPrompt = getCachedOrBuildSystemPrompt(
+      body.sessionId,
+      body,
+      creatorContext,
+      selfWorkContext,
+      isTitanProtocol,
+    );
     messages = [{ role: 'system', content: systemPrompt }, ...messages];
   }
 

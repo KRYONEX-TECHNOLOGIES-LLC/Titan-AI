@@ -51,10 +51,9 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
 
   ipcMain.handle('tools:readFile', async (_e, filePath: string, opts?: { lineOffset?: number; lineLimit?: number }) => {
     const resolved = path.resolve(filePath);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`File not found: ${resolved}`);
-    }
-    const content = fs.readFileSync(resolved, 'utf-8');
+    const exists = await fs.promises.access(resolved).then(() => true).catch(() => false);
+    if (!exists) throw new Error(`File not found: ${resolved}`);
+    const content = await fs.promises.readFile(resolved, 'utf-8');
     const lines = content.split('\n');
 
     if (opts?.lineOffset !== undefined || opts?.lineLimit !== undefined) {
@@ -68,17 +67,16 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
 
   ipcMain.handle('tools:editFile', async (_e, filePath: string, oldStr: string, newStr: string) => {
     const pathResolved = path.resolve(filePath);
-    if (!fs.existsSync(pathResolved)) {
-      throw new Error(`File not found: ${pathResolved}`);
-    }
-    const beforeContent = fs.readFileSync(pathResolved, 'utf-8');
+    const exists = await fs.promises.access(pathResolved).then(() => true).catch(() => false);
+    if (!exists) throw new Error(`File not found: ${pathResolved}`);
+    const beforeContent = await fs.promises.readFile(pathResolved, 'utf-8');
     const beforeHash = contentHash(beforeContent);
     if (!beforeContent.includes(oldStr)) {
       throw new Error(`old_string not found in file. Make sure it matches exactly, including whitespace.`);
     }
     const newContent = beforeContent.replace(oldStr, newStr);
-    fs.writeFileSync(pathResolved, newContent, 'utf-8');
-    const afterReadback = fs.readFileSync(pathResolved, 'utf-8');
+    await fs.promises.writeFile(pathResolved, newContent, 'utf-8');
+    const afterReadback = await fs.promises.readFile(pathResolved, 'utf-8');
     const afterHash = contentHash(afterReadback);
     const bytesWritten = Buffer.byteLength(newContent, 'utf-8');
     return {
@@ -95,38 +93,29 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
   ipcMain.handle('tools:createFile', async (_e, filePath: string, content: string) => {
     const resolved = path.resolve(filePath);
     const dir = path.dirname(resolved);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(resolved, content, 'utf-8');
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(resolved, content, 'utf-8');
     return { success: true };
   });
 
   ipcMain.handle('tools:deleteFile', async (_e, filePath: string) => {
     const resolved = path.resolve(filePath);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`File not found: ${resolved}`);
-    }
-    fs.unlinkSync(resolved);
+    const exists = await fs.promises.access(resolved).then(() => true).catch(() => false);
+    if (!exists) throw new Error(`File not found: ${resolved}`);
+    await fs.promises.unlink(resolved);
     return { success: true };
   });
 
   ipcMain.handle('tools:listDir', async (_e, dirPath: string) => {
     const resolved = path.resolve(dirPath);
-    if (!fs.existsSync(resolved)) {
-      throw new Error(`Directory not found: ${resolved}`);
-    }
-    const items = fs.readdirSync(resolved, { withFileTypes: true });
-    const entries = items.map(item => {
-      const fullPath = path.join(resolved, item.name);
-      let size = 0;
-      try { size = fs.statSync(fullPath).size; } catch {}
-      return {
-        name: item.name,
-        type: item.isDirectory() ? 'directory' : 'file',
-        size,
-      };
-    });
+    const exists = await fs.promises.access(resolved).then(() => true).catch(() => false);
+    if (!exists) throw new Error(`Directory not found: ${resolved}`);
+    const items = await fs.promises.readdir(resolved, { withFileTypes: true });
+    const entries = items.map(item => ({
+      name: item.name,
+      type: item.isDirectory() ? 'directory' : 'file',
+      size: 0,
+    }));
     return { entries };
   });
 

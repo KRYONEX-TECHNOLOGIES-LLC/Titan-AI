@@ -228,8 +228,16 @@ app.whenReady().then(async () => {
   const windowState = restoreWindowState(store);
   mainWindow = createMainWindow(windowState);
 
-  mainWindow.on('resize', () => { if (mainWindow) saveWindowState(mainWindow, store); });
-  mainWindow.on('move', () => { if (mainWindow) saveWindowState(mainWindow, store); });
+  // Debounce window state saves — writing to disk on every pixel of resize is wasteful
+  let windowStateDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const debouncedSaveWindowState = () => {
+    if (windowStateDebounceTimer) clearTimeout(windowStateDebounceTimer);
+    windowStateDebounceTimer = setTimeout(() => {
+      if (mainWindow) saveWindowState(mainWindow, store);
+    }, 500);
+  };
+  mainWindow.on('resize', debouncedSaveWindowState);
+  mainWindow.on('move', debouncedSaveWindowState);
   mainWindow.on('close', () => { if (mainWindow) saveWindowState(mainWindow, store); });
 
   // Intercept new window requests (e.g., from external links) and open them in the default browser
@@ -264,8 +272,23 @@ app.whenReady().then(async () => {
   const workspacePath = store.get('lastOpenedFolder') as string;
   if (workspacePath) {
     const watcher = chokidar.watch(workspacePath, {
-      ignored: /(^|[\/\\])\../, // ignore dotfiles
-      persistent: true
+      ignored: [
+        /(^|[/\\])\../,        // dotfiles
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/.next/**',
+        '**/dist/**',
+        '**/out/**',
+        '**/build/**',
+        '**/.turbo/**',
+        '**/*.tsbuildinfo',
+        '**/*.lock',
+        '**/coverage/**',
+        '**/__pycache__/**',
+      ],
+      persistent: true,
+      ignoreInitial: true,
+      depth: 6,
     });
 
     watcher

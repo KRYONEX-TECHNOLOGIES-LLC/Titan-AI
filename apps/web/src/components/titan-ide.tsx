@@ -338,6 +338,14 @@ export default function TitanIDE() {
     }
   }, [fileSystem]);
 
+  // Memoized stable references — prevent handleSend and useChat internals from
+  // re-running on every render caused by new array/object literals.
+  const openTabNames = useMemo(() => tabs.map(t => t.name), [tabs]);
+  const cursorPos = useMemo(
+    () => ({ line: cursorPosition.line, column: cursorPosition.column, file: activeTab }),
+    [cursorPosition.line, cursorPosition.column, activeTab],
+  );
+
   // Chat -- wired up with all callbacks and context
   const chat = useChat({
     sessions, setSessions, activeSessionId,
@@ -347,9 +355,9 @@ export default function TitanIDE() {
     onFileDeleted: handleAgentFileDeleted,
     onTerminalCommand: handleAgentTerminalCommand,
     workspacePath: fileSystem.workspacePath || useFileStore.getState().workspacePath,
-    openTabs: tabs.map(t => t.name),
+    openTabs: openTabNames,
     terminalHistory,
-    cursorPosition: { line: cursorPosition.line, column: cursorPosition.column, file: activeTab },
+    cursorPosition: cursorPos,
     isDesktop: isElectron,
     osPlatform,
     onNoToolsAvailable: handleNoToolsAvailable,

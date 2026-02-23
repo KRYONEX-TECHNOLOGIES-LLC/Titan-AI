@@ -115,28 +115,33 @@ interface ContextMenuState {
 }
 
 function ContextMenu({ menu, onClose }: { menu: ContextMenuState; onClose: () => void }) {
-  const fileStore = useFileStore();
+  const setRenamingPathCtx = useFileStore(s => s.setRenamingPath);
+  const copyPathCtx = useFileStore(s => s.copyPath);
+  const cutPathCtx = useFileStore(s => s.cutPath);
+  const pasteCtx = useFileStore(s => s.paste);
+  const setNewItemParentCtx = useFileStore(s => s.setNewItemParent);
+  const refreshFileTreeCtx = useFileStore(s => s.refreshFileTree);
   const items = [
     menu.node.type === 'file'
       ? { label: 'Open File', action: () => { /* handled by click */ } }
       : null,
-    { label: 'Rename', action: () => { fileStore.setRenamingPath(menu.node.path); onClose(); } },
-    { label: 'Copy', action: () => { fileStore.copyPath(menu.node.path); onClose(); } },
-    { label: 'Cut', action: () => { fileStore.cutPath(menu.node.path); onClose(); } },
+    { label: 'Rename', action: () => { setRenamingPathCtx(menu.node.path); onClose(); } },
+    { label: 'Copy', action: () => { copyPathCtx(menu.node.path); onClose(); } },
+    { label: 'Cut', action: () => { cutPathCtx(menu.node.path); onClose(); } },
     menu.node.type === 'folder'
-      ? { label: 'Paste', action: () => { fileStore.paste(menu.node.path); onClose(); } }
+      ? { label: 'Paste', action: () => { pasteCtx(menu.node.path); onClose(); } }
       : null,
     { separator: true },
     menu.node.type === 'folder'
-      ? { label: 'New File here', action: () => { fileStore.setNewItemParent(menu.node.path, 'file'); onClose(); } }
+      ? { label: 'New File here', action: () => { setNewItemParentCtx(menu.node.path, 'file'); onClose(); } }
       : null,
     menu.node.type === 'folder'
-      ? { label: 'New Folder here', action: () => { fileStore.setNewItemParent(menu.node.path, 'folder'); onClose(); } }
+      ? { label: 'New Folder here', action: () => { setNewItemParentCtx(menu.node.path, 'folder'); onClose(); } }
       : null,
     { separator: true },
     { label: 'Delete', danger: true, action: async () => {
       await fetch('/api/workspace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'deleteFile', path: menu.node.path }) });
-      fileStore.refreshFileTree();
+      refreshFileTreeCtx();
       onClose();
     }},
     { label: 'Copy Path', action: () => { navigator.clipboard.writeText(menu.node.path); onClose(); } },
@@ -202,7 +207,13 @@ function FileTreeNode({
   gitStatus?: { modified: Set<string>; staged: Set<string>; untracked: Set<string>; deleted: Set<string> };
   onFileOpen?: (name: string, path: string, content: string, language: string) => void;
 }) {
-  const { expandedPaths, selectedPath, toggleExpand, selectPath, renamingPath, setRenamingPath, refreshFileTree } = useFileStore();
+  const expandedPaths = useFileStore(s => s.expandedPaths);
+  const selectedPath = useFileStore(s => s.selectedPath);
+  const toggleExpand = useFileStore(s => s.toggleExpand);
+  const selectPath = useFileStore(s => s.selectPath);
+  const renamingPath = useFileStore(s => s.renamingPath);
+  const setRenamingPath = useFileStore(s => s.setRenamingPath);
+  const refreshFileTree = useFileStore(s => s.refreshFileTree);
   const { openTab, fileContents } = useEditorStore();
   const [renameVal, setRenameVal] = useState(node.name);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -350,7 +361,16 @@ function FileTreeNode({
 
 // ─── FileExplorer ─────────────────────────────────────────────────────────────
 export default function FileExplorer({ onFileOpen }: { onFileOpen?: (name: string, path: string, content: string, language: string) => void } = {}) {
-  const { fileTree, workspaceName, workspaceOpen, workspacePath, searchQuery, setSearchQuery, newItemParent, newItemType, setNewItemParent, refreshFileTree } = useFileStore();
+  const fileTree = useFileStore(s => s.fileTree);
+  const workspaceName = useFileStore(s => s.workspaceName);
+  const workspaceOpen = useFileStore(s => s.workspaceOpen);
+  const workspacePath = useFileStore(s => s.workspacePath);
+  const searchQuery = useFileStore(s => s.searchQuery);
+  const setSearchQuery = useFileStore(s => s.setSearchQuery);
+  const newItemParent = useFileStore(s => s.newItemParent);
+  const newItemType = useFileStore(s => s.newItemType);
+  const setNewItemParent = useFileStore(s => s.setNewItemParent);
+  const refreshFileTree = useFileStore(s => s.refreshFileTree);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [newItemName, setNewItemName] = useState('');
   const gitStatus = useGitStatus(workspaceOpen ? (workspacePath ?? workspaceName) : null);
