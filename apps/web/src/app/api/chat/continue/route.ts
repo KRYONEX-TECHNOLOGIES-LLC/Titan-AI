@@ -1566,6 +1566,7 @@ export async function POST(request: NextRequest) {
       };
 
       try {
+        const maxOutput = modelEntry?.maxOutputTokens || 16384;
         const requestBody: Record<string, unknown> = {
           model: providerModelId,
           messages,
@@ -1573,10 +1574,8 @@ export async function POST(request: NextRequest) {
           tool_choice: 'auto',
           temperature: 0,
           stream: true,
+          max_tokens: maxOutput,
         };
-        if (apiUrl.includes('openrouter.ai')) {
-          requestBody.stream_options = { include_usage: true };
-        }
 
         const response = await fetchWithRetry(apiUrl, {
           method: 'POST',
@@ -1586,12 +1585,20 @@ export async function POST(request: NextRequest) {
 
         if (!response.ok) {
           const text = await response.text();
-          console.error(`[chat/continue] LLM ${response.status} for model=${providerModelId}:`, text.slice(0, 500));
+          console.error(`[chat/continue] LLM ${response.status} for model=${providerModelId}:`, text.slice(0, 800));
           let userMessage = `LLM request failed (${response.status})`;
           try {
             const errJson = JSON.parse(text);
-            if (errJson?.error?.message) userMessage = `LLM error: ${errJson.error.message}`;
-          } catch { /* use generic message */ }
+            if (errJson?.error?.message) {
+              userMessage = `LLM error: ${errJson.error.message}`;
+            } else if (errJson?.message) {
+              userMessage = `LLM error: ${errJson.message}`;
+            } else if (typeof errJson?.error === 'string') {
+              userMessage = `LLM error: ${errJson.error}`;
+            }
+          } catch {
+            if (text.length > 0 && text.length < 300) userMessage = `LLM error (${response.status}): ${text}`;
+          }
           emit('error', { message: userMessage });
           controller.close();
           return;

@@ -499,7 +499,12 @@ export function useChat({
     });
 
     if (!response.ok) {
-      throw new Error(`LLM request failed (${response.status})`);
+      let errDetail = '';
+      try {
+        const errBody = await response.json();
+        errDetail = errBody?.error || errBody?.message || '';
+      } catch { /* response not JSON */ }
+      throw new Error(errDetail || `LLM request failed (${response.status})`);
     }
 
     if (!response.body) {
@@ -1151,6 +1156,15 @@ export function useChat({
   const isSupremeMode = activeModel === 'titan-supreme-protocol';
   const isOmegaMode = activeModel === 'titan-omega-protocol';
 
+  const sharedProps = {
+    attachments,
+    addAttachments,
+    removeAttachment,
+    clearAttachments,
+    capabilities: getCapabilities(workspacePath),
+    lastToolResult: agentTools.lastResult,
+  };
+
   if (isPhoenixMode) {
     return {
       chatInput: phoenixChat.chatInput,
@@ -1160,6 +1174,7 @@ export function useChat({
       handleSend: phoenixChat.handleSend,
       handleStop: phoenixChat.handleStop,
       handleKeyDown: phoenixChat.handleKeyDown,
+      ...sharedProps,
     };
   }
 
@@ -1172,6 +1187,7 @@ export function useChat({
       handleSend: parallelChat.handleSend,
       handleStop: parallelChat.handleStop,
       handleKeyDown: parallelChat.handleKeyDown,
+      ...sharedProps,
     };
   }
 
@@ -1184,6 +1200,7 @@ export function useChat({
       handleSend: supremeChat.handleSend,
       handleStop: supremeChat.handleStop,
       handleKeyDown: supremeChat.handleKeyDown,
+      ...sharedProps,
     };
   }
 
@@ -1196,6 +1213,7 @@ export function useChat({
       handleSend: omegaChat.handleSend,
       handleStop: omegaChat.handleStop,
       handleKeyDown: omegaChat.handleKeyDown,
+      ...sharedProps,
     };
   }
 
