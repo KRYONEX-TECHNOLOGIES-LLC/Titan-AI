@@ -83,15 +83,34 @@ export default function TitanIDE() {
   const [monacoInstance, setMonacoInstance] = useState<typeof Monaco | null>(null);
   const [tabs, setTabs] = useState<FileTab[]>([]);
   const [activeTab, setActiveTab] = useState('');
-  const [fileContents, setFileContents] = useState<Record<string, string>>({});
+  // Perf: avoid copying a huge file map on every keystroke.
+  // Keep file contents in a stable ref, and let the editor manage its own local value.
+  const fileContentsRef = useRef<Record<string, string>>({});
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [pendingDiff, setPendingDiff] = useState<PendingDiff | null>(null);
   const pendingDiffRef = useRef<PendingDiff | null>(null);
   useEffect(() => { pendingDiffRef.current = pendingDiff; }, [pendingDiff]);
 
+  const applyFiles = useCallback((files: Record<string, string>, opts?: { replace?: boolean }) => {
+    if (opts?.replace) {
+      for (const k of Object.keys(fileContentsRef.current)) {
+        delete fileContentsRef.current[k];
+      }
+    }
+    Object.assign(fileContentsRef.current, files);
+  }, []);
+
+  const getFileContent = useCallback((filePath: string) => {
+    return fileContentsRef.current[filePath] ?? '';
+  }, []);
+
+  const onFileContentChange = useCallback((filePath: string, content: string) => {
+    fileContentsRef.current[filePath] = content;
+  }, []);
+
   // Explorer file-open callback (same proven pattern as handleAgentFileEdited)
   const handleExplorerFileOpen = useCallback((name: string, filePath: string, content: string, language: string) => {
-    setFileContents(prev => ({ ...prev, [name]: content, [filePath]: content }));
+    applyFiles({ [name]: content, [filePath]: content });
     useEditorStore.getState().loadFileContents({ [name]: content, [filePath]: content });
 
     setTabs(prev => {
@@ -107,7 +126,7 @@ export default function TitanIDE() {
         model.setValue(content);
       }
     }
-  }, [activeTab, editorInstance]);
+  }, [activeTab, editorInstance, applyFiles]);
 
   // Menu state
   const [showPlusDropdown, setShowPlusDropdown] = useState(false);
@@ -144,7 +163,7 @@ export default function TitanIDE() {
   const settings = useSettings(mounted);
   const midnight = useMidnight(mounted, settings.activeModel);
   const { sessions, setSessions, activeSessionId, setActiveSessionId, currentSession, handleNewAgent, handleRenameSession, handleDeleteSession } = useSessions(mounted);
-  const fileSystem = useFileSystem(setTabs, setActiveTab, setFileContents, setActiveView, activeView);
+  const fileSystem = useFileSystem(setTabs, setActiveTab, applyFiles, setActiveView, activeView);
   const setWorkspacePath = fileSystem.setWorkspacePath;
 
   // Terminal history for agent context
@@ -200,7 +219,7 @@ export default function TitanIDE() {
       ? normalizeFilePath(pathResolved.slice(base.length).replace(/^[/\\]+/, ''))
       : '';
     const matchPaths = [normalizedPath, path, relativeFromResolved].filter(Boolean);
-    setFileContents(prev => ({ ...prev, [normalizedPath]: newContent, [path]: newContent }));
+    applyFiles({ [normalizedPath]: newContent, [path]: newContent });
     useEditorStore.getState().loadFileContents({ [normalizedPath]: newContent, [path]: newContent });
 
     const tabMatches = matchPaths.some(p => activeTab === p || activeTab === normalizeFilePath(p));
@@ -224,12 +243,12 @@ export default function TitanIDE() {
     setActiveTab(normalizedPath);
 
     debouncedRefreshTree();
-  }, [activeTab, editorInstance, debouncedRefreshTree, fileSystem.workspacePath, normalizeFilePath]);
+  }, [activeTab, editorInstance, debouncedRefreshTree, fileSystem.workspacePath, normalizeFilePath, applyFiles]);
 
   // Agent callback: file created on disk -> update tree + optionally open
   const handleAgentFileCreated = useCallback((path: string, content: string, absolutePath?: string) => {
     const normalizedPath = normalizeFilePath(path);
-    setFileContents(prev => ({ ...prev, [normalizedPath]: content, [path]: content }));
+    applyFiles({ [normalizedPath]: content, [path]: content });
     useEditorStore.getState().loadFileContents({ [normalizedPath]: content, [path]: content });
 
     const activeWorkspacePath = fileSystem.workspacePath || useFileStore.getState().workspacePath;
@@ -258,7 +277,7 @@ export default function TitanIDE() {
     });
     setActiveTab(normalizedPath);
     debouncedRefreshTree();
-  }, [debouncedRefreshTree, deriveWorkspaceRoot, fileSystem.workspacePath, isLikelyWorkspacePath, normalizeFilePath, setWorkspacePath]);
+  }, [debouncedRefreshTree, deriveWorkspaceRoot, fileSystem.workspacePath, isLikelyWorkspacePath, normalizeFilePath, setWorkspacePath, applyFiles]);
 
   // Agent callback: file deleted on disk -> close tab + update tree
   const handleAgentFileDeleted = useCallback((path: string) => {
@@ -272,12 +291,8 @@ export default function TitanIDE() {
       }
       return filtered;
     });
-    setFileContents(prev => {
-      const next = { ...prev };
-      delete next[path];
-      delete next[fileName];
-      return next;
-    });
+    delete fileContentsRef.current[path];
+    delete fileContentsRef.current[fileName];
     debouncedRefreshTree();
   }, [activeTab, debouncedRefreshTree]);
 
@@ -350,7 +365,7 @@ export default function TitanIDE() {
   // Chat -- wired up with all callbacks and context
   const chat = useChat({
     sessions, setSessions, activeSessionId,
-    activeModel: settings.activeModel, activeTab, fileContents, editorInstance,
+    activeModel: settings.activeModel, activeTab, fileContents: fileContentsRef.current, editorInstance,
     onFileEdited: handleAgentFileEdited,
     onFileCreated: handleAgentFileCreated,
     onFileDeleted: handleAgentFileDeleted,
@@ -372,20 +387,21 @@ export default function TitanIDE() {
       if (model) {
         if (currentDiff.decorationIds.length > 0) editorInstance.deltaDecorations(currentDiff.decorationIds, []);
         model.setValue(currentDiff.newContent);
-        setFileContents(prev => ({ ...prev, [currentDiff.file]: currentDiff.newContent }));
+        applyFiles({ [currentDiff.file]: currentDiff.newContent });
         setTabs(prev => prev.map(t => t.name === currentDiff.file ? { ...t, modified: true } : t));
         setPendingDiff(null);
       }
     }
     setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, changedFiles: [] } : s));
-  }, [editorInstance, monacoInstance, activeSessionId, setSessions]);
+  }, [editorInstance, monacoInstance, activeSessionId, setSessions, applyFiles]);
 
   // Editor commands
   const executeCommand = useCallback((command: string) => {
     switch (command) {
       case 'newFile': {
         const newFileName = `untitled-${Date.now()}.ts`;
-        setFileContents(prev => ({ ...prev, [newFileName]: '// New file\n' }));
+        applyFiles({ [newFileName]: '// New file\n' });
+        useEditorStore.getState().loadFileContents({ [newFileName]: '// New file\n' });
         const info = getFileInfo(newFileName);
         setTabs(prev => [...prev, { name: newFileName, icon: info.icon, color: info.color }]);
         setActiveTab(newFileName);
@@ -396,7 +412,8 @@ export default function TitanIDE() {
       case 'save': {
         setTabs(prev => prev.map(t => t.name === activeTab ? { ...t, modified: false } : t));
         if (fileSystem.directoryHandle && activeTab) {
-          fileSystem.writeFile(activeTab, fileContents[activeTab] || '');
+          const latest = fileContentsRef.current[activeTab] ?? editorInstance?.getValue() ?? '';
+          fileSystem.writeFile(activeTab, latest);
         }
         return;
       }
@@ -420,7 +437,7 @@ export default function TitanIDE() {
     };
     const action = editorCommands[command];
     if (action) editorInstance.trigger('keyboard', action, null);
-  }, [editorInstance, monacoInstance, activeTab, fileContents, fileSystem]);
+  }, [editorInstance, monacoInstance, activeTab, fileSystem, applyFiles]);
 
   // Tab/file handlers
   const handleFileClick = useCallback((fileName: string) => {
@@ -486,7 +503,7 @@ export default function TitanIDE() {
           if (isOpen && electronAPI) {
             try {
               const content = await electronAPI.fs.readFile(changedPath);
-              setFileContents(prev => ({ ...prev, [fileName]: content, [relPath]: content }));
+              applyFiles({ [fileName]: content, [relPath]: content });
               useEditorStore.getState().loadFileContents({ [fileName]: content, [relPath]: content });
               if ((activeTab === fileName || activeTab === relPath) && editorInstance) {
                 const model = editorInstance.getModel();
@@ -505,7 +522,7 @@ export default function TitanIDE() {
       if (debounceTimer) clearTimeout(debounceTimer);
       cleanup();
     };
-  }, [fileSystem.workspacePath, tabs, activeTab, editorInstance]);
+  }, [fileSystem.workspacePath, tabs, activeTab, editorInstance, applyFiles]);
 
   // Close dropdowns
   useEffect(() => {
@@ -652,7 +669,8 @@ export default function TitanIDE() {
                 onApplyCode={(code, filename) => {
                   const targetFile = filename || activeTab;
                   if (targetFile) {
-                    setFileContents(prev => ({ ...prev, [targetFile]: code }));
+                    applyFiles({ [targetFile]: code });
+                    useEditorStore.getState().loadFileContents({ [targetFile]: code });
                     if (targetFile === activeTab && editorInstance) {
                       const model = editorInstance.getModel();
                       if (model) model.setValue(code);
@@ -681,8 +699,10 @@ export default function TitanIDE() {
         {/* CENTER: Editor + Terminal */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <EditorArea
-            tabs={tabs} activeTab={activeTab} fileContents={fileContents}
-            setFileContents={setFileContents} setTabs={setTabs}
+            tabs={tabs} activeTab={activeTab}
+            getFileContent={getFileContent}
+            onFileContentChange={onFileContentChange}
+            setTabs={setTabs}
             cursorPosition={cursorPosition} setCursorPosition={setCursorPosition}
             setEditorInstance={setEditorInstance} setMonacoInstance={setMonacoInstance}
             fontSize={settings.fontSize} tabSize={settings.tabSize} wordWrap={settings.wordWrap}

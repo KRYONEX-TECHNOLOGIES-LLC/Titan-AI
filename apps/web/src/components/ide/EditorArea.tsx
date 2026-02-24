@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type * as Monaco from 'monaco-editor';
 import { getLanguageFromFilename } from '@/utils/file-helpers';
@@ -15,8 +15,8 @@ const MonacoEditor = dynamic(() => import('@monaco-editor/react'), {
 interface EditorAreaProps {
   tabs: FileTab[];
   activeTab: string;
-  fileContents: Record<string, string>;
-  setFileContents: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  getFileContent: (path: string) => string;
+  onFileContentChange: (path: string, content: string) => void;
   setTabs: React.Dispatch<React.SetStateAction<FileTab[]>>;
   cursorPosition: { line: number; column: number };
   setCursorPosition: (pos: { line: number; column: number }) => void;
@@ -33,22 +33,34 @@ interface EditorAreaProps {
 }
 
 export default function EditorArea({
-  tabs, activeTab, fileContents, setFileContents, setTabs,
+  tabs, activeTab, getFileContent, onFileContentChange, setTabs,
   cursorPosition, setCursorPosition, setEditorInstance, setMonacoInstance,
   fontSize, tabSize, wordWrap,
   isLoadingFiles, loadingMessage,
   onOpenFolder, onOpenCloneDialog, onNewFile,
 }: EditorAreaProps) {
-  const currentFileContent = fileContents[activeTab] || '';
   const currentFileLanguage = getLanguageFromFilename(activeTab);
 
+  const [editorValue, setEditorValue] = useState(() => (activeTab ? getFileContent(activeTab) : ''));
+
+  useEffect(() => {
+    setEditorValue(activeTab ? getFileContent(activeTab) : '');
+  }, [activeTab, getFileContent]);
+
   const handleEditorChange = useCallback((value: string | undefined) => {
-    if (value !== undefined) {
-      setFileContents(prev => ({ ...prev, [activeTab]: value }));
+    if (value === undefined || !activeTab) return;
+    setEditorValue(value);
+    onFileContentChange(activeTab, value);
+
+    // Mark tab modified once (avoid re-rendering the whole IDE every keystroke)
+    const alreadyModified = tabs.find(t => t.name === activeTab)?.modified;
+    if (!alreadyModified) {
       setTabs(prev => prev.map(t => t.name === activeTab ? { ...t, modified: true } : t));
-      useEditorStore.getState().loadFileContents({ [activeTab]: value });
     }
-  }, [activeTab, setFileContents, setTabs]);
+
+    // Keep editor store in sync for features that read from it (non-persisted)
+    useEditorStore.getState().loadFileContents({ [activeTab]: value });
+  }, [activeTab, onFileContentChange, setTabs, tabs]);
 
   if (tabs.length === 0) {
     return (
@@ -110,7 +122,7 @@ export default function EditorArea({
           path={activeTab}
           language={currentFileLanguage}
           theme="vs-dark"
-          value={currentFileContent}
+          value={editorValue}
           onChange={handleEditorChange}
           options={{
             fontSize, tabSize,

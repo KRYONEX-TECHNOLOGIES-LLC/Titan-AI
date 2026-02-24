@@ -69,7 +69,7 @@ function buildFileTree(_dirHandle: FileSystemDirectoryHandle, entries: Array<{ p
 export function useFileSystem(
   setTabs: React.Dispatch<React.SetStateAction<FileTab[]>>,
   setActiveTab: (tab: string) => void,
-  setFileContents: React.Dispatch<React.SetStateAction<Record<string, string>>>,
+  onFilesLoaded: (files: Record<string, string>, opts?: { replace?: boolean }) => void,
   setActiveView: (view: string) => void,
   activeView: string,
 ) {
@@ -129,7 +129,7 @@ export function useFileSystem(
         }
 
         setLoadingMessage('Loading editor...');
-        setFileContents(newFiles);
+        onFilesLoaded(newFiles, { replace: true });
         useEditorStore.getState().loadFileContents(newFiles);
 
         const sortedFiles = Object.keys(newFiles).sort((a, b) => {
@@ -249,7 +249,7 @@ export function useFileSystem(
       }
 
       setLoadingMessage('Loading editor...');
-      setFileContents(newFiles);
+      onFilesLoaded(newFiles, { replace: true });
       useEditorStore.getState().loadFileContents(newFiles);
 
       const sortedFiles = Object.keys(newFiles).sort((a, b) => {
@@ -275,7 +275,7 @@ export function useFileSystem(
       console.error('Open folder failed:', e);
       alert(`Failed to open folder: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
-  }, [activeView, setActiveView, setFileContents, setTabs, setActiveTab]);
+  }, [activeView, setActiveView, onFilesLoaded, setTabs, setActiveTab]);
 
   const openFile = useCallback(async () => {
     if (!('showOpenFilePicker' in window)) {
@@ -287,7 +287,7 @@ export function useFileSystem(
       const file = await fileHandle.getFile();
       const text = await file.text();
       const fileName = file.name;
-      setFileContents(prev => ({ ...prev, [fileName]: text }));
+      onFilesLoaded({ [fileName]: text });
       const info = getFileInfo(fileName);
       setTabs(prev => {
         if (prev.find(t => t.name === fileName)) return prev;
@@ -299,7 +299,7 @@ export function useFileSystem(
       console.error('Open file failed:', e);
       alert(`Failed to open file: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
-  }, [setFileContents, setTabs, setActiveTab]);
+  }, [onFilesLoaded, setTabs, setActiveTab]);
 
   const writeFile = useCallback(async (filePath: string, content: string): Promise<boolean> => {
     if (isElectron && electronAPI) {
