@@ -48,13 +48,31 @@ export async function executeSecondaryWorker(
         'VERIFICATION HINTS:',
       ].join('\n');
 
+  let fileContext = '';
+  if (hasWorkspace && node.relevantFiles.length > 0) {
+    const fileContents: string[] = [];
+    for (const file of node.relevantFiles.slice(0, 3)) {
+      try {
+        const result = await callbacks.executeToolCall('read_file', { path: file });
+        if (result.success && result.output) {
+          fileContents.push(`--- ${file} ---\n${result.output.slice(0, 3000)}`);
+          toolCallLog.push({ tool: 'read_file', args: { path: file }, success: true, result: '(read)', startedAt: Date.now(), finishedAt: Date.now() });
+        }
+      } catch { /* non-fatal */ }
+    }
+    if (fileContents.length > 0) {
+      fileContext = `\n\nExisting Code Context:\n${fileContents.join('\n\n')}`;
+    }
+  }
+
   const user = [
     `Task: ${node.title}`,
     node.description,
     `Acceptance Criteria:\n- ${node.acceptanceCriteria.join('\n- ')}`,
     `Verification Criteria:\n- ${node.verificationCriteria.join('\n- ')}`,
     `Relevant files:\n- ${node.relevantFiles.join('\n- ') || '(none)'}`,
-  ].join('\n\n');
+    fileContext,
+  ].filter(Boolean).join('\n\n');
 
   const llmOutput = await callbacks.invokeModel(config.models.secondaryWorker, [
     { role: 'system', content: system },

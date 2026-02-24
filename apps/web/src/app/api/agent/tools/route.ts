@@ -1,7 +1,8 @@
 /**
  * Agent Tools API - Real tool implementations for the AI agent
- * Provides: read_file, edit_file, create_file, run_command, grep_search, list_directory
- * These are called by the chat system when the AI decides to use a tool.
+ * Provides: read_file, edit_file, create_file, delete_file, list_directory,
+ *           grep_search, glob_search, run_command, web_search, web_fetch, read_lints, write_file
+ * These are called by the chat system and all multi-agent protocols when a tool is invoked.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -194,6 +195,135 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
       }
     }
 
+    case 'delete_file': {
+      const filePath = call.args.path as string;
+      if (!filePath) return { success: false, output: '', error: 'path is required' };
+      if (!isPathSafe(filePath, workspace)) return { success: false, output: '', error: 'Path traversal detected' };
+
+      try {
+        const fullPath = path.resolve(workspace, filePath);
+        fs.unlinkSync(fullPath);
+        return { success: true, output: `File deleted: ${filePath}` };
+      } catch (e) {
+        return { success: false, output: '', error: `Delete failed: ${(e as Error).message}` };
+      }
+    }
+
+    case 'write_file': {
+      const filePath = call.args.path as string;
+      const content = (call.args.content as string) || '';
+      if (!filePath) return { success: false, output: '', error: 'path is required' };
+      if (!isPathSafe(filePath, workspace)) return { success: false, output: '', error: 'Path traversal detected' };
+
+      try {
+        const fullPath = path.resolve(workspace, filePath);
+        const dir = path.dirname(fullPath);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(fullPath, content, 'utf-8');
+        return { success: true, output: `File written: ${filePath}`, metadata: { size: content.length } };
+      } catch (e) {
+        return { success: false, output: '', error: `Write failed: ${(e as Error).message}` };
+      }
+    }
+
+    case 'glob_search': {
+      const pattern = call.args.pattern as string;
+      const basePath = (call.args.path as string) || '.';
+      if (!pattern) return { success: false, output: '', error: 'pattern is required' };
+      if (!isPathSafe(basePath, workspace)) return { success: false, output: '', error: 'Path traversal detected' };
+
+      try {
+        const fullPath = path.resolve(workspace, basePath);
+        const cmd = process.platform === 'win32'
+          ? `dir /S /B "${fullPath}\\${pattern}" 2>nul`
+          : `find "${fullPath}" -name "${pattern}" -type f 2>/dev/null | head -100`;
+        const result = execSync(cmd, { encoding: 'utf-8', timeout: 10000, maxBuffer: 512 * 1024 });
+        const files = result.trim().split('\n').filter(Boolean).map(f => path.relative(workspace, f));
+        return { success: true, output: files.join('\n') || 'No files found' };
+      } catch {
+        return { success: true, output: 'No files found' };
+      }
+    }
+
+    case 'web_search': {
+      const query = call.args.query as string;
+      if (!query) return { success: false, output: '', error: 'query is required' };
+
+      try {
+        const encoded = encodeURIComponent(query);
+        const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
+          headers: { 'User-Agent': 'Titan AI Agent/1.0' },
+        });
+        const html = await res.text();
+        const results: string[] = [];
+        const snippetPattern = /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g;
+        let match;
+        while ((match = snippetPattern.exec(html)) !== null && results.length < 8) {
+          const url = match[1].replace(/\/\/duckduckgo\.com\/l\/\?uddg=/, '').split('&')[0];
+          const title = match[2].replace(/&amp;/g, '&').replace(/&#x27;/g, "'");
+          try {
+            results.push(`${title}\n  ${decodeURIComponent(url)}`);
+          } catch {
+            results.push(`${title}\n  ${url}`);
+          }
+        }
+        return { success: true, output: results.length > 0 ? results.join('\n\n') : `No results found for: ${query}` };
+      } catch (e) {
+        return { success: false, output: '', error: `Web search failed: ${(e as Error).message}` };
+      }
+    }
+
+    case 'web_fetch': {
+      const url = call.args.url as string;
+      if (!url) return { success: false, output: '', error: 'url is required' };
+
+      try {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'Titan AI Agent/1.0', 'Accept': 'text/html,application/json,text/plain' },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) return { success: false, output: '', error: `HTTP ${res.status}` };
+        const text = await res.text();
+        const cleaned = text
+          .replace(/<script[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[\s\S]*?<\/style>/gi, '')
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        return { success: true, output: cleaned.slice(0, 12000) };
+      } catch (e) {
+        return { success: false, output: '', error: `Fetch failed: ${(e as Error).message}` };
+      }
+    }
+
+    case 'read_lints': {
+      const filePath = call.args.path as string;
+      if (!filePath) return { success: false, output: '', error: 'path is required' };
+      if (!isPathSafe(filePath, workspace)) return { success: false, output: '', error: 'Path traversal detected' };
+
+      try {
+        const fullPath = path.resolve(workspace, filePath);
+        const cmd = `npx eslint "${fullPath}" --format json --no-error-on-unmatched-pattern 2>/dev/null || true`;
+        const result = execSync(cmd, {
+          cwd: workspace,
+          encoding: 'utf-8',
+          timeout: 20000,
+          maxBuffer: 1024 * 1024,
+        });
+        try {
+          const parsed = JSON.parse(result);
+          const messages = (parsed[0]?.messages || []).map((m: { line: number; column: number; severity: number; message: string; ruleId: string }) =>
+            `Line ${m.line}:${m.column} [${m.severity === 2 ? 'error' : 'warning'}] ${m.message} (${m.ruleId})`
+          );
+          return { success: true, output: messages.length > 0 ? messages.join('\n') : 'No lint errors found' };
+        } catch {
+          return { success: true, output: result.slice(0, 5000) || 'No lint errors found' };
+        }
+      } catch {
+        return { success: true, output: 'Linter not available or no errors found' };
+      }
+    }
+
     default:
       return { success: false, output: '', error: `Unknown tool: ${call.tool}` };
   }
@@ -226,9 +356,15 @@ export async function GET() {
       { name: 'read_file', description: 'Read file contents', args: ['path', 'startLine?', 'endLine?'] },
       { name: 'edit_file', description: 'Replace text in a file', args: ['path', 'old_string', 'new_string'] },
       { name: 'create_file', description: 'Create a new file', args: ['path', 'content'] },
+      { name: 'delete_file', description: 'Delete a file', args: ['path'] },
+      { name: 'write_file', description: 'Write/overwrite a file', args: ['path', 'content'] },
       { name: 'list_directory', description: 'List directory contents', args: ['path?'] },
       { name: 'grep_search', description: 'Search for text in files', args: ['query', 'path?', 'glob?'] },
+      { name: 'glob_search', description: 'Find files matching a pattern', args: ['pattern', 'path?'] },
       { name: 'run_command', description: 'Execute a shell command', args: ['command', 'cwd?', 'timeout?'] },
+      { name: 'web_search', description: 'Search the web', args: ['query'] },
+      { name: 'web_fetch', description: 'Fetch a URL and extract text', args: ['url'] },
+      { name: 'read_lints', description: 'Check file for linter errors', args: ['path'] },
     ],
   });
 }

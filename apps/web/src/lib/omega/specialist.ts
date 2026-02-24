@@ -53,6 +53,7 @@ export async function executeSpecialist(
   const model = selectModelForRisk(workOrder.predictedRisk, config);
   const toolCallLog: ToolCallLogEntry[] = [];
   const filesRead: string[] = [];
+  const fileContents: string[] = [];
 
   if (hasWorkspace) {
     for (const file of workOrder.inputContract.requiredFiles) {
@@ -68,9 +69,16 @@ export async function executeSpecialist(
         startedAt,
         finishedAt,
       });
-      if (result.success) filesRead.push(file);
+      if (result.success) {
+        filesRead.push(file);
+        fileContents.push(`--- ${file} ---\n${result.output.slice(0, 4000)}`);
+      }
     }
   }
+
+  const fileContextBlock = fileContents.length > 0
+    ? `\n\nExisting file contents:\n${fileContents.join('\n\n')}`
+    : '';
 
   const prompt = hasWorkspace
     ? [
@@ -80,8 +88,9 @@ export async function executeSpecialist(
         `Required files:\n- ${workOrder.inputContract.requiredFiles.join('\n- ') || '(none)'}`,
         `Expected files:\n- ${workOrder.outputContract.expectedFiles.join('\n- ') || '(none)'}`,
         `Must NOT modify:\n- ${workOrder.outputContract.mustNotModify?.join('\n- ') || '(none)'}`,
-        'Return strict JSON with keys: modifications, assumptions, edgeCasesHandled, selfAssessment.',
-      ].join('\n\n')
+        fileContextBlock,
+        'Return strict JSON with keys: modifications (array of {file, content} with complete code for each file), assumptions, edgeCasesHandled, selfAssessment.',
+      ].filter(Boolean).join('\n\n')
     : [
         'You are a SPECIALIST code worker. Execute this Work Order precisely.',
         'No workspace folder is open. Generate the FULL implementation as complete code.',
