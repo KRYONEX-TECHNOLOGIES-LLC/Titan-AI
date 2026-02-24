@@ -400,9 +400,11 @@ app.whenReady().then(async () => {
     }
   });
 
-  // Forward renderer console output to main-process stdout for diagnostics
+  // Forward only warnings and errors from the renderer — forwarding every LOG
+  // causes heavy IPC overhead that freezes the UI during rapid React re-renders.
   mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    const tag = ['LOG', 'WARN', 'ERR'][level] || 'LOG';
+    if (level < 1) return;
+    const tag = level === 1 ? 'WARN' : 'ERR';
     console.log(`[Renderer:${tag}] ${message}  (${sourceId}:${line})`);
   });
 
@@ -483,7 +485,7 @@ code{background:#1e1e1e;padding:2px 6px;border-radius:4px;font-size:.85rem}
   if (workspacePath) {
     const watcher = chokidar.watch(workspacePath, {
       ignored: [
-        /(^|[/\\])\../,        // dotfiles
+        /(^|[/\\])\../,
         '**/node_modules/**',
         '**/.git/**',
         '**/.next/**',
@@ -498,24 +500,31 @@ code{background:#1e1e1e;padding:2px 6px;border-radius:4px;font-size:.85rem}
       ],
       persistent: true,
       ignoreInitial: true,
-      depth: 6,
+      depth: 4,
+      awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
     });
 
+    // Batch file-change events to avoid flooding the renderer with IPC messages.
+    let pendingEvents: Array<{ type: string; filePath: string }> = [];
+    let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const queueFsEvent = (type: string, filePath: string) => {
+      pendingEvents.push({ type, filePath });
+      if (!flushTimer) {
+        flushTimer = setTimeout(() => {
+          flushTimer = null;
+          if (!mainWindow) { pendingEvents = []; return; }
+          for (const ev of pendingEvents) {
+            mainWindow.webContents.send(`indexer:file-${ev.type}`, { filePath: ev.filePath });
+          }
+          pendingEvents = [];
+        }, 200);
+      }
+    };
+
     watcher
-      .on('add', path => {
-        if (mainWindow) {
-          mainWindow.webContents.send('indexer:file-added', { filePath: path });
-        }
-      })
-      .on('change', path => {
-        if (mainWindow) {
-          mainWindow.webContents.send('indexer:file-changed', { filePath: path });
-        }
-      })
-      .on('unlink', path => {
-        if (mainWindow) {
-          mainWindow.webContents.send('indexer:file-deleted', { filePath: path });
-        }
-      });
+      .on('add', p => queueFsEvent('added', p))
+      .on('change', p => queueFsEvent('changed', p))
+      .on('unlink', p => queueFsEvent('deleted', p));
   }
 });

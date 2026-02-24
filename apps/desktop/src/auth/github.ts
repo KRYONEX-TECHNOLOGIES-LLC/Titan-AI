@@ -156,25 +156,24 @@ export function registerAuthHandlers(ipcMain: IpcMain, parentWin: BrowserWindow)
         }
       };
 
-      popup.webContents.on('will-navigate', (event, navUrl) => {
-        // Let GitHub's own pages load normally; intercept the callback redirect
-        if (!navUrl.startsWith('https://github.com')) {
-          event.preventDefault();
-        }
+      const isCallbackUrl = (url: string) => {
+        try {
+          const u = new URL(url);
+          return (u.searchParams.has('code') && u.searchParams.has('state')) || u.searchParams.has('error');
+        } catch { return false; }
+      };
+
+      popup.webContents.on('will-navigate', (_event, navUrl) => {
         handleRedirect(navUrl);
       });
 
       popup.webContents.on('will-redirect', (event, navUrl) => {
-        // Intercept the OAuth callback redirect before it loads anywhere
-        const hasCode = navUrl.includes('code=') && navUrl.includes('state=');
-        const hasError = navUrl.includes('error=');
-        if (hasCode || hasError) {
+        if (isCallbackUrl(navUrl)) {
           event.preventDefault();
         }
         handleRedirect(navUrl);
       });
 
-      // Fallback: catch callback if it already navigated (e.g. some redirect chains)
       popup.webContents.on('did-navigate', (_event, navUrl) => {
         handleRedirect(navUrl);
       });

@@ -46,6 +46,7 @@ export function createMainWindow(state: WindowState): BrowserWindow {
       sandbox: false,
       webSecurity: true,
       backgroundThrottling: false,
+      spellcheck: false,
     },
   });
 
