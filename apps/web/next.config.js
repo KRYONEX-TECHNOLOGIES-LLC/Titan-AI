@@ -2,6 +2,10 @@
 const path = require('path');
 const nextConfig = {
   output: 'standalone',
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://gelrtrjbrukidhvqfzrx.supabase.co',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlbHJ0cmpicnVraWRodnFmenJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1NDgwMDksImV4cCI6MjA4NzEyNDAwOX0.eL8Jt17sqIvgz478MdWi_hzCnOMhT_BmF6xyAX4gcII',
+  },
   distDir: process.env.NEXT_DIST_DIR || '.next',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   reactStrictMode: true,

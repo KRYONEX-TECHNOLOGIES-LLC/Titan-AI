@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export function useMidnight(mounted: boolean, activeModel: string) {
   const [midnightActive, setMidnightActive] = useState(false);
@@ -8,8 +8,8 @@ export function useMidnight(mounted: boolean, activeModel: string) {
   const [trustLevel, setTrustLevel] = useState<1 | 2 | 3>(1);
   const [confidenceScore, setConfidenceScore] = useState(100);
   const [confidenceStatus, setConfidenceStatus] = useState<'healthy' | 'warning' | 'error'>('healthy');
+  const [protocolMode, setProtocolMode] = useState(true);
 
-  // Sync worker model
   useEffect(() => {
     if (!mounted) return;
     fetch('/api/midnight', {
@@ -19,15 +19,13 @@ export function useMidnight(mounted: boolean, activeModel: string) {
     }).catch(() => {});
   }, [activeModel, mounted]);
 
-  // Persist midnight state
   useEffect(() => {
     if (!mounted) return;
     try {
-      localStorage.setItem('titan-midnight', JSON.stringify({ midnightActive, trustLevel }));
+      localStorage.setItem('titan-midnight', JSON.stringify({ midnightActive, trustLevel, protocolMode }));
     } catch { /* ignore */ }
-  }, [mounted, midnightActive, trustLevel]);
+  }, [mounted, midnightActive, trustLevel, protocolMode]);
 
-  // Restore midnight state
   useEffect(() => {
     if (!mounted) return;
     try {
@@ -36,11 +34,12 @@ export function useMidnight(mounted: boolean, activeModel: string) {
         const state = JSON.parse(saved);
         if (state.trustLevel) setTrustLevel(state.trustLevel);
         if (state.midnightActive !== undefined) setMidnightActive(state.midnightActive);
+        if (state.protocolMode !== undefined) setProtocolMode(state.protocolMode);
       }
     } catch { /* ignore */ }
   }, [mounted]);
 
-  const startMidnight = async () => {
+  const startMidnight = useCallback(async () => {
     if (midnightActive) {
       setShowFactoryView(true);
       return;
@@ -49,7 +48,12 @@ export function useMidnight(mounted: boolean, activeModel: string) {
       const res = await fetch('/api/midnight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', trustLevel, model: activeModel }),
+        body: JSON.stringify({
+          action: 'start',
+          trustLevel,
+          model: activeModel,
+          useProtocolMode: protocolMode,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -60,11 +64,19 @@ export function useMidnight(mounted: boolean, activeModel: string) {
       setMidnightActive(true);
       setShowFactoryView(true);
     }
-  };
+  }, [midnightActive, trustLevel, activeModel, protocolMode]);
 
-  const stopMidnight = () => {
+  const stopMidnight = useCallback(async () => {
+    try {
+      await fetch('/api/midnight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' }),
+      });
+    } catch { /* best effort */ }
     setMidnightActive(false);
-  };
+    setShowFactoryView(false);
+  }, []);
 
   return {
     midnightActive, setMidnightActive,
@@ -72,6 +84,7 @@ export function useMidnight(mounted: boolean, activeModel: string) {
     trustLevel, setTrustLevel,
     confidenceScore, setConfidenceScore,
     confidenceStatus, setConfidenceStatus,
+    protocolMode, setProtocolMode,
     startMidnight,
     stopMidnight,
   };

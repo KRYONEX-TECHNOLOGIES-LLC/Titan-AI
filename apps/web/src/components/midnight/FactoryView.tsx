@@ -236,47 +236,103 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000);
 
-    // SSE stream for real-time events
+    // SSE stream for real-time protocol events
     let eventSource: EventSource | null = null;
     try {
       eventSource = new EventSource('/api/midnight/stream');
-      eventSource.addEventListener('actor', (e) => {
+
+      eventSource.addEventListener('actor_log', (e) => {
         try {
           const data = JSON.parse(e.data);
-          setActorLines(prev => [...prev.slice(-49), {
-            type: data.type || 'output',
-            content: data.message || data.content || '',
-            timestamp: new Date(data.timestamp || Date.now()),
+          const msg = data.message || '';
+          const isSuccess = msg.includes('PASSED') || msg.includes('complete') || msg.includes('APPROVED');
+          const isError = msg.includes('FAILED') || msg.includes('ERROR') || msg.includes('Escalating');
+          setActorLines(prev => [...prev.slice(-99), {
+            type: isSuccess ? 'success' : isError ? 'error' : 'output',
+            content: msg.replace(/^\[.*?\]\s*/, ''),
+            timestamp: new Date(),
           }]);
         } catch { /* ignore */ }
       });
-      eventSource.addEventListener('sentinel', (e) => {
+
+      eventSource.addEventListener('sentinel_log', (e) => {
         try {
           const data = JSON.parse(e.data);
-          setSentinelLines(prev => [...prev.slice(-49), {
-            type: data.type || 'output',
-            content: data.message || data.content || '',
-            timestamp: new Date(data.timestamp || Date.now()),
+          const msg = data.message || '';
+          const isSuccess = msg.includes('PASSED') || msg.includes('APPROVED');
+          const isError = msg.includes('FAILED') || msg.includes('VETO') || msg.includes('REJECTED');
+          setSentinelLines(prev => [...prev.slice(-99), {
+            type: isSuccess ? 'success' : isError ? 'error' : 'output',
+            content: msg.replace(/^\[.*?\]\s*/, ''),
+            timestamp: new Date(),
           }]);
-          if (data.confidence !== undefined) setConfidenceScore(data.confidence);
+        } catch { /* ignore */ }
+      });
+
+      eventSource.addEventListener('protocol_squad_active', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.squad) setActiveSquad(data.squad);
+          if (data.name) setActiveRole(data.name);
+        } catch { /* ignore */ }
+      });
+
+      eventSource.addEventListener('protocol_escalation', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setEscalationLevel(prev => prev + 1);
+          setActorLines(prev => [...prev.slice(-99), {
+            type: 'error',
+            content: `Escalating: ${data.from} -> ${data.to}`,
+            timestamp: new Date(),
+          }]);
+        } catch { /* ignore */ }
+      });
+
+      eventSource.addEventListener('protocol_cost', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.totalCostUsd) setProtocolCost(data.totalCostUsd);
+        } catch { /* ignore */ }
+      });
+
+      eventSource.addEventListener('protocol_consensus', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setSentinelLines(prev => [...prev.slice(-99), {
+            type: data.passed ? 'success' : 'error',
+            content: `Consensus: Chief=${data.chiefScore} Shadow=${data.shadowScore} ${data.passed ? 'APPROVED' : 'REJECTED'}`,
+            timestamp: new Date(),
+          }]);
+        } catch { /* ignore */ }
+      });
+
+      eventSource.addEventListener('confidence_update', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.score !== undefined) setConfidenceScore(data.score);
           if (data.status) setConfidenceStatus(data.status);
+          if (data.running !== undefined) setIsRunning(data.running);
         } catch { /* ignore */ }
       });
-      eventSource.addEventListener('progress', (e) => {
+
+      eventSource.addEventListener('verdict', (e) => {
         try {
           const data = JSON.parse(e.data);
-          if (data.progress !== undefined) setProgress(data.progress);
-          if (data.task) setCurrentTask(data.task);
-          if (data.completed !== undefined) setTasksCompleted(data.completed);
-          if (data.total !== undefined) setTotalTasks(data.total);
+          setSentinelLines(prev => [...prev.slice(-99), {
+            type: data.passed ? 'success' : 'error',
+            content: `${data.passed ? 'PASS' : 'FAIL'}: ${data.score}/100 - ${data.message}`,
+            timestamp: new Date(),
+          }]);
         } catch { /* ignore */ }
       });
+
       eventSource.onerror = () => {
         eventSource?.close();
         eventSource = null;
       };
     } catch {
-      // SSE not available, fall back to polling
+      // SSE not available, fall back to polling only
     }
 
     return () => {
@@ -441,6 +497,40 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
               <path d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+      </div>
+
+      {/* Pipeline visualization */}
+      <div className="h-10 bg-[#252525] border-b border-[#3c3c3c] flex items-center px-4 gap-2 shrink-0 overflow-x-auto">
+        {[
+          { key: 'foreman', label: 'Foreman', icon: '📋' },
+          { key: 'nerd_squad', label: 'Nerd Squad', icon: '🧠' },
+          { key: 'cleanup_crew', label: 'Cleanup', icon: '🔧' },
+          { key: 'sentinel_council', label: 'Sentinel', icon: '🛡️' },
+        ].map((stage, i) => {
+          const isActive = activeSquad === stage.key;
+          const isPast = ['foreman', 'nerd_squad', 'cleanup_crew', 'sentinel_council'].indexOf(stage.key) < ['foreman', 'nerd_squad', 'cleanup_crew', 'sentinel_council'].indexOf(activeSquad);
+          return (
+            <div key={stage.key} className="flex items-center gap-1">
+              {i > 0 && <span className={`text-[10px] mx-1 ${isPast ? 'text-green-400' : 'text-[#555]'}`}>→</span>}
+              <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all ${
+                isActive ? 'bg-purple-600/30 text-purple-300 ring-1 ring-purple-500/50' :
+                isPast ? 'bg-green-900/20 text-green-400' :
+                'bg-[#333] text-[#666]'
+              }`}>
+                <span>{stage.icon}</span>
+                <span>{stage.label}</span>
+                {isActive && <span className="w-1.5 h-1.5 bg-purple-400 rounded-full animate-pulse" />}
+                {isPast && <span className="text-green-400">✓</span>}
+              </div>
+            </div>
+          );
+        })}
+        <div className="ml-auto flex items-center gap-3 text-[10px]">
+          {escalationLevel > 0 && (
+            <span className="px-2 py-0.5 bg-red-900/30 text-red-400 rounded-full">Escalations: {escalationLevel}</span>
+          )}
+          <span className="text-[#808080]">Cost: <span className="text-cyan-400 font-mono">${protocolCost.toFixed(4)}</span></span>
         </div>
       </div>
 

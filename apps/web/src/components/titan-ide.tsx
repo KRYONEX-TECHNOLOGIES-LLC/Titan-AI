@@ -672,6 +672,7 @@ export default function TitanIDE() {
                 activeModel={settings.activeModel} setActiveModel={settings.setActiveModel}
                 models={settings.models} trustLevel={midnight.trustLevel}
                 setTrustLevel={midnight.setTrustLevel} midnightActive={midnight.midnightActive}
+                protocolMode={midnight.protocolMode} setProtocolMode={midnight.setProtocolMode}
               />
             )}
           </div>
@@ -1034,8 +1035,8 @@ function AccountsPanel() {
   );
 }
 
-function SettingsPanel({ fontSize, setFontSize, tabSize, setTabSize, wordWrap, setWordWrap, activeModel, setActiveModel, models, trustLevel, setTrustLevel, midnightActive }: {
-  fontSize: number; setFontSize: (v: number) => void; tabSize: number; setTabSize: (v: number) => void; wordWrap: boolean; setWordWrap: (v: boolean) => void; activeModel: string; setActiveModel: (v: string) => void; models: string[]; trustLevel: 1 | 2 | 3; setTrustLevel: (v: 1 | 2 | 3) => void; midnightActive: boolean;
+function SettingsPanel({ fontSize, setFontSize, tabSize, setTabSize, wordWrap, setWordWrap, activeModel, setActiveModel, models, trustLevel, setTrustLevel, midnightActive, protocolMode, setProtocolMode }: {
+  fontSize: number; setFontSize: (v: number) => void; tabSize: number; setTabSize: (v: number) => void; wordWrap: boolean; setWordWrap: (v: boolean) => void; activeModel: string; setActiveModel: (v: string) => void; models: string[]; trustLevel: 1 | 2 | 3; setTrustLevel: (v: 1 | 2 | 3) => void; midnightActive: boolean; protocolMode: boolean; setProtocolMode: (v: boolean) => void;
 }) {
   const { user, refreshUser } = useSession();
   const isCreator = user?.isCreator === true;
@@ -1100,6 +1101,23 @@ function SettingsPanel({ fontSize, setFontSize, tabSize, setTabSize, wordWrap, s
           Project Midnight
         </div>
         <div className="px-2 py-2"><TrustSlider value={trustLevel} onChange={setTrustLevel} disabled={midnightActive} /></div>
+        <div className="flex items-center justify-between px-2 py-1.5">
+          <div>
+            <span className="text-[12px] text-[#cccccc]">Protocol Team</span>
+            <div className="text-[10px] text-[#666] mt-0.5">
+              {protocolMode
+                ? '8-model team: Foreman, Nerd Squad, Cleanup Crew, Sentinel Council'
+                : 'Legacy single-model mode'}
+            </div>
+          </div>
+          <button
+            onClick={() => setProtocolMode(!protocolMode)}
+            disabled={midnightActive}
+            className={`w-10 h-5 rounded-full ${protocolMode ? 'bg-purple-500' : 'bg-[#3c3c3c]'} relative transition-colors ${midnightActive ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className={`absolute top-0.5 ${protocolMode ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all`} />
+          </button>
+        </div>
       </div>
     </div>
   );

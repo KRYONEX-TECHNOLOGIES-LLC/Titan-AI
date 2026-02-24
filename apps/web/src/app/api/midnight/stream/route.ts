@@ -17,13 +17,46 @@ function getBaseUrl(request: NextRequest): string {
   return `${url.protocol}//${url.host}`;
 }
 
+function parseProtocolEvent(line: string): { type: string; data: Record<string, unknown> } | null {
+  if (line.includes('Protocol:') && line.includes('activated')) {
+    const match = line.match(/Protocol:\s*(.+?)\s*\((\w+)\)\s*activated/);
+    if (match) return { type: 'protocol_squad_active', data: { name: match[1], squad: match[2] } };
+  }
+  if (line.includes('Protocol: Escalating from')) {
+    const match = line.match(/Escalating from\s*(.+?)\s*→\s*(.+)/);
+    if (match) return { type: 'protocol_escalation', data: { from: match[1].trim(), to: match[2].trim() } };
+  }
+  if (line.includes('Protocol: Cost')) {
+    const match = line.match(/Cost\s*\$(\d+\.\d+)/);
+    if (match) return { type: 'protocol_cost', data: { totalCostUsd: parseFloat(match[1]) } };
+  }
+  if (line.includes('Protocol: Task complete')) {
+    const match = line.match(/Task complete\s*\(\$(\d+\.\d+)\)/);
+    if (match) return { type: 'protocol_task_complete', data: { costUsd: parseFloat(match[1]) } };
+  }
+  if (line.includes('Council:')) {
+    const match = line.match(/Chief=(\d+)\s*Shadow=(\d+)\s*(APPROVED|REJECTED)/);
+    if (match) return {
+      type: 'protocol_consensus',
+      data: { chiefScore: parseInt(match[1]), shadowScore: parseInt(match[2]), passed: match[3] === 'APPROVED' },
+    };
+  }
+  if (line.includes('Cleanup:')) {
+    const match = line.match(/Cleanup:\s*(.+)/);
+    if (match) return { type: 'protocol_cleanup', data: { message: match[1].trim() } };
+  }
+  return null;
+}
+
 /**
- * GET /api/midnight/stream - SSE stream of events
+ * GET /api/midnight/stream - SSE stream of Midnight events
+ * Polls the sidecar via the main API route every 2s, forwarding new logs
+ * and protocol-specific events in real-time.
  */
 export async function GET(request: NextRequest) {
   const encoder = new TextEncoder();
   const baseUrl = getBaseUrl(request);
-  
+
   const stream = new ReadableStream({
     start(controller) {
       let stopped = false;
@@ -32,7 +65,11 @@ export async function GET(request: NextRequest) {
       let lastVerdictKey = '';
 
       const emit = (event: string, data: unknown) => {
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          stopped = true;
+        }
       };
 
       emit('connected', { timestamp: Date.now() });
@@ -66,6 +103,11 @@ export async function GET(request: NextRequest) {
               if (!seenActor.has(line)) {
                 seenActor.add(line);
                 emit('actor_log', { message: line });
+
+                const protocolEvent = parseProtocolEvent(line);
+                if (protocolEvent) {
+                  emit(protocolEvent.type, protocolEvent.data);
+                }
               }
             }
 
@@ -73,6 +115,11 @@ export async function GET(request: NextRequest) {
               if (!seenSentinel.has(line)) {
                 seenSentinel.add(line);
                 emit('sentinel_log', { message: line });
+
+                const protocolEvent = parseProtocolEvent(line);
+                if (protocolEvent) {
+                  emit(protocolEvent.type, protocolEvent.data);
+                }
               }
             }
 
@@ -99,9 +146,13 @@ export async function GET(request: NextRequest) {
 
       const heartbeatInterval = setInterval(() => {
         if (!stopped) {
-          controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
+          try {
+            controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
+          } catch {
+            stopped = true;
+          }
         }
-      }, 5000);
+      }, 15000);
 
       void tick();
 
@@ -109,7 +160,7 @@ export async function GET(request: NextRequest) {
         stopped = true;
         clearInterval(loopInterval);
         clearInterval(heartbeatInterval);
-        controller.close();
+        try { controller.close(); } catch { /* already closed */ }
       });
     },
   });
@@ -117,8 +168,9 @@ export async function GET(request: NextRequest) {
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }

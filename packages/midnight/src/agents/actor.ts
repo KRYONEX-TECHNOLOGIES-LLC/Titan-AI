@@ -305,6 +305,28 @@ export class ActorAgent {
           required: ['summary'],
         },
       },
+      {
+        name: 'web_search',
+        description: 'Search the web for real-time information, documentation, APIs, best practices, or solutions',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'web_fetch',
+        description: 'Fetch a URL and return its content as readable markdown text',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'The URL to fetch (http or https)' },
+          },
+          required: ['url'],
+        },
+      },
     ];
 
     // Filter to only enabled tools
@@ -450,5 +472,7 @@ export const DEFAULT_ACTOR_CONFIG: ActorConfig = {
     'git_diff',
     'git_commit',
     'task_complete',
+    'web_search',
+    'web_fetch',
   ],
 };

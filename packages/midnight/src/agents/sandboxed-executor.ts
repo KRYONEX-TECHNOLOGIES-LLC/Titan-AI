@@ -211,6 +211,12 @@ export class SandboxedToolExecutor implements ToolExecutor {
       case 'task_complete':
         return this.taskComplete(args.summary as string);
 
+      case 'web_search':
+        return this.webSearch(args.query as string);
+
+      case 'web_fetch':
+        return this.webFetch(args.url as string);
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -355,6 +361,85 @@ export class SandboxedToolExecutor implements ToolExecutor {
    */
   private async taskComplete(summary: string): Promise<string> {
     return `Task completed: ${summary}`;
+  }
+
+  /**
+   * Search the web via DuckDuckGo
+   */
+  private async webSearch(query: string): Promise<string> {
+    try {
+      const encoded = encodeURIComponent(query);
+      const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
+        headers: {
+          'User-Agent': 'TitanAI/1.0 (Midnight)',
+          'Accept': 'text/html',
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      if (!res.ok) return `Search failed with status ${res.status}`;
+      const html = await res.text();
+
+      const results: Array<{ title: string; url: string; snippet: string }> = [];
+      const regex = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+
+      let match;
+      while ((match = regex.exec(html)) !== null && results.length < 10) {
+        const url = decodeURIComponent((match[1] ?? '').replace(/.*uddg=/, '').replace(/&.*/, ''));
+        const title = (match[2] ?? '').replace(/<[^>]+>/g, '').trim();
+        const snippet = (match[3] ?? '').replace(/<[^>]+>/g, '').trim();
+        if (title && url) results.push({ title, url, snippet });
+      }
+
+      if (results.length === 0) return 'No search results found.';
+      return results.map((r, i) => `${i + 1}. **${r.title}**\n   ${r.url}\n   ${r.snippet}`).join('\n\n');
+    } catch (error) {
+      return `Web search error: ${error}`;
+    }
+  }
+
+  /**
+   * Fetch a URL and return its content as markdown
+   */
+  private async webFetch(url: string): Promise<string> {
+    try {
+      let parsed: URL;
+      try { parsed = new URL(url); } catch { return 'Invalid URL'; }
+      if (!['http:', 'https:'].includes(parsed.protocol)) return 'Only http/https URLs allowed';
+
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'TitanAI/1.0 (Midnight)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(15000),
+      });
+
+      const html = await res.text();
+      let text = html;
+      text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+      text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+      text = text.replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '');
+      text = text.replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '');
+      text = text.replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '');
+      text = text.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n# $1\n');
+      text = text.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n## $1\n');
+      text = text.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n');
+      text = text.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n$1\n');
+      text = text.replace(/<br\s*\/?>/gi, '\n');
+      text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
+      text = text.replace(/<a[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
+      text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
+      text = text.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, '\n```\n$1\n```\n');
+      text = text.replace(/<[^>]+>/g, '');
+      text = text.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
+      text = text.replace(/\n{3,}/g, '\n\n').trim();
+      if (text.length > 30000) text = text.substring(0, 30000) + '\n\n[Content truncated at 30,000 characters]';
+      return text || '(empty page)';
+    } catch (error) {
+      return `Web fetch error: ${error}`;
+    }
   }
 
   /**

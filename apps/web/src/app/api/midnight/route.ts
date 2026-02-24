@@ -456,11 +456,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, message: `Trust level set to ${trustLevel}` });
       }
       case 'start': {
+        const useProtocolMode = body.useProtocolMode !== false;
         const response = await requestSidecar({
           type: 'start',
           trustLevel: trustLevel === 1 || trustLevel === 2 || trustLevel === 3 ? trustLevel : runtimeCache.trustLevel,
           model: model || runtimeCache.workerModel,
           projectPath,
+          useProtocolMode,
         });
         runtimeCache.running = true;
         return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight started' });

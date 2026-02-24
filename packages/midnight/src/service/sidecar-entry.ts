@@ -330,7 +330,7 @@ async function createRuntime(configOverride?: Partial<MidnightConfig>): Promise<
 
   const worktree = new WorktreeAdapter(workspaceRoot);
   const repoMap = new RepoMapProviderImpl();
-  const toolsEnabled = ['read_file', 'write_file', 'run_command', 'run_tests', 'git_diff', 'git_commit', 'task_complete'];
+  const toolsEnabled = ['read_file', 'write_file', 'run_command', 'run_tests', 'git_diff', 'git_commit', 'task_complete', 'web_search', 'web_fetch'];
 
   // Midnight Protocol Team: 4-squad, 8-model system (default)
   // Falls back to legacy single-agent mode if MIDNIGHT_LEGACY=1
@@ -580,6 +580,11 @@ async function main(): Promise<void> {
     }
     if (typeof req.model === 'string' && req.model.trim()) {
       runtimeState.workerModel = normalizeRequestedModel(req.model);
+    }
+
+    if (typeof req.useProtocolMode === 'boolean') {
+      process.env.MIDNIGHT_LEGACY = req.useProtocolMode ? '0' : '1';
+      writeServiceLog('INFO', `Protocol mode set to ${req.useProtocolMode ? 'PROTOCOL TEAM' : 'LEGACY'} via IPC`);
     }
 
     const activeRuntime = await ensureRuntime();
