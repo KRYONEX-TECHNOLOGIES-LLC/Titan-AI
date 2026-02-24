@@ -126,6 +126,10 @@ export function registerAuthHandlers(ipcMain: IpcMain, parentWin: BrowserWindow)
         let parsed: URL;
         try { parsed = new URL(url); } catch { return; }
 
+        // Ignore intermediate SSO redirects (Google/Microsoft/etc) that can also
+        // include code/state params; only process our configured OAuth callback.
+        if (parsed.hostname !== 'localhost') return;
+
         const code = parsed.searchParams.get('code');
         const returnedState = parsed.searchParams.get('state');
         const error = parsed.searchParams.get('error');

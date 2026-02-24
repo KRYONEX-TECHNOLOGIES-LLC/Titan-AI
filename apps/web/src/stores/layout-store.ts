@@ -9,6 +9,9 @@ export type SidebarView =
   | 'extensions'
   | 'titan-agent'
   | 'forge'
+  | 'midnight'
+  | 'training-lab'
+  | 'brain'
   | 'accounts'
   | 'settings'
   | '';

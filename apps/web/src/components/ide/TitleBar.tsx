@@ -44,6 +44,14 @@ export default function TitleBar(props: TitleBarProps) {
     modelSearchInputRef, onSelectModel, onModelSearchKeyDown,
     onNewFile, onNewTerminal, onNewAgent, mounted,
   } = props;
+  const protocolExamples: Record<string, string> = {
+    'titan-chat': 'Example: Explain the difference between SSR and SSG.',
+    'titan-phoenix-protocol': 'Example: Build a user auth system with JWT tokens.',
+    'titan-protocol': 'Example: Fix the TypeScript error in UserMenu.tsx.',
+    'titan-protocol-v2': 'Example: Build a full checkout flow with cart, payment, and confirmation.',
+    'titan-supreme-protocol': 'Example: Implement a Stripe payment processing pipeline.',
+    'titan-omega-protocol': 'Example: Migrate the API from Express to Fastify.',
+  };
 
   return (
     <div className="h-[35px] bg-[#2b2b2b] flex items-center text-[13px] border-b border-[#3c3c3c] shrink-0">
@@ -159,6 +167,9 @@ export default function TitleBar(props: TitleBarProps) {
                             <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>Titan AI</span>
                           </div>
                           <div style={{ fontSize: 10, color: '#d97706', marginTop: 3 }}>5-role orchestration: 80.2% SWE-Bench coder + GPT-5 class reasoner — 40x cheaper than Opus</div>
+                          <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 3, fontStyle: 'italic' }}>
+                            {protocolExamples['titan-phoenix-protocol']}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
                             <span style={{ fontSize: 9, color: '#f59e0b', background: '#f59e0b18', padding: '1px 5px', borderRadius: 3 }}>5 Models</span>
                             <span style={{ fontSize: 9, color: '#f59e0b', background: '#f59e0b18', padding: '1px 5px', borderRadius: 3 }}>Self-Healing</span>
@@ -190,6 +201,9 @@ export default function TitleBar(props: TitleBarProps) {
                             <span style={{ fontSize: 10, color: '#c084fc', fontWeight: 600 }}>Titan AI</span>
                           </div>
                           <div style={{ fontSize: 10, color: '#8b5cf6', marginTop: 3 }}>Multi-agent governance with mandatory verification</div>
+                          <div style={{ fontSize: 10, color: '#c4b5fd', marginTop: 3, fontStyle: 'italic' }}>
+                            {protocolExamples['titan-protocol']}
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
                             <span style={{ fontSize: 9, color: '#7c3aed', background: '#7c3aed20', padding: '1px 5px', borderRadius: 3 }}>Self-Review</span>
                             <span style={{ fontSize: 9, color: '#7c3aed', background: '#7c3aed20', padding: '1px 5px', borderRadius: 3 }}>Fail-Gate</span>
@@ -218,6 +232,11 @@ export default function TitleBar(props: TitleBarProps) {
                               <span className={`text-[12px] ${activeModel === model.id ? 'text-[#007acc]' : 'text-[#cccccc]'}`}>{model.name}</span>
                               <span className="text-[10px] text-[#666]">{model.provider}</span>
                             </div>
+                            {protocolExamples[model.id] && (
+                              <div className="text-[10px] text-[#8b949e] mt-0.5 italic">
+                                {protocolExamples[model.id]}
+                              </div>
+                            )}
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-[9px] text-[#555]">{(model.contextWindow / 1000).toFixed(0)}K ctx</span>
                               {model.supportsThinking && <span className="text-[9px] text-purple-400">*</span>}
