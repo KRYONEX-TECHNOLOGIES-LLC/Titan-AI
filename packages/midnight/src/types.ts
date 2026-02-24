@@ -341,3 +341,28 @@ export type IPCResponse =
   | { type: 'success'; message: string }
   | { type: 'error'; message: string }
   | { type: 'event'; event: MidnightEvent };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MIDNIGHT PROTOCOL TEAM (extends base types)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type ProtocolSquad = 'foreman' | 'nerd_squad' | 'cleanup_crew' | 'sentinel_council';
+
+export type ProtocolRoleName =
+  | 'foreman'
+  | 'alpha_nerd'
+  | 'beta_nerd'
+  | 'gamma_nerd'
+  | 'inspector'
+  | 'surgeon'
+  | 'chief_sentinel'
+  | 'shadow_sentinel';
+
+export interface ProtocolStatusExtension {
+  protocolEnabled: boolean;
+  activeSquad: ProtocolSquad | null;
+  activeRole: ProtocolRoleName | null;
+  escalationLevel: number;
+  costSoFar: number;
+  costBreakdown: Record<ProtocolSquad, number>;
+}

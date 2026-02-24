@@ -1409,6 +1409,7 @@ function getCachedOrBuildSystemPrompt(
   creatorContext: string,
   selfWorkContext: string,
   isTitanProtocol: boolean,
+  isPhoenixProtocol: boolean = false,
 ): string {
   const key = sessionId ?? '__nosession__';
   const cached = systemPromptCache.get(key);
@@ -1416,7 +1417,9 @@ function getCachedOrBuildSystemPrompt(
     return cached.prompt;
   }
   let prompt = buildSystemPrompt(body, creatorContext, selfWorkContext);
-  if (isTitanProtocol) {
+  if (isPhoenixProtocol) {
+    prompt = `[PHOENIX PROTOCOL MODE ACTIVE — 5-Role Multi-Model Orchestration Engaged]\n[ARCHITECT: DeepSeek V3.2 Speciale | CODER: MiniMax M2.5 (80.2% SWE-Bench) | VERIFIER: DeepSeek V3.2 | SCOUT: Gemini 2.5 Flash | JUDGE: Qwen3.5 397B]\n[Adaptive routing: simple/medium/full pipeline | 3-strike self-healing | Consensus voting]\n\n` + prompt;
+  } else if (isTitanProtocol) {
     prompt = `[TITAN PROTOCOL MODE ACTIVE — Full Governance Architecture v2.0 Engaged]\n\n` + prompt;
   }
   // Evict oldest entry if cache is full
@@ -1448,6 +1451,7 @@ export async function POST(request: NextRequest) {
   const { MODEL_REGISTRY, normalizeModelId } = await import('@/lib/model-registry');
   const normalizedModel = normalizeModelId(model);
   const isTitanProtocol = Boolean(body?.titanProtocol);
+  const isPhoenixProtocol = normalizedModel === 'titan-phoenix-protocol' || model === 'titan-phoenix-protocol';
   const modelEntry = MODEL_REGISTRY.find((m: { id: string }) => m.id === normalizedModel);
   const usedRegistryFallback = !modelEntry && !normalizedModel.includes('/');
   const providerModelId = modelEntry?.providerModelId
@@ -1478,6 +1482,7 @@ export async function POST(request: NextRequest) {
       creatorContext,
       selfWorkContext,
       isTitanProtocol,
+      isPhoenixProtocol,
     );
     messages = [{ role: 'system', content: systemPrompt }, ...messages];
   }
@@ -1561,23 +1566,33 @@ export async function POST(request: NextRequest) {
       };
 
       try {
+        const requestBody: Record<string, unknown> = {
+          model: providerModelId,
+          messages,
+          tools: TOOL_DEFINITIONS,
+          tool_choice: 'auto',
+          temperature: 0,
+          stream: true,
+        };
+        if (apiUrl.includes('openrouter.ai')) {
+          requestBody.stream_options = { include_usage: true };
+        }
+
         const response = await fetchWithRetry(apiUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify({
-            model: providerModelId,
-            messages,
-            tools: TOOL_DEFINITIONS,
-            tool_choice: 'auto',
-            temperature: 0,
-            stream: true,
-            stream_options: { include_usage: true },
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         if (!response.ok) {
           const text = await response.text();
-          emit('error', { message: `LLM request failed (${response.status}): ${text.slice(0, 200)}` });
+          console.error(`[chat/continue] LLM ${response.status} for model=${providerModelId}:`, text.slice(0, 500));
+          let userMessage = `LLM request failed (${response.status})`;
+          try {
+            const errJson = JSON.parse(text);
+            if (errJson?.error?.message) userMessage = `LLM error: ${errJson.error.message}`;
+          } catch { /* use generic message */ }
+          emit('error', { message: userMessage });
           controller.close();
           return;
         }

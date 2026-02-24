@@ -7,6 +7,7 @@ import { useAgentTools, toolCallSummary } from './useAgentTools';
 import { useParallelChat } from './useParallelChat';
 import { useSupremeChat } from './useSupremeChat';
 import { useOmegaChat } from './useOmegaChat';
+import { usePhoenixChat } from './usePhoenixChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
@@ -1135,9 +1136,32 @@ export function useChat({
     osPlatform,
   });
 
+  const phoenixChat = usePhoenixChat({
+    sessions,
+    setSessions,
+    activeSessionId,
+    workspacePath,
+    openTabs,
+    isDesktop,
+    osPlatform,
+  });
+
+  const isPhoenixMode = activeModel === 'titan-phoenix-protocol';
   const isParallelMode = activeModel === 'titan-protocol-v2';
   const isSupremeMode = activeModel === 'titan-supreme-protocol';
   const isOmegaMode = activeModel === 'titan-omega-protocol';
+
+  if (isPhoenixMode) {
+    return {
+      chatInput: phoenixChat.chatInput,
+      setChatInput: phoenixChat.setChatInput,
+      isThinking: phoenixChat.isThinking,
+      isStreaming: phoenixChat.isStreaming,
+      handleSend: phoenixChat.handleSend,
+      handleStop: phoenixChat.handleStop,
+      handleKeyDown: phoenixChat.handleKeyDown,
+    };
+  }
 
   if (isParallelMode) {
     return {

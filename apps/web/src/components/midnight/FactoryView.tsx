@@ -48,6 +48,12 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
     { id: '3', name: 'API Gateway', status: 'queued', priority: 3 },
   ]);
 
+  // Protocol Team state
+  const [activeSquad, setActiveSquad] = useState<string>('nerd_squad');
+  const [activeRole, setActiveRole] = useState<string>('Alpha Nerd');
+  const [escalationLevel, setEscalationLevel] = useState(0);
+  const [protocolCost, setProtocolCost] = useState(0);
+
   const actorRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -124,14 +130,16 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
   useEffect(() => {
     if (!isOpen) return;
 
-    // Initial demo lines
     setActorLines([
-      { type: 'info', content: '🚀 Actor Agent initialized (Claude 4.6 Sonnet)', timestamp: new Date() },
-      { type: 'command', content: '$ Picking task: Build authentication module', timestamp: new Date() },
+      { type: 'info', content: 'MIDNIGHT PROTOCOL TEAM initialized (4 squads, 8 models)', timestamp: new Date() },
+      { type: 'info', content: 'Nerd Squad: Alpha (MiMo-V2-Flash) | Beta (Qwen3 Coder) | Gamma (MiniMax M2.5)', timestamp: new Date() },
+      { type: 'info', content: 'Cleanup Crew: Inspector (Gemini 2.5 Flash) | Surgeon (MiMo-V2-Flash)', timestamp: new Date() },
+      { type: 'command', content: '$ Foreman decomposing project...', timestamp: new Date() },
     ]);
 
     setSentinelLines([
-      { type: 'info', content: '👁 Sentinel Agent initialized (Claude 4.6 Opus - Max Effort)', timestamp: new Date() },
+      { type: 'info', content: 'SENTINEL COUNCIL initialized (dual-review, consensus required)', timestamp: new Date() },
+      { type: 'info', content: 'Chief Sentinel (DeepSeek V3.2) | Shadow Sentinel (DeepSeek V3.2 Speciale)', timestamp: new Date() },
       { type: 'output', content: 'Loading repository map via Tree-sitter...', timestamp: new Date() },
     ]);
 
@@ -166,24 +174,40 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
 
         if (logs.actorLogs) {
           setActorLines(logs.actorLogs.map((log: string) => {
-            const isSuccess = log.includes('✓') || log.includes('PASSED');
-            const isError = log.includes('✗') || log.includes('FAILED') || log.includes('ERROR');
-            const isCommand = log.includes('$');
+            const isSuccess = log.includes('PASSED') || log.includes('complete') || log.includes('APPROVED');
+            const isError = log.includes('FAILED') || log.includes('ERROR') || log.includes('Escalating');
+            const isInfo = log.includes('Protocol:') || log.includes('activated');
             return {
-              type: isSuccess ? 'success' : isError ? 'error' : isCommand ? 'command' : 'output',
-              content: log.replace(/^\[.*?\]\s*/, '').replace('Actor:', ''),
+              type: isSuccess ? 'success' : isError ? 'error' : isInfo ? 'info' : 'output',
+              content: log.replace(/^\[.*?\]\s*/, '').replace('Actor:', '').replace('Protocol:', ''),
               timestamp: new Date(log.match(/\[(.*?)\]/)?.[1] || Date.now()),
             };
           }));
+          // Extract protocol state from logs
+          const lastProtocolLog = logs.actorLogs.findLast?.((l: string) => l.includes('activated'));
+          if (lastProtocolLog) {
+            const squadMatch = lastProtocolLog.match(/\((\w+)\)/);
+            const nameMatch = lastProtocolLog.match(/Protocol:\s*(.+?)\s*\(/);
+            if (squadMatch) setActiveSquad(squadMatch[1]);
+            if (nameMatch) setActiveRole(nameMatch[1]);
+          }
+          const escalationLog = logs.actorLogs.findLast?.((l: string) => l.includes('Escalating'));
+          if (escalationLog) setEscalationLevel(prev => prev + 1);
+          const costLog = logs.actorLogs.findLast?.((l: string) => l.includes('Cost $'));
+          if (costLog) {
+            const costMatch = costLog.match(/Cost \$(\d+\.\d+)/);
+            if (costMatch) setProtocolCost(parseFloat(costMatch[1]));
+          }
         }
 
         if (logs.sentinelLogs) {
           setSentinelLines(logs.sentinelLogs.map((log: string) => {
-            const isSuccess = log.includes('✓') || log.includes('PASSED') || log.includes('APPROVED');
-            const isError = log.includes('✗') || log.includes('FAILED') || log.includes('VETO') || log.includes('REVERT');
+            const isSuccess = log.includes('PASSED') || log.includes('APPROVED');
+            const isError = log.includes('FAILED') || log.includes('VETO') || log.includes('REJECTED');
+            const isInfo = log.includes('Council:');
             return {
-              type: isSuccess ? 'success' : isError ? 'error' : 'output',
-              content: log.replace(/^\[.*?\]\s*/, '').replace('Sentinel:', ''),
+              type: isSuccess ? 'success' : isError ? 'error' : isInfo ? 'info' : 'output',
+              content: log.replace(/^\[.*?\]\s*/, '').replace('Sentinel:', '').replace('Council:', ''),
               timestamp: new Date(log.match(/\[(.*?)\]/)?.[1] || Date.now()),
             };
           }));
@@ -422,14 +446,22 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Actor Terminal */}
+        {/* Left: Nerd Squad + Cleanup Crew Terminal */}
         <div className="flex-1 flex flex-col border-r border-[#3c3c3c]">
           <div className="h-8 bg-[#2b2b2b] border-b border-[#3c3c3c] flex items-center px-3">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-500 rounded-full" />
-              <span className="text-[11px] text-[#cccccc] font-medium">ACTOR (Claude 4.6 Sonnet)</span>
+              <span className={`w-2 h-2 rounded-full ${activeSquad === 'cleanup_crew' ? 'bg-yellow-500' : 'bg-green-500'}`} />
+              <span className="text-[11px] text-[#cccccc] font-medium">
+                {activeSquad === 'cleanup_crew' ? 'CLEANUP CREW' : 'NERD SQUAD'}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#333] text-cyan-400">{activeRole}</span>
+              {escalationLevel > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900/50 text-red-400">ESC:{escalationLevel}</span>
+              )}
             </div>
-            <span className="ml-auto text-[10px] text-[#606060]">Read-Write-Execute</span>
+            <span className="ml-auto text-[10px] text-[#606060]">
+              {protocolCost > 0 ? `$${protocolCost.toFixed(4)}` : 'Protocol Team'}
+            </span>
           </div>
           <div
             ref={actorRef}
@@ -446,14 +478,15 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
           </div>
         </div>
 
-        {/* Right: Sentinel Terminal */}
+        {/* Right: Sentinel Council Terminal */}
         <div className="flex-1 flex flex-col">
           <div className="h-8 bg-[#2b2b2b] border-b border-[#3c3c3c] flex items-center px-3">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
-              <span className="text-[11px] text-[#cccccc] font-medium">SENTINEL (Claude 4.6 Opus)</span>
+              <span className="text-[11px] text-[#cccccc] font-medium">SENTINEL COUNCIL</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#333] text-purple-400">Dual-Review</span>
             </div>
-            <span className="ml-auto text-[10px] text-[#606060]">Read-Only | Adaptive Thinking: MAX</span>
+            <span className="ml-auto text-[10px] text-[#606060]">Read-Only | Consensus Required</span>
           </div>
           <div
             ref={sentinelRef}

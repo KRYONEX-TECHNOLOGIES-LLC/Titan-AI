@@ -15,6 +15,7 @@ import type { ProjectQueue } from '../queue/project-queue.js';
 import type { ProjectLoader } from '../queue/project-loader.js';
 import type { DurableStateEngine } from '../state/state-engine.js';
 import type { AgentLoop } from '../agents/agent-loop.js';
+import type { ProtocolAgentLoop } from '../protocol/protocol-agent-loop.js';
 import type { PocketFlowEngine, FlowState } from './pocket-flow.js';
 import type { ProjectHandoff } from './handoff.js';
 
@@ -24,7 +25,7 @@ export interface MidnightOrchestratorDependencies {
   projectQueue: ProjectQueue;
   projectLoader: ProjectLoader;
   stateEngine: DurableStateEngine;
-  agentLoop: AgentLoop;
+  agentLoop: AgentLoop | ProtocolAgentLoop;
   pocketFlow: PocketFlowEngine;
   handoff: ProjectHandoff;
 }

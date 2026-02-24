@@ -26,6 +26,7 @@ import { createAppMenu } from './menu/app-menu.js';
 import { setupIndexerIPC } from './ipc/indexer.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
 import * as chokidar from 'chokidar';
+import * as fs from 'fs';
 
 // Enforce single instance — if another copy is already running, focus it and exit this one.
 // Use only app.quit() — process.exit() can conflict with elevated NSIS post-install launch.
@@ -155,17 +156,41 @@ async function startNextJsServer(port: number): Promise<void> {
     args = ['next', 'dev', '-p', String(port)];
     env = process.env;
   } else {
-    // Production: electron-builder places extraResources at process.resourcesPath.
-    // The config copies .next/standalone -> resources/web-server, so the standalone
-    // server.js lives at resources/web-server/apps/web/server.js.
-    // We run it directly with Electron's bundled Node binary — no npx or next CLI needed.
     cwd = path.join(process.resourcesPath, 'web-server', 'apps', 'web');
     command = process.execPath;
     args = [path.join(cwd, 'server.js')];
-    // ELECTRON_RUN_AS_NODE=1 is required: process.execPath is the Electron binary, not Node.
-    // Without this flag the spawned child launches as a second Electron instance instead of
-    // plain Node, so the Next.js standalone server.js silently fails and the window goes black.
-    env = { ...process.env, PORT: String(port), HOSTNAME: '127.0.0.1', NODE_ENV: 'production', ELECTRON_RUN_AS_NODE: '1' };
+
+    // Next.js standalone server.js does NOT auto-load .env files (only `next dev`/`next start` do).
+    // Parse the bundled .env manually and inject into the child process environment.
+    const dotEnvVars: Record<string, string> = {};
+    const envFilePath = path.join(cwd, '.env');
+    try {
+      const raw = fs.readFileSync(envFilePath, 'utf-8');
+      for (const line of raw.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx < 1) continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        dotEnvVars[key] = val;
+      }
+      console.log(`[Next.js] Loaded ${Object.keys(dotEnvVars).length} env vars from ${envFilePath}`);
+    } catch (e) {
+      console.warn(`[Next.js] Could not read .env at ${envFilePath}:`, e);
+    }
+
+    env = {
+      ...dotEnvVars,
+      ...process.env,
+      PORT: String(port),
+      HOSTNAME: '127.0.0.1',
+      NODE_ENV: 'production',
+      ELECTRON_RUN_AS_NODE: '1',
+    };
   }
 
   console.log(`[Next.js] Starting server (${isDev ? 'dev' : 'prod'})...`);
@@ -225,6 +250,21 @@ function waitForServer(port: number, timeoutMs: number): Promise<void> {
   });
 }
 
+function registerRecentFoldersHandlers(): void {
+  ipcMain.handle('recent-folders:get', () => {
+    return (store.get('recentFolders') as string[]) || [];
+  });
+
+  ipcMain.handle('recent-folders:add', (_event, folderPath: string) => {
+    const current = (store.get('recentFolders') as string[]) || [];
+    const filtered = current.filter((p: string) => p !== folderPath);
+    const updated = [folderPath, ...filtered].slice(0, 20);
+    store.set('recentFolders', updated);
+    store.set('lastOpenedFolder', folderPath);
+    return updated;
+  });
+}
+
 function registerIpcHandlers(browserWindow: BrowserWindow): void {
   registerToolHandlers(ipcMain, browserWindow);
   registerTerminalHandlers(ipcMain, browserWindow);
@@ -234,6 +274,7 @@ function registerIpcHandlers(browserWindow: BrowserWindow): void {
   registerSearchHandlers(ipcMain);
   registerWebHandlers(ipcMain);
   registerAuthHandlers(ipcMain, browserWindow);
+  registerRecentFoldersHandlers();
   setupIndexerIPC();
 }
 

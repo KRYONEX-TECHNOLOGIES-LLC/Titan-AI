@@ -22,6 +22,7 @@ import { SentinelAgent } from '../agents/sentinel';
 import { WorktreeAdapter } from '../agents/worktree-adapter';
 import { RepoMapProviderImpl } from '../agents/repo-map-provider';
 import { createSandboxedExecutor } from '../agents/sandboxed-executor';
+import { ProtocolAgentLoop } from '../protocol/protocol-agent-loop';
 import type { MidnightConfig } from '../types';
 
 type Provider = 'litellm' | 'openrouter';
@@ -327,42 +328,42 @@ async function createRuntime(configOverride?: Partial<MidnightConfig>): Promise<
   await sandboxExecutor.initialize();
   runtimeState.sandboxStatus = sandboxExecutor.getSandboxType() as RuntimeState['sandboxStatus'];
 
-  const actor = new ActorAgent(
-    {
-      model: runtimeState.workerModel,
-      maxTokens: 128000,
-      temperature: 0.2,
-      workspacePath: workspaceRoot,
-      toolsEnabled: ['read_file', 'write_file', 'run_command', 'run_tests', 'git_diff', 'git_commit', 'task_complete'],
-    },
-    llmClient,
-    sandboxExecutor
-  );
-
-  const sentinel = new SentinelAgent(
-    {
-      model: runtimeState.workerModel,
-      maxTokens: 32000,
-      effort: 'max',
-      qualityThreshold: 85,
-    },
-    llmClient
-  );
-
   const worktree = new WorktreeAdapter(workspaceRoot);
   const repoMap = new RepoMapProviderImpl();
-  const agentLoop = new AgentLoop(
-    {
-      maxRetries: configOverride?.maxRetries ?? 3,
-      qualityThreshold: configOverride?.qualityThreshold ?? 85,
-      enableVeto: true,
-      enableRevert: true,
-    },
-    actor,
-    sentinel,
-    worktree,
-    repoMap
-  );
+  const toolsEnabled = ['read_file', 'write_file', 'run_command', 'run_tests', 'git_diff', 'git_commit', 'task_complete'];
+
+  // Midnight Protocol Team: 4-squad, 8-model system (default)
+  // Falls back to legacy single-agent mode if MIDNIGHT_LEGACY=1
+  const useLegacy = process.env.MIDNIGHT_LEGACY === '1';
+
+  let agentLoop: AgentLoop | ProtocolAgentLoop;
+
+  if (useLegacy) {
+    const actor = new ActorAgent(
+      { model: runtimeState.workerModel, maxTokens: 128000, temperature: 0.2, workspacePath: workspaceRoot, toolsEnabled },
+      llmClient,
+      sandboxExecutor
+    );
+    const sentinel = new SentinelAgent(
+      { model: runtimeState.workerModel, maxTokens: 32000, effort: 'max', qualityThreshold: 85 },
+      llmClient
+    );
+    agentLoop = new AgentLoop(
+      { maxRetries: configOverride?.maxRetries ?? 3, qualityThreshold: configOverride?.qualityThreshold ?? 85, enableVeto: true, enableRevert: true },
+      actor, sentinel, worktree, repoMap
+    );
+    writeServiceLog('INFO', 'Using LEGACY single-agent mode (Actor + Sentinel)');
+  } else {
+    agentLoop = new ProtocolAgentLoop(
+      llmClient,
+      sandboxExecutor,
+      worktree,
+      repoMap,
+      { maxIterationsPerNerd: 15, toolsEnabled, workspacePath: workspaceRoot },
+      { maxNerdEscalations: 3, qualityThreshold: configOverride?.qualityThreshold ?? 85 }
+    );
+    writeServiceLog('INFO', 'Using MIDNIGHT PROTOCOL TEAM (4 squads, 8 models)');
+  }
 
   const gitOps = {
     async push(_projectPath: string, _remote: string, _branch: string): Promise<void> {},
@@ -445,6 +446,22 @@ async function createRuntime(configOverride?: Partial<MidnightConfig>): Promise<
         break;
       case 'snapshot_created':
         pushActorLog(`[${stamp}] State: Snapshot created ${event.snapshot.id}`);
+        break;
+      // Protocol Team events
+      case 'protocol_squad_active':
+        pushActorLog(`[${stamp}] Protocol: ${(event as any).name} (${(event as any).squad}) activated`);
+        break;
+      case 'protocol_escalation':
+        pushActorLog(`[${stamp}] Protocol: Escalating from ${(event as any).from} → ${(event as any).to}`);
+        break;
+      case 'protocol_consensus':
+        pushSentinelLog(`[${stamp}] Council: Chief=${(event as any).consensus.chiefScore} Shadow=${(event as any).consensus.shadowScore} ${(event as any).consensus.finalPassed ? 'APPROVED' : 'REJECTED'}`);
+        break;
+      case 'protocol_cost_update':
+        pushActorLog(`[${stamp}] Protocol: Cost $${(event as any).totalCostUsd.toFixed(4)}`);
+        break;
+      case 'protocol_task_complete':
+        pushActorLog(`[${stamp}] Protocol: Task complete ($${(event as any).result.totalCostUsd.toFixed(4)})`);
         break;
     }
 

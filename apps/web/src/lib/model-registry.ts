@@ -39,6 +39,12 @@ export function normalizeModelId(modelId: string): string {
 }
 
 export const MODEL_REGISTRY: ModelInfo[] = [
+  // ═══ PHOENIX PROTOCOL (5-Role Multi-Model Orchestration) ═══
+  // Adaptive pipeline: ARCHITECT (DeepSeek V3.2 Speciale) + CODER (MiniMax M2.5, 80.2% SWE-Bench)
+  // + VERIFIER (DeepSeek V3.2) + SCOUT (Gemini 2.5 Flash) + JUDGE (Qwen3.5 397B MoE).
+  // 3-strike self-healing, consensus voting, ~40-50x cheaper than Opus 4.6.
+  { id: 'titan-phoenix-protocol', providerModelId: 'deepseek/deepseek-v3.2-speciale', name: 'Phoenix Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 66000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.28, costPer1MOutput: 0.85, description: '5-role orchestration: DeepSeek V3.2 Speciale (architect) + MiniMax M2.5 #1 SWE-Bench (coder) + DeepSeek V3.2 (verifier) + Gemini 2.5 Flash (scout) + Qwen3.5 397B (judge). Adaptive routing, self-healing 3-strike loop, consensus voting. ~40x cheaper than Opus.' },
+
   // ═══ TITAN PROTOCOL (Multi-Agent Governance System) ═══
   // Protocol card pricing is a blended per-1M estimate from current role model mix.
   { id: 'titan-protocol', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.41, costPer1MOutput: 1.88, description: 'Multi-agent governance with mandatory verification. Blended estimate from Qwen3.5-Plus + DeepSeek Reasoner + Qwen3 Coder Next role stack.' },
@@ -71,6 +77,7 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   { id: 'gemini-2.0-flash-thinking', providerModelId: 'google/gemini-2.0-flash-thinking-exp', name: 'Gemini 2.0 Flash Thinking', provider: 'Google', tier: 'standard', contextWindow: 1000000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.075, costPer1MOutput: 0.3, description: 'Flash speed with visible chain-of-thought reasoning' },
 
   // ═══ DEEPSEEK ═══
+  { id: 'deepseek-v3.2-speciale', providerModelId: 'deepseek/deepseek-v3.2-speciale', name: 'DeepSeek V3.2 Speciale', provider: 'DeepSeek', tier: 'frontier', contextWindow: 163840, maxOutputTokens: 16384, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.40, costPer1MOutput: 1.20, description: 'High-compute variant surpassing GPT-5 on reasoning. Gold-medal IOI/IMO. Phoenix ARCHITECT.' },
   { id: 'deepseek-chat', providerModelId: 'deepseek/deepseek-chat', name: 'DeepSeek Chat', provider: 'DeepSeek', tier: 'economy', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.14, costPer1MOutput: 0.28, description: 'Excellent code generation' },
   { id: 'deepseek-r1', providerModelId: 'deepseek/deepseek-r1', name: 'DeepSeek R1', provider: 'DeepSeek', tier: 'standard', contextWindow: 64000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.7, costPer1MOutput: 2.5, description: 'Chain-of-thought verification with visible reasoning trace' },
   { id: 'deepseek-v3.2', providerModelId: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2', provider: 'DeepSeek', tier: 'standard', contextWindow: 163840, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0.26, costPer1MOutput: 0.38, description: 'GPT-5 class reasoning, gold-medal IMO/IOI performance' },
@@ -106,6 +113,9 @@ export const MODEL_REGISTRY: ModelInfo[] = [
 
   // ═══ MINIMAX ═══
   { id: 'minimax-m2.5', providerModelId: 'minimax/minimax-m2.5', name: 'MiniMax M2.5', provider: 'MiniMax', tier: 'frontier', contextWindow: 197000, maxOutputTokens: 66000, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.3, costPer1MOutput: 1.1, description: 'SOTA coding (80.2% SWE-bench), office productivity — Word/Excel/PowerPoint generation, strong agentic performance' },
+
+  // ═══ XIAOMI ═══
+  { id: 'mimo-v2-flash', providerModelId: 'xiaomi/mimo-v2-flash', name: 'MiMo-V2-Flash', provider: 'Xiaomi', tier: 'economy', contextWindow: 262000, maxOutputTokens: 16384, supportsThinking: true, supportsVision: false, supportsTools: true, costPer1MInput: 0.09, costPer1MOutput: 0.29, description: '#1 open-source SWE-Bench globally — 309B MoE with 15B active, hybrid-thinking, Claude Sonnet 4.5 performance at 3.5% cost' },
 
   // ═══ LOCAL MODELS (Ollama) ═══
   { id: 'ollama-llama3.2', providerModelId: 'ollama/llama3.2', name: 'Llama 3.2 (Local)', provider: 'Local (Ollama)', tier: 'local', contextWindow: 128000, maxOutputTokens: 8192, supportsThinking: false, supportsVision: false, supportsTools: true, costPer1MInput: 0, costPer1MOutput: 0, description: 'Free local model' },

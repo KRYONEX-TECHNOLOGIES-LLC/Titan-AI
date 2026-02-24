@@ -100,7 +100,12 @@ export default function TitleBar(props: TitleBarProps) {
       <div className="relative">
         <button
           onClick={(e) => { e.stopPropagation(); setShowModelDropdown(!showModelDropdown); }}
-          style={activeModel === 'titan-protocol' ? {
+          style={activeModel === 'titan-phoenix-protocol' ? {
+            display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+            background: 'linear-gradient(90deg, #b45309 0%, #d97706 50%, #f59e0b 100%)',
+            borderRadius: 9999, fontSize: 12, color: '#fff', fontWeight: 600,
+            marginRight: 8, cursor: 'pointer', border: 'none', transition: 'opacity 0.15s',
+          } : activeModel === 'titan-protocol' ? {
             display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
             background: 'linear-gradient(90deg, #7c3aed 0%, #5b21b6 100%)',
             borderRadius: 9999, fontSize: 12, color: '#fff', fontWeight: 600,
@@ -110,10 +115,10 @@ export default function TitleBar(props: TitleBarProps) {
             background: '#2d2d2d', borderRadius: 9999, fontSize: 12, color: '#cccccc',
             marginRight: 8, cursor: 'pointer', border: 'none', transition: 'background 0.15s',
           }}
-          onMouseEnter={e => { if (activeModel !== 'titan-protocol') (e.currentTarget as HTMLButtonElement).style.background = '#3c3c3c'; }}
-          onMouseLeave={e => { if (activeModel !== 'titan-protocol') (e.currentTarget as HTMLButtonElement).style.background = '#2d2d2d'; }}
+          onMouseEnter={e => { if (activeModel !== 'titan-protocol' && activeModel !== 'titan-phoenix-protocol') (e.currentTarget as HTMLButtonElement).style.background = '#3c3c3c'; }}
+          onMouseLeave={e => { if (activeModel !== 'titan-protocol' && activeModel !== 'titan-phoenix-protocol') (e.currentTarget as HTMLButtonElement).style.background = '#2d2d2d'; }}
         >
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeModel === 'titan-protocol' ? '#c084fc' : '#3fb950' }}></span>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeModel === 'titan-phoenix-protocol' ? '#fbbf24' : activeModel === 'titan-protocol' ? '#c084fc' : '#3fb950' }}></span>
           {activeModelLabel}
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4z"/></svg>
         </button>
@@ -134,7 +139,38 @@ export default function TitleBar(props: TitleBarProps) {
             <div className="max-h-[400px] overflow-y-auto">
               {cappedModelRegistry.length > 0 ? (
                 <>
-                  {/* Titan Protocol — always at top */}
+                  {/* Phoenix Protocol — pinnacle, always first */}
+                  {(() => {
+                    const phoenixModel = filteredModels.find(m => m.id === 'titan-phoenix-protocol');
+                    if (!phoenixModel) return null;
+                    return (
+                      <div>
+                        <div style={{ padding: '6px 12px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1.2, color: '#f59e0b', background: 'linear-gradient(90deg, #1a1508 0%, #252015 100%)' }}>
+                          Phoenix Protocol
+                        </div>
+                        <button
+                          onClick={() => onSelectModel(phoenixModel.id)}
+                          style={{ width: '100%', textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid #3c3c3c', cursor: 'pointer', transition: 'background 0.15s', background: activeModel === phoenixModel.id ? 'linear-gradient(90deg, #422006 0%, #37373d 100%)' : 'transparent' }}
+                          onMouseEnter={e => { if (activeModel !== phoenixModel.id) (e.currentTarget as HTMLButtonElement).style.background = '#42200640'; }}
+                          onMouseLeave={e => { if (activeModel !== phoenixModel.id) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: activeModel === phoenixModel.id ? '#f59e0b' : '#e0e0e0' }}>Phoenix Protocol</span>
+                            <span style={{ fontSize: 10, color: '#f59e0b', fontWeight: 600 }}>Titan AI</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: '#d97706', marginTop: 3 }}>5-role orchestration: 80.2% SWE-Bench coder + GPT-5 class reasoner — 40x cheaper than Opus</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 9, color: '#f59e0b', background: '#f59e0b18', padding: '1px 5px', borderRadius: 3 }}>5 Models</span>
+                            <span style={{ fontSize: 9, color: '#f59e0b', background: '#f59e0b18', padding: '1px 5px', borderRadius: 3 }}>Self-Healing</span>
+                            <span style={{ fontSize: 9, color: '#f59e0b', background: '#f59e0b18', padding: '1px 5px', borderRadius: 3 }}>3-Strike</span>
+                            <span style={{ fontSize: 9, color: '#f59e0b', background: '#f59e0b18', padding: '1px 5px', borderRadius: 3 }}>Consensus</span>
+                          </div>
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Titan Protocol — always at top after Phoenix */}
                   {(() => {
                     const titanModel = filteredModels.find(m => m.id === 'titan-protocol');
                     if (!titanModel) return null;
@@ -165,7 +201,7 @@ export default function TitleBar(props: TitleBarProps) {
                   })()}
 
                   {['frontier', 'standard', 'economy', 'local'].map(tier => {
-                    const tierModels = filteredModels.filter(m => m.tier === tier && m.id !== 'titan-protocol');
+                    const tierModels = filteredModels.filter(m => m.tier === tier && m.id !== 'titan-protocol' && m.id !== 'titan-phoenix-protocol');
                     if (tierModels.length === 0) return null;
                     return (
                       <div key={tier}>
