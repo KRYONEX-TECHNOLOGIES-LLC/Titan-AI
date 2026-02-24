@@ -160,32 +160,56 @@ async function startNextJsServer(port: number): Promise<void> {
     command = process.execPath;
     args = [path.join(cwd, 'server.js')];
 
-    // Next.js standalone server.js does NOT auto-load .env files (only `next dev`/`next start` do).
-    // Parse the bundled .env manually and inject into the child process environment.
+    // Next.js standalone server.js does NOT auto-load .env files.
+    // Try multiple locations, merge all found (later files override earlier ones).
     const dotEnvVars: Record<string, string> = {};
-    const envFilePath = path.join(cwd, '.env');
-    try {
-      const raw = fs.readFileSync(envFilePath, 'utf-8');
-      for (const line of raw.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        const eqIdx = trimmed.indexOf('=');
-        if (eqIdx < 1) continue;
-        const key = trimmed.slice(0, eqIdx).trim();
-        let val = trimmed.slice(eqIdx + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
+    const envPaths = [
+      path.join(cwd, '.env'),                                // bundled by CI via extraResources
+      path.join(app.getPath('userData'), '.env'),             // user-provided fallback
+      path.join(app.getPath('home'), '.titan', '.env'),       // global Titan config
+    ];
+
+    function parseEnvFile(filePath: string): Record<string, string> {
+      const vars: Record<string, string> = {};
+      try {
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        for (const line of raw.split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const eqIdx = trimmed.indexOf('=');
+          if (eqIdx < 1) continue;
+          const key = trimmed.slice(0, eqIdx).trim();
+          let val = trimmed.slice(eqIdx + 1).trim();
+          if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+          }
+          if (val) vars[key] = val;
         }
-        dotEnvVars[key] = val;
+        console.log(`[Env] Loaded ${Object.keys(vars).length} vars from ${filePath}`);
+      } catch {
+        console.log(`[Env] Not found: ${filePath}`);
       }
-      console.log(`[Next.js] Loaded ${Object.keys(dotEnvVars).length} env vars from ${envFilePath}`);
-    } catch (e) {
-      console.warn(`[Next.js] Could not read .env at ${envFilePath}:`, e);
+      return vars;
+    }
+
+    for (const envPath of envPaths) {
+      Object.assign(dotEnvVars, parseEnvFile(envPath));
+    }
+
+    const hasLLMKey = !!(dotEnvVars.OPENROUTER_API_KEY || dotEnvVars.TITAN_LITELLM_BASE_URL);
+    console.log(`[Env] Total vars loaded: ${Object.keys(dotEnvVars).length}`);
+    console.log(`[Env] LLM provider configured: ${hasLLMKey}`);
+    console.log(`[Env] OPENROUTER_API_KEY present: ${!!dotEnvVars.OPENROUTER_API_KEY}`);
+
+    if (!hasLLMKey) {
+      console.error(`[Env] WARNING: No LLM API key found. The app will not be able to chat.`);
+      console.error(`[Env] To fix: create a .env file at ${envPaths[1]} with your OPENROUTER_API_KEY`);
     }
 
     env = {
       ...dotEnvVars,
       ...process.env,
+      ...dotEnvVars,  // dotEnvVars wins over system env for API keys
       PORT: String(port),
       HOSTNAME: '127.0.0.1',
       NODE_ENV: 'production',

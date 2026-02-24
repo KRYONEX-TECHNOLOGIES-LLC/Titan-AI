@@ -645,7 +645,7 @@ export default function TitanIDE() {
                   setPendingDiff(null);
                 }}
                 onRetry={(message) => {
-                  setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: s.messages.filter(m => !m.isError) } : s));
+                  setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, messages: (s.messages || []).filter(m => !m.isError) } : s));
                   chat.setChatInput(message);
                   setTimeout(() => chat.handleSend(), 100);
                 }}
@@ -874,10 +874,10 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       </div>
       <div className="flex-1 overflow-y-auto min-h-0">
         <div className="px-3 py-3">
-          {currentSession.messages.map((msg, i) => (
+          {(currentSession?.messages || []).map((msg, i) => (
             <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} attachments={msg.attachments} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} generatedImages={msg.generatedImages} onRetry={onRetry} onApplyCode={onApplyCode} />
           ))}
-          {isThinking && !currentSession.messages.some(m => m.streaming) && (
+          {isThinking && !(currentSession?.messages || []).some(m => m.streaming) && (
             <div className="mb-4 flex items-center gap-2 px-1">
               <div className="flex items-center gap-2 text-[12px] text-[#808080]">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#569cd6" strokeWidth="2" className="animate-spin"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
@@ -903,18 +903,18 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
             </div>
           </div>
         )}
-        {currentSession.changedFiles.length > 0 && !hasPendingDiff && (
+        {(currentSession?.changedFiles?.length || 0) > 0 && !hasPendingDiff && (
           <div className="border-b border-[#2d2d2d]">
             <button onClick={() => setShowFiles(!showFiles)} className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] text-[#808080] hover:text-[#cccccc]">
               <div className="flex items-center gap-1.5">
                 <svg width="8" height="8" viewBox="0 0 16 16" fill="currentColor" className={`transition-transform ${showFiles ? 'rotate-90' : ''}`}><path d="M6 4l4 4-4 4z"/></svg>
-                <span>{currentSession.changedFiles.length} file{currentSession.changedFiles.length !== 1 ? 's' : ''} changed</span>
+                <span>{currentSession.changedFiles?.length || 0} file{(currentSession.changedFiles?.length || 0) !== 1 ? 's' : ''} changed</span>
               </div>
               <button onClick={(e) => { e.stopPropagation(); onApply(); }} className="h-[20px] px-2 bg-[#238636] hover:bg-[#2ea043] text-white text-[10px] rounded">Apply All</button>
             </button>
             {showFiles && (
               <div className="px-3 pb-1.5">
-                {currentSession.changedFiles.map((f, i) => (
+                {(currentSession?.changedFiles || []).map((f, i) => (
                   <div key={i} className="flex items-center gap-2 py-0.5 text-[11px]">
                     <span style={{ color: f.color }} className="text-[9px]">{f.icon}</span>
                     <span className="text-[#cccccc] truncate flex-1">{f.name}</span>

@@ -607,7 +607,7 @@ export function useChat({
   }
 
   const handleSend = useCallback(async () => {
-    if (!chatInputRef.current.trim() && attachments.length === 0) return;
+    if (!chatInputRef.current.trim() && (!attachments || attachments.length === 0)) return;
     const msg = chatInputRef.current.trim();
     const caps = getCapabilities(workspacePath);
     if (requiresTools(msg) && !caps.toolsEnabled) {

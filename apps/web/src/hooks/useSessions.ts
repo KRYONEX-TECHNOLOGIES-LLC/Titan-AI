@@ -30,7 +30,7 @@ export function useSessions(mounted: boolean) {
         id: s.id,
         name: s.name,
         time: s.time,
-        messages: s.messages.slice(-MAX_PERSISTED_MESSAGES).map(m => ({
+        messages: (s.messages || []).slice(-MAX_PERSISTED_MESSAGES).map(m => ({
           ...m,
           content: m.content.length > MAX_MESSAGE_LENGTH ? m.content.slice(0, MAX_MESSAGE_LENGTH) + '\n\n…(truncated)' : m.content,
           thinking: undefined,
@@ -64,7 +64,12 @@ export function useSessions(mounted: boolean) {
           return;
         }
         if (state.sessions?.length > 0) {
-          setSessions(state.sessions);
+          const sanitized = state.sessions.map((s: any) => ({
+            ...s,
+            messages: Array.isArray(s.messages) ? s.messages : [],
+            changedFiles: Array.isArray(s.changedFiles) ? s.changedFiles : [],
+          }));
+          setSessions(sanitized);
           const activeId = state.activeSessionId;
           const sessionExists = state.sessions.some((s: Session) => s.id === activeId);
           if (activeId && sessionExists) {

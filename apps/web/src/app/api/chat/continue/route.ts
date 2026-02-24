@@ -1533,7 +1533,7 @@ export async function POST(request: NextRequest) {
       ...(litellmKey ? { 'Authorization': `Bearer ${litellmKey}` } : {}),
     };
   } else {
-    return new Response(JSON.stringify({ error: 'No LLM provider configured' }), { status: 400 });
+    return new Response(JSON.stringify({ error: 'No LLM provider configured\n\nCheck your internet connection\nVerify API keys are configured\nTry a different model\n\nDesktop users: create a .env file in your Titan data folder with OPENROUTER_API_KEY=your_key' }), { status: 400 });
   }
 
   const encoder = new TextEncoder();
