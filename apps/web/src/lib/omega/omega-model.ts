@@ -234,6 +234,7 @@ export interface OmegaCallbacks {
   onEvent: (type: string, payload: Record<string, unknown>) => void;
   executeToolCall: ToolCallFn;
   invokeModel: InvokeModelFn;
+  workspacePath?: string;
 }
 
 export interface ExecutionStepResult {
@@ -269,4 +270,5 @@ export interface OmegaResult {
   execution: ExecutionResult;
   integrationTest?: IntegrationTestResult;
   summary: string;
+  output?: string;
 }

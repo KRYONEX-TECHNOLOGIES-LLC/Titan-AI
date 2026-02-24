@@ -101,6 +101,58 @@ Use them to inspect the codebase before making changes. ALWAYS read a file befor
 Use relative paths from the workspace root.`;
 }
 
+function buildToollessWorkerPrompt(lane: Lane): string {
+  return `You are a Coder agent operating under the Titan Governance Protocol v2.
+
+"I have read and I am bound by the Titan Governance Protocol."
+
+You are executing Lane ${lane.lane_id} for subtask: ${lane.spec.title}
+
+=== YOUR ROLE ===
+You are a Technical Implementation Worker. No workspace folder is open, so you have NO access to tools.
+Generate all code directly as complete, production-ready markdown code blocks with filenames.
+
+Format each file as:
+\`\`\`language:path/to/file.ext
+// complete file content
+\`\`\`
+
+=== SUBTASK SPECIFICATION ===
+Title: ${lane.spec.title}
+Description: ${lane.spec.description}
+
+Success Criteria:
+${lane.spec.successCriteria.map((c, i) => `  ${i + 1}. ${c}`).join('\n')}
+
+${lane.spec.constraints?.length ? `Constraints:\n${lane.spec.constraints.map(c => `  - ${c}`).join('\n')}` : ''}
+
+=== MANDATORY OUTPUT FORMAT ===
+Your output MUST include these four sections in order:
+
+## 1. INSPECTION EVIDENCE
+Describe what you know about the task and relevant patterns.
+
+## 2. CODE ARTIFACT
+The actual code. Requirements:
+- Complete, working code -- no placeholders
+- No TODO comments
+- Error handling at every I/O boundary
+- Proper typing (TypeScript: no 'any' unless unavoidable)
+- Use markdown code blocks with filenames for each file
+
+## 3. SELF-REVIEW
+List every edge case you considered and how you handled each.
+
+## 4. VERIFICATION HINTS
+Tell the Verifier exactly what to check.
+
+=== FORBIDDEN PATTERNS (Any = Automatic FAIL) ===
+1. Placeholder code: // TODO: implement this
+2. Stub functions: function foo() { return null; }
+3. Happy-path-only code: no error handling
+4. Missing type safety: 'any' types without justification`;
+}
+
 // ─── LLM Call Infrastructure ────────────────────────────────────────────────
 
 function envValue(...names: string[]): string {
@@ -385,9 +437,13 @@ const MAX_WORKER_ITERATIONS = 15;
 export async function executeWorkerLane(
   lane: Lane,
   callbacks: WorkerExecutionCallbacks,
+  workspacePath?: string,
 ): Promise<WorkerArtifact> {
   const startTime = Date.now();
-  const systemPrompt = buildWorkerSystemPrompt(lane);
+  const hasWorkspace = !!(workspacePath);
+  const systemPrompt = hasWorkspace
+    ? buildWorkerSystemPrompt(lane)
+    : buildToollessWorkerPrompt(lane);
   const toolCallLog: ToolCallLogEntry[] = [];
   const filesModified: FileRegion[] = [];
 
@@ -395,7 +451,10 @@ export async function executeWorkerLane(
 
   const messages: Array<{ role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: `Execute the subtask: ${lane.spec.title}\n\n${lane.spec.description}\n\nBegin by inspecting the relevant files, then implement the changes.` },
+    { role: 'user', content: hasWorkspace
+      ? `Execute the subtask: ${lane.spec.title}\n\n${lane.spec.description}\n\nBegin by inspecting the relevant files, then implement the changes.`
+      : `Execute the subtask: ${lane.spec.title}\n\n${lane.spec.description}\n\nGenerate the complete implementation as markdown code blocks with filenames. No tools are available.`
+    },
   ];
 
   let totalToolCalls = 0;
@@ -408,7 +467,7 @@ export async function executeWorkerLane(
     const result = await streamLLMCall(
       messages,
       lane.worker_model_id,
-      WORKER_TOOL_DEFINITIONS,
+      hasWorkspace ? WORKER_TOOL_DEFINITIONS : [],
       (token) => callbacks.onToken?.(lane.lane_id, token),
     );
 

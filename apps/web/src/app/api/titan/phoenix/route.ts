@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { DEFAULT_PHOENIX_CONFIG } from '@/lib/phoenix/phoenix-model';
 import { orchestratePhoenix } from '@/lib/phoenix/phoenix-orchestrator';
+import { callModelDirect } from '@/lib/llm-call';
 
 interface PhoenixRequestBody {
   goal: string;
@@ -68,19 +69,7 @@ export async function POST(request: NextRequest) {
         model: string,
         messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }>,
       ) => {
-        const res = await fetch(`${baseUrl}/api/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: body.sessionId,
-            message: messages.map((m) => `[${m.role}] ${m.content}`).join('\n\n'),
-            model,
-            stream: false,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `Model call failed (${res.status})`);
-        return String(data.content || '');
+        return callModelDirect(model, messages);
       };
 
       try {
@@ -88,6 +77,7 @@ export async function POST(request: NextRequest) {
           onEvent: (type, payload) => emit(type, payload),
           executeToolCall,
           invokeModel,
+          workspacePath: body.workspacePath || '',
         }, DEFAULT_PHOENIX_CONFIG);
 
         emit('phoenix_result', {

@@ -19,20 +19,34 @@ export async function executeSecondaryWorker(
   node: SupremeTaskNode,
   config: SupremeConfig,
   callbacks: WorkerExecutionCallbacks,
+  hasWorkspace?: boolean,
 ): Promise<SupremeArtifact> {
   const startedAt = Date.now();
   const toolCallLog: ToolCallLogEntry[] = [];
 
-  const system = [
-    'You are TITAN_CLEANUP (Secondary Worker, Llama 4 Maverick).',
-    'You handle documentation, formatting, and simple transformations.',
-    'Do not invent architecture changes.',
-    'Return output with EXACT sections:',
-    'INSPECTION EVIDENCE:',
-    'CODE ARTIFACT:',
-    'SELF-REVIEW:',
-    'VERIFICATION HINTS:',
-  ].join('\n');
+  const system = hasWorkspace
+    ? [
+        'You are TITAN_CLEANUP (Secondary Worker, Llama 4 Maverick).',
+        'You handle documentation, formatting, and simple transformations.',
+        'Do not invent architecture changes.',
+        'Return output with EXACT sections:',
+        'INSPECTION EVIDENCE:',
+        'CODE ARTIFACT:',
+        'SELF-REVIEW:',
+        'VERIFICATION HINTS:',
+      ].join('\n')
+    : [
+        'You are TITAN_CLEANUP (Secondary Worker, Llama 4 Maverick).',
+        'You handle documentation, formatting, and simple transformations.',
+        'Do not invent architecture changes.',
+        'No workspace is open — generate all content as complete markdown code blocks with filenames.',
+        'Format: ```language:path/to/file.ext',
+        'Return output with EXACT sections:',
+        'INSPECTION EVIDENCE:',
+        'CODE ARTIFACT:',
+        'SELF-REVIEW:',
+        'VERIFICATION HINTS:',
+      ].join('\n');
 
   const user = [
     `Task: ${node.title}`,

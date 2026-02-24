@@ -168,13 +168,17 @@ export function useSupremeChat({
 
             if (eventType === 'orchestration_result') {
               const summary = String(payload.summary || '');
+              const codeOutput = String(payload.output || '');
               const success = payload.success !== false;
               const merged = payload.lanesMerged ?? payload.nodesMerged ?? '?';
               const total = payload.lanesTotal ?? payload.nodesTotal ?? '?';
               const header = `**Titan Supreme Protocol** — ${success ? 'Complete' : 'Finished with failures'} · ${merged}/${total} merged`;
+              const body = codeOutput
+                ? `${summary}\n\n${codeOutput}`
+                : (summary || statusLines.join('\n'));
               updateMessage(sessionId, messageId, (m) => ({
                 ...m,
-                content: summary ? `${header}\n\n${summary}` : `${header}\n\n${statusLines.join('\n')}`,
+                content: `${header}\n\n${body}`,
                 streaming: false,
               }));
             } else if (eventType === 'orchestration_error') {

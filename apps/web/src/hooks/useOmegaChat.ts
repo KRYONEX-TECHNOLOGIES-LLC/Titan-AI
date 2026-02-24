@@ -144,13 +144,17 @@ export function useOmegaChat({
 
             if (eventType === 'orchestration_result') {
               const summary = String(payload.summary || '');
+              const codeOutput = String(payload.output || '');
               const success = payload.success !== false;
               const verified = payload.workOrdersVerified ?? '?';
               const total = payload.workOrdersTotal ?? '?';
               const header = `**Titan Omega Protocol** — ${success ? 'Complete' : 'Finished with failures'} · ${verified}/${total} work orders verified`;
+              const body = codeOutput
+                ? `${summary}\n\n${codeOutput}`
+                : (summary || statusLines.join('\n'));
               updateMessage(sessionId, messageId, (m) => ({
                 ...m,
-                content: summary ? `${header}\n\n${summary}` : `${header}\n\n${statusLines.join('\n')}`,
+                content: `${header}\n\n${body}`,
                 streaming: false,
               }));
             } else if (eventType === 'orchestration_error') {

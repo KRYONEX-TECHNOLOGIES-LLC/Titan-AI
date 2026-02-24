@@ -324,7 +324,7 @@ export async function orchestrate(
         // Run worker, then verifier, then attempt merge — all in sequence per lane
         const lanePromise = (async () => {
           try {
-            await executeWorkerLane(lane, workerCallbacks);
+            await executeWorkerLane(lane, workerCallbacks, callbacks.workspacePath);
 
             const updatedLane = laneStore.getLane(lane.lane_id);
             if (!updatedLane || updatedLane.status !== 'PENDING_VERIFY') return;

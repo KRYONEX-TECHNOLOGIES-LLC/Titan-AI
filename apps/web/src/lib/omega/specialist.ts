@@ -48,36 +48,48 @@ export async function executeSpecialist(
   workOrder: WorkOrder,
   config: OmegaConfig,
   callbacks: SpecialistCallbacks,
+  hasWorkspace?: boolean,
 ): Promise<EvidencePackage> {
   const model = selectModelForRisk(workOrder.predictedRisk, config);
   const toolCallLog: ToolCallLogEntry[] = [];
   const filesRead: string[] = [];
 
-  for (const file of workOrder.inputContract.requiredFiles) {
-    const startedAt = Date.now();
-    const result = await callbacks.executeToolCall('read_file', { path: file });
-    const finishedAt = Date.now();
-    toolCallLog.push({
-      id: nowId('tool'),
-      tool: 'read_file',
-      args: { path: file },
-      success: result.success,
-      result: (result.output || result.error || '').slice(0, 1000),
-      startedAt,
-      finishedAt,
-    });
-    if (result.success) filesRead.push(file);
+  if (hasWorkspace) {
+    for (const file of workOrder.inputContract.requiredFiles) {
+      const startedAt = Date.now();
+      const result = await callbacks.executeToolCall('read_file', { path: file });
+      const finishedAt = Date.now();
+      toolCallLog.push({
+        id: nowId('tool'),
+        tool: 'read_file',
+        args: { path: file },
+        success: result.success,
+        result: (result.output || result.error || '').slice(0, 1000),
+        startedAt,
+        finishedAt,
+      });
+      if (result.success) filesRead.push(file);
+    }
   }
 
-  const prompt = [
-    'You are a SPECIALIST code worker. Execute this Work Order precisely.',
-    `Task: ${workOrder.taskDescription}`,
-    `Acceptance criteria:\n- ${workOrder.acceptanceCriteria.join('\n- ')}`,
-    `Required files:\n- ${workOrder.inputContract.requiredFiles.join('\n- ') || '(none)'}`,
-    `Expected files:\n- ${workOrder.outputContract.expectedFiles.join('\n- ') || '(none)'}`,
-    `Must NOT modify:\n- ${workOrder.outputContract.mustNotModify?.join('\n- ') || '(none)'}`,
-    'Return strict JSON with keys: modifications, assumptions, edgeCasesHandled, selfAssessment.',
-  ].join('\n\n');
+  const prompt = hasWorkspace
+    ? [
+        'You are a SPECIALIST code worker. Execute this Work Order precisely.',
+        `Task: ${workOrder.taskDescription}`,
+        `Acceptance criteria:\n- ${workOrder.acceptanceCriteria.join('\n- ')}`,
+        `Required files:\n- ${workOrder.inputContract.requiredFiles.join('\n- ') || '(none)'}`,
+        `Expected files:\n- ${workOrder.outputContract.expectedFiles.join('\n- ') || '(none)'}`,
+        `Must NOT modify:\n- ${workOrder.outputContract.mustNotModify?.join('\n- ') || '(none)'}`,
+        'Return strict JSON with keys: modifications, assumptions, edgeCasesHandled, selfAssessment.',
+      ].join('\n\n')
+    : [
+        'You are a SPECIALIST code worker. Execute this Work Order precisely.',
+        'No workspace folder is open. Generate the FULL implementation as complete code.',
+        `Task: ${workOrder.taskDescription}`,
+        `Acceptance criteria:\n- ${workOrder.acceptanceCriteria.join('\n- ')}`,
+        `Expected files:\n- ${workOrder.outputContract.expectedFiles.join('\n- ') || '(as needed)'}`,
+        'Return strict JSON with keys: modifications (array of {file, content} objects with complete code), assumptions, edgeCasesHandled, selfAssessment.',
+      ].join('\n\n');
 
   const raw = await callbacks.invokeModel(model, [
     { role: 'system', content: 'You are the Titan Omega Specialist Cadre. Output JSON only.' },

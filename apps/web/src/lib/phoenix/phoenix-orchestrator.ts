@@ -54,6 +54,7 @@ export interface PhoenixCallbacks {
     model: string,
     messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }>,
   ) => Promise<string>;
+  workspacePath?: string;
 }
 
 // ── Context Compression ─────────────────────────────────────────────────────
@@ -161,19 +162,29 @@ async function executeWorker(
   invokeModel: PhoenixCallbacks['invokeModel'],
   executeToolCall: PhoenixCallbacks['executeToolCall'],
   extraContext?: string,
+  hasWorkspace?: boolean,
 ): Promise<{ artifact: PhoenixArtifact; tokensIn: number; tokensOut: number }> {
   const model = getPhoenixModel(role, config);
   const roleLabel = role === 'CODER' ? 'PHOENIX_CODER' : role === 'SCOUT' ? 'PHOENIX_SCOUT' : 'PHOENIX_ARCHITECT';
 
-  const system = [
-    `You are ${roleLabel} — ${getRoleDescription(role)}.`,
-    'You have access to tools. When you need to read/write files or run commands, emit tool calls.',
-    'Format tool calls as JSON: {"tool":"tool_name","args":{"key":"value"}}',
-    'Available tools: read_file, write_file, edit_file, create_file, run_command, list_directory,',
-    'grep_search, glob_search, web_search, web_fetch.',
-    'After using tools, provide your final output with all code changes.',
-    'Be precise, production-ready, and complete. No placeholders or TODOs.',
-  ].join('\n');
+  const system = hasWorkspace
+    ? [
+        `You are ${roleLabel} — ${getRoleDescription(role)}.`,
+        'You have access to tools. When you need to read/write files or run commands, emit tool calls.',
+        'Format tool calls as JSON: {"tool":"tool_name","args":{"key":"value"}}',
+        'Available tools: read_file, write_file, edit_file, create_file, run_command, list_directory,',
+        'grep_search, glob_search, web_search, web_fetch.',
+        'After using tools, provide your final output with all code changes.',
+        'Be precise, production-ready, and complete. No placeholders or TODOs.',
+      ].join('\n')
+    : [
+        `You are ${roleLabel} — ${getRoleDescription(role)}.`,
+        'Generate all code as complete, production-ready markdown code blocks with filenames.',
+        'Format: ```language:path/to/file.ext',
+        'Do NOT use tool calls. Do NOT emit JSON tool invocations.',
+        'Provide the FULL working implementation — no placeholders, no TODOs, no stubs.',
+        'Include all imports, types, error handling, and edge cases.',
+      ].join('\n');
 
   const user = [
     `Task: ${subtask.title}`,
@@ -330,6 +341,7 @@ async function executeSimplePipeline(
   costTracker: PhoenixCostTracker,
 ): Promise<{ success: boolean; output: string }> {
   callbacks.onEvent('worker_dispatched', { role: 'SCOUT', model: config.models.scout, pipeline: 'simple' });
+  const hasWorkspace = !!(callbacks.workspacePath);
 
   const subtask: PhoenixSubtask = {
     id: 'task-1',
@@ -343,7 +355,7 @@ async function executeSimplePipeline(
   };
 
   const { artifact, tokensIn, tokensOut } = await executeWorker(
-    'SCOUT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall,
+    'SCOUT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, undefined, hasWorkspace,
   );
   costTracker.record(config.models.scout, tokensIn, tokensOut);
   callbacks.onEvent('worker_complete', { role: 'SCOUT', subtaskId: 'task-1' });
@@ -360,6 +372,7 @@ async function executeMediumPipeline(
 ): Promise<{ success: boolean; output: string }> {
   // ARCHITECT plans
   callbacks.onEvent('plan_created', { pipeline: 'medium', complexity });
+  const hasWorkspace = !!(callbacks.workspacePath);
   const { plan, tokensIn: planIn, tokensOut: planOut } = await architectDecompose(
     goal, complexity, config, callbacks.invokeModel,
   );
@@ -374,7 +387,7 @@ async function executeMediumPipeline(
     // CODER executes
     callbacks.onEvent('worker_dispatched', { role: 'CODER', model: config.models.coder, subtaskId: subtask.id });
     const { artifact, tokensIn, tokensOut } = await executeWorker(
-      'CODER', subtask, config, callbacks.invokeModel, callbacks.executeToolCall,
+      'CODER', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, undefined, hasWorkspace,
     );
     costTracker.record(config.models.coder, tokensIn, tokensOut);
     callbacks.onEvent('worker_complete', { role: 'CODER', subtaskId: subtask.id });
@@ -388,13 +401,13 @@ async function executeMediumPipeline(
       callbacks.invokeModel,
       async (feedback) => {
         callbacks.onEvent('strike_triggered', { strike: 1, role: 'CODER', subtaskId: subtask.id });
-        const retry = await executeWorker('CODER', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, feedback);
+        const retry = await executeWorker('CODER', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, feedback, hasWorkspace);
         costTracker.record(config.models.coder, retry.tokensIn, retry.tokensOut);
         return retry.artifact;
       },
       async (feedback) => {
         callbacks.onEvent('strike_triggered', { strike: 2, role: 'ARCHITECT', subtaskId: subtask.id });
-        const retry = await executeWorker('ARCHITECT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, feedback);
+        const retry = await executeWorker('ARCHITECT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, feedback, hasWorkspace);
         costTracker.record(config.models.architect, retry.tokensIn, retry.tokensOut);
         return retry.artifact;
       },
@@ -425,6 +438,7 @@ async function executeFullPipeline(
   costTracker: PhoenixCostTracker,
 ): Promise<{ success: boolean; output: string }> {
   // ARCHITECT decomposes
+  const hasWorkspace = !!(callbacks.workspacePath);
   const { plan, tokensIn: planIn, tokensOut: planOut } = await architectDecompose(
     goal, complexity, config, callbacks.invokeModel,
   );
@@ -443,7 +457,7 @@ async function executeFullPipeline(
 
     // Parallel: CODER/SCOUT + SCOUT context fetch
     const workerPromise = executeWorker(
-      workerRole, subtask, config, callbacks.invokeModel, callbacks.executeToolCall,
+      workerRole, subtask, config, callbacks.invokeModel, callbacks.executeToolCall, undefined, hasWorkspace,
     );
     callbacks.onEvent('worker_dispatched', { role: workerRole, model: getPhoenixModel(workerRole, config), subtaskId: subtask.id });
 
@@ -471,14 +485,14 @@ async function executeFullPipeline(
       async (feedback) => {
         callbacks.onEvent('strike_triggered', { strike: 1, role: 'CODER', subtaskId: subtask.id });
         const ctx = scoutContext ? `${feedback}\n\nFile context:\n${scoutContext}` : feedback;
-        const retry = await executeWorker('CODER', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, ctx);
+        const retry = await executeWorker('CODER', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, ctx, hasWorkspace);
         costTracker.record(config.models.coder, retry.tokensIn, retry.tokensOut);
         return retry.artifact;
       },
       async (feedback) => {
         callbacks.onEvent('strike_triggered', { strike: 2, role: 'ARCHITECT', subtaskId: subtask.id });
         const ctx = scoutContext ? `${feedback}\n\nFile context:\n${scoutContext}` : feedback;
-        const retry = await executeWorker('ARCHITECT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, ctx);
+        const retry = await executeWorker('ARCHITECT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, ctx, hasWorkspace);
         costTracker.record(config.models.architect, retry.tokensIn, retry.tokensOut);
         return retry.artifact;
       },

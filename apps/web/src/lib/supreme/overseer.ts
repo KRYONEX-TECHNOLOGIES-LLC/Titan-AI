@@ -48,6 +48,7 @@ export interface SupremeCallbacks {
     model: string,
     messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }>,
   ) => Promise<string>;
+  workspacePath?: string;
 }
 
 const READ_TOOLS = new Set([
@@ -377,6 +378,7 @@ export async function orchestrateSupreme(
 
   let merged = 0;
   let failed = 0;
+  const collectedOutputs: string[] = [];
 
   for (const node of manifest.nodes) {
     tracker.totalSteps += 1;
@@ -395,11 +397,12 @@ export async function orchestrateSupreme(
       invokeModel: callbacks.invokeModel,
     };
 
+    const hasWorkspace = !!(callbacks.workspacePath);
     let artifact: SupremeArtifact;
     if (node.assignedRole === 'SECONDARY_WORKER') {
-      artifact = await executeSecondaryWorker(`lane-${node.id}`, node, config, workerCallbacks);
+      artifact = await executeSecondaryWorker(`lane-${node.id}`, node, config, workerCallbacks, hasWorkspace);
     } else {
-      artifact = await executePrimaryWorker(`lane-${node.id}`, node, config, workerCallbacks);
+      artifact = await executePrimaryWorker(`lane-${node.id}`, node, config, workerCallbacks, hasWorkspace);
     }
     const workerTokensIn = estimateTokens(node.description);
     const workerTokensOut = estimateTokens(artifact.rawOutput || '');
@@ -531,6 +534,7 @@ export async function orchestrateSupreme(
       try { await worktrees.mergeWorktree(`lane-${node.id}`); } catch { /* non-fatal */ }
       merged += 1;
       stall.recordStep('node_complete', true, node.id);
+      if (artifact.rawOutput) collectedOutputs.push(artifact.rawOutput);
     } else {
       failed += 1;
       stall.recordStep('node_failed', false, node.id);
@@ -559,6 +563,8 @@ export async function orchestrateSupreme(
 
   const success = merged === manifest.nodes.length && failed === 0;
 
+  const combinedOutput = collectedOutputs.join('\n\n---\n\n');
+
   return {
     success,
     manifestId: manifest.id,
@@ -567,6 +573,7 @@ export async function orchestrateSupreme(
     lanesFailed: failed,
     tracker,
     summary: generateProductionSummary(manifest, merged, failed),
+    output: combinedOutput,
   };
 }
 

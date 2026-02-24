@@ -289,9 +289,10 @@ export function useParallelChat({
               }
 
               case 'orchestration_complete': {
-                const { success, lanesTotal, lanesMerged, lanesFailed, totalDurationMs, totalCost } = payload;
-                const durationSec = Math.round((totalDurationMs || 0) / 1000);
+                const { success, lanesTotal, lanesMerged, lanesFailed, totalDurationMs, totalCost, output } = payload;
+                const durationSec = Math.round((totalDurationMs as number || 0) / 1000);
                 const cost = Number(totalCost || 0);
+                const codeOutput = String(output || '');
 
                 updateMessage(sessionId, messageId, (m) => ({
                   ...m,
@@ -301,13 +302,13 @@ export function useParallelChat({
                     `**Result:** ${success ? 'All lanes merged successfully' : `${lanesFailed} lane(s) failed`}`,
                     `**Lanes:** ${lanesMerged}/${lanesTotal} merged · ${durationSec}s · $${cost.toFixed(5)}`,
                     '',
-                    success
-                      ? 'All changes have been written to your workspace. Check the file explorer to see the new/modified files.'
-                      : 'Some lanes failed verification. Check the lane panel on the right for details.',
-                    '',
-                    '---',
-                    '',
-                    ...statusMessages.slice(-20),
+                    ...(codeOutput
+                      ? [codeOutput]
+                      : [
+                          success
+                            ? 'All changes have been written to your workspace. Check the file explorer to see the new/modified files.'
+                            : 'Some lanes failed verification. Check the lane panel on the right for details.',
+                        ]),
                   ].join('\n'),
                   streaming: false,
                 }));

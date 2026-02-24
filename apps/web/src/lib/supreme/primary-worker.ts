@@ -29,19 +29,33 @@ export async function executePrimaryWorker(
   node: SupremeTaskNode,
   config: SupremeConfig,
   callbacks: WorkerExecutionCallbacks,
+  hasWorkspace?: boolean,
 ): Promise<SupremeArtifact> {
   const startedAt = Date.now();
   const toolCallLog: ToolCallLogEntry[] = [];
 
-  const system = [
-    'You are TITAN_CODER (Primary Worker, Qwen3 Coder).',
-    'You do coding/refactor/test work only and must be concrete.',
-    'Return output with EXACT sections:',
-    'INSPECTION EVIDENCE:',
-    'CODE ARTIFACT:',
-    'SELF-REVIEW:',
-    'VERIFICATION HINTS:',
-  ].join('\n');
+  const system = hasWorkspace
+    ? [
+        'You are TITAN_CODER (Primary Worker, Qwen3 Coder).',
+        'You do coding/refactor/test work only and must be concrete.',
+        'Return output with EXACT sections:',
+        'INSPECTION EVIDENCE:',
+        'CODE ARTIFACT:',
+        'SELF-REVIEW:',
+        'VERIFICATION HINTS:',
+      ].join('\n')
+    : [
+        'You are TITAN_CODER (Primary Worker, Qwen3 Coder).',
+        'You do coding/refactor/test work only and must be concrete.',
+        'No workspace is open — generate all code as complete markdown code blocks with filenames.',
+        'Format: ```language:path/to/file.ext',
+        'Provide FULL working implementations. No stubs or placeholders.',
+        'Return output with EXACT sections:',
+        'INSPECTION EVIDENCE:',
+        'CODE ARTIFACT:',
+        'SELF-REVIEW:',
+        'VERIFICATION HINTS:',
+      ].join('\n');
 
   const user = [
     `Task: ${node.title}`,

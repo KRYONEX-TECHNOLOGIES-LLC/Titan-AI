@@ -71,6 +71,7 @@ export async function orchestrateOmega(
 
   const dag = await buildWorkOrders(goal, config, callbacks);
   const staged = new Map<string, ASTModification[]>();
+  const collectedOutputs: string[] = [];
 
   while (!isDAGComplete(dag) && !isDAGFailed(dag)) {
     const readyNodes = getReadyNodes(dag);
@@ -82,7 +83,8 @@ export async function orchestrateOmega(
         risk: node.predictedRisk,
       });
       updateNodeStatus(dag, node.id, 'WORKING');
-      const evidence = await executeSpecialist(node, config, callbacks);
+      const hasWorkspace = !!(callbacks.workspacePath);
+      const evidence = await executeSpecialist(node, config, callbacks, hasWorkspace);
       callbacks.onEvent('specialist_complete', {
         workOrderId: node.id,
         modifications: evidence.modifications.length,
@@ -95,6 +97,8 @@ export async function orchestrateOmega(
         updateNodeStatus(dag, node.id, 'VERIFIED');
         staged.set(node.id, verification.stagedModifications);
         updateNodeStatus(dag, node.id, 'STAGED');
+        const evidenceText = evidence.selfAssessment || evidence.modifications.map(m => JSON.stringify(m)).join('\n');
+        if (evidenceText) collectedOutputs.push(evidenceText);
         callbacks.onEvent('verification_pass', {
           workOrderId: node.id,
           stagedModifications: verification.stagedModifications.length,
@@ -148,6 +152,8 @@ export async function orchestrateOmega(
     integrationTest ? `Integration test: ${integrationTest.success ? 'PASS' : 'FAIL'}.` : '',
   ].filter(Boolean).join(' ');
 
+  const combinedOutput = collectedOutputs.join('\n\n---\n\n');
+
   const result: OmegaResult = {
     success,
     manifestId: dag.manifestId,
@@ -158,6 +164,7 @@ export async function orchestrateOmega(
     execution,
     integrationTest,
     summary,
+    output: combinedOutput,
   };
 
   callbacks.onEvent('orchestration_complete', result as unknown as Record<string, unknown>);

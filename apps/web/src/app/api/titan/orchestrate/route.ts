@@ -11,6 +11,7 @@ import { NextRequest } from 'next/server';
 import { orchestrate } from '@/lib/lanes/supervisor';
 import { DEFAULT_PROTOCOL_V2_CONFIG } from '@/lib/lanes/lane-model';
 import type { LaneEvent } from '@/lib/lanes/lane-model';
+import { laneStore } from '@/lib/lanes/lane-store';
 
 interface OrchestrateRequest {
   goal: string;
@@ -102,6 +103,12 @@ export async function POST(request: NextRequest) {
           DEFAULT_PROTOCOL_V2_CONFIG,
         );
 
+        const lanes = laneStore.getLanesByManifest(result.manifestId);
+        const workerOutputs = lanes
+          .map(l => l.artifacts?.workerOutput?.rawOutput || l.artifacts?.workerOutput?.codeChanges || '')
+          .filter(o => o.trim().length > 0);
+        const combinedOutput = workerOutputs.join('\n\n---\n\n');
+
         emit('orchestration_complete', {
           manifestId: result.manifestId,
           success: result.success,
@@ -110,6 +117,7 @@ export async function POST(request: NextRequest) {
           lanesFailed: result.lanesFailed,
           totalCost: result.totalCost,
           totalDurationMs: result.totalDurationMs,
+          output: combinedOutput.slice(0, 50000),
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Orchestration failed';
