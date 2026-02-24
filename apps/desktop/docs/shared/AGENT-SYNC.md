@@ -118,6 +118,12 @@ Use Titan Chat for: general questions, explanations, conversations, analysis, wr
 - Without the explicit config flag, electron-builder may not find the config
 - On 2026-02-23 Titan removed these flags. Do not repeat this mistake.
 
+### React Hooks rule (protocol crash prevention)
+- Titan has multiple protocol modes in `apps/web/src/hooks/useChat.ts` that use **early returns** (Phoenix/Supreme/Omega/Parallel/Titan Chat).
+- **RULE:** Never declare a React hook (e.g. `useCallback`, `useMemo`, `useEffect`) *after* those conditional returns. That breaks hook order across renders when the selected protocol changes and can cause production-only crashes like: `Cannot read properties of undefined (reading 'length')`.
+- If you need a helper hook for the default Titan Protocol path (e.g. `setChatInputWithRef`), declare it **before** any protocol-mode `return`.
+- Also guard `.length` for SSE/localStorage data (`(x || '').length`, `(arr || []).length`) because payloads can be partial or stale.
+
 ### Process Cleanup (fixed 2026-02-23)
 - On Windows, `child_process.kill()` does NOT kill the process tree.
 - We now use `taskkill /F /T /PID` in `apps/desktop/src/main.ts → killServerProcess()`.

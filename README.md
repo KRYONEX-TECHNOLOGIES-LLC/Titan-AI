@@ -94,6 +94,17 @@ Full map:
 
 ---
 
+## Preventing protocol UI crashes (must-follow)
+
+Titan has multiple protocol modes (Phoenix/Supreme/Omega/Parallel/Titan Chat + default Titan Protocol). These modes often use **early returns** in hooks/components. Two rules prevent the class of crashes we hit (including `Cannot read properties of undefined (reading 'length')`):
+
+- **Never place React hooks after a conditional early return**: if a hook (e.g. `useCallback`, `useMemo`, `useEffect`) is declared after `if (isPhoenixMode) return ...`, React will see a different hook order depending on selected protocol and can corrupt state in production builds.
+  - If you need a helper hook for the “default” path, declare it **before** any protocol-mode returns.
+- **Never assume arrays/strings exist on streamed or persisted data**: SSE payloads and localStorage restores can be partial or stale.
+  - Guard `.length` and `.slice` with safe defaults (e.g. `(x || '').length`, `(arr || []).length`) in UI panels and persistence code.
+
+---
+
 ## Deployment notes (Railway / Nixpacks)
 
 The Railway config for the web build uses `apps/web` as the root directory and runs:
