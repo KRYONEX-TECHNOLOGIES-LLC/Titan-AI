@@ -3,6 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn, ChildProcess } from 'child_process';
+import which from 'which';
 
 function contentHash(content: string): string {
   return crypto.createHash('sha256').update(content, 'utf8').digest('hex').slice(0, 16);
@@ -32,8 +33,19 @@ function looksLikeServer(command: string): boolean {
 }
 
 function resolveWindowsShell(): { shellPath: string; isPowerShell: boolean } {
+  // Try to find PowerShell using the system PATH
+  try {
+    const powershellPath = which.sync('powershell.exe', { nothrow: true });
+    if (powershellPath) return { shellPath: powershellPath, isPowerShell: true };
+    
+    const pwshPath = which.sync('pwsh.exe', { nothrow: true });
+    if (pwshPath) return { shellPath: pwshPath, isPowerShell: true };
+  } catch (error) {
+    console.error('[resolveWindowsShell] Error finding PowerShell:', error);
+  }
+  
+  // Fallback to known paths if PATH lookup fails
   const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
-
   const candidates = [
     path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
     path.join(process.env.ProgramFiles || 'C:\\Program Files', 'PowerShell', '7', 'pwsh.exe'),
@@ -43,7 +55,9 @@ function resolveWindowsShell(): { shellPath: string; isPowerShell: boolean } {
     try { if (fs.existsSync(candidate)) return { shellPath: candidate, isPowerShell: true }; } catch {}
   }
 
+  // Final fallback to cmd.exe
   const cmd = path.join(systemRoot, 'System32', 'cmd.exe');
+  console.warn(`[resolveWindowsShell] Using fallback cmd.exe at ${cmd}`);
   return { shellPath: cmd, isPowerShell: false };
 }
 

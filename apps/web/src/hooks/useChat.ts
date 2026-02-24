@@ -3,12 +3,7 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 import type { Session, ChatMessage, ToolCallBlock, CodeDiffBlock, GeneratedImage, FileAttachment } from '@/types/ide';
 import { parseThinkingTags, getLanguageFromFilename } from '@/utils/file-helpers';
-import { useAgentTools, toolCallSummary } from './useAgentTools';
-import { useParallelChat } from './useParallelChat';
-import { useSupremeChat } from './useSupremeChat';
-import { useOmegaChat } from './useOmegaChat';
-import { usePhoenixChat } from './usePhoenixChat';
-import { useTitanChat } from './useTitanChat';
+import { useAgentTools } from './useAgentTools';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
@@ -32,22 +27,34 @@ let gitStatusCacheValue: { branch?: string; modified?: string[]; untracked?: str
 let gitStatusCacheTime = 0;
 const GIT_STATUS_TTL_MS = 5000;
 
-const TITAN_PLANNER = 'qwen3.5-plus-02-15';
-const TITAN_TOOL_CALLER = 'deepseek-r1';
-const TITAN_WORKER = 'qwen3-coder-next';
-const TITAN_PROTOCOL_IDS = new Set(['titan-protocol']);
 const CODE_WRITE_TOOLS = new Set(['edit_file', 'create_file']);
 
+const PROTOCOL_MODEL_STACKS: Record<string, { planner: string; toolCaller: string; worker: string }> = {
+  'titan-protocol':          { planner: 'qwen3.5-plus-02-15',    toolCaller: 'deepseek-r1', worker: 'qwen3-coder-next' },
+  'titan-protocol-v2':       { planner: 'qwen3.5-plus-02-15',    toolCaller: 'deepseek-r1', worker: 'qwen3-coder-next' },
+  'titan-supreme-protocol':  { planner: 'qwen3.5-plus-02-15',    toolCaller: 'deepseek-r1', worker: 'qwen3-coder-next' },
+  'titan-omega-protocol':    { planner: 'qwen3.5-plus-02-15',    toolCaller: 'deepseek-r1', worker: 'qwen3-coder-next' },
+  'titan-phoenix-protocol':  { planner: 'deepseek-v3.2-speciale', toolCaller: 'deepseek-r1', worker: 'minimax-m2.5' },
+  'titan-chat':              { planner: 'qwen3.5-397b-a17b',     toolCaller: 'qwen3.5-397b-a17b', worker: 'qwen3-coder-next' },
+};
+const TITAN_PROTOCOL_IDS = new Set(Object.keys(PROTOCOL_MODEL_STACKS));
+
 function getIterationModel(baseModel: string, iteration: number): string {
-  if (!TITAN_PROTOCOL_IDS.has(baseModel)) return baseModel;
-  if (iteration === 1) return TITAN_PLANNER;
-  return TITAN_TOOL_CALLER;
+  const stack = PROTOCOL_MODEL_STACKS[baseModel];
+  if (!stack) return baseModel;
+  if (iteration === 1) return stack.planner;
+  return stack.toolCaller;
+}
+
+function getWorkerModel(baseModel: string): string {
+  return PROTOCOL_MODEL_STACKS[baseModel]?.worker || 'qwen3-coder-next';
 }
 
 async function generateCodeWithQwen(
   tool: string,
   args: Record<string, unknown>,
   abortSignal: AbortSignal,
+  workerModel?: string,
 ): Promise<Record<string, unknown>> {
   const filePath = args.path as string;
   let prompt: string;
@@ -79,7 +86,7 @@ Return ONLY the raw file content:`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       signal: abortSignal,
-      body: JSON.stringify({ message: prompt, model: TITAN_WORKER, stream: false }),
+      body: JSON.stringify({ message: prompt, model: workerModel || 'qwen3-coder-next', stream: false }),
     });
     if (!res.ok) return args;
     const data = await res.json();
@@ -834,7 +841,7 @@ export function useChat({
 
           let finalArgs = tc.args;
           if (isTitanProtocol && CODE_WRITE_TOOLS.has(tc.tool)) {
-            finalArgs = await generateCodeWithQwen(tc.tool, tc.args, controller.signal);
+            finalArgs = await generateCodeWithQwen(tc.tool, tc.args, controller.signal, getWorkerModel(activeModel));
           }
 
           const toolCallBlock: ToolCallBlock = {
@@ -1108,135 +1115,6 @@ export function useChat({
       handleSend();
     }
   };
-
-  // Titan Protocol v2 (Parallel) mode delegation
-  const parallelChat = useParallelChat({
-    sessions,
-    setSessions,
-    activeSessionId,
-    activeTab,
-    fileContents,
-    workspacePath,
-    openTabs,
-    isDesktop,
-    osPlatform,
-  });
-
-  const supremeChat = useSupremeChat({
-    sessions,
-    setSessions,
-    activeSessionId,
-    workspacePath,
-    openTabs,
-    isDesktop,
-    osPlatform,
-  });
-
-  const omegaChat = useOmegaChat({
-    sessions,
-    setSessions,
-    activeSessionId,
-    workspacePath,
-    openTabs,
-    isDesktop,
-    osPlatform,
-  });
-
-  const phoenixChat = usePhoenixChat({
-    sessions,
-    setSessions,
-    activeSessionId,
-    workspacePath,
-    openTabs,
-    isDesktop,
-    osPlatform,
-  });
-
-  const titanChat = useTitanChat({
-    sessions,
-    setSessions,
-    activeSessionId,
-  });
-
-  const isPhoenixMode = activeModel === 'titan-phoenix-protocol';
-  const isParallelMode = activeModel === 'titan-protocol-v2';
-  const isSupremeMode = activeModel === 'titan-supreme-protocol';
-  const isOmegaMode = activeModel === 'titan-omega-protocol';
-  const isTitanChatMode = activeModel === 'titan-chat';
-
-  const sharedProps = {
-    attachments: attachments || [],
-    addAttachments: addAttachments || (() => {}),
-    removeAttachment: removeAttachment || (() => {}),
-    clearAttachments: clearAttachments || (() => {}),
-    capabilities: getCapabilities(workspacePath),
-    lastToolResult: agentTools.lastResult ?? null,
-  };
-
-  if (isPhoenixMode) {
-    return {
-      chatInput: phoenixChat.chatInput,
-      setChatInput: phoenixChat.setChatInput,
-      isThinking: phoenixChat.isThinking,
-      isStreaming: phoenixChat.isStreaming,
-      handleSend: phoenixChat.handleSend,
-      handleStop: phoenixChat.handleStop,
-      handleKeyDown: phoenixChat.handleKeyDown,
-      ...sharedProps,
-    };
-  }
-
-  if (isParallelMode) {
-    return {
-      chatInput: parallelChat.chatInput,
-      setChatInput: parallelChat.setChatInput,
-      isThinking: parallelChat.isThinking,
-      isStreaming: parallelChat.isStreaming,
-      handleSend: parallelChat.handleSend,
-      handleStop: parallelChat.handleStop,
-      handleKeyDown: parallelChat.handleKeyDown,
-      ...sharedProps,
-    };
-  }
-
-  if (isSupremeMode) {
-    return {
-      chatInput: supremeChat.chatInput,
-      setChatInput: supremeChat.setChatInput,
-      isThinking: supremeChat.isThinking,
-      isStreaming: supremeChat.isStreaming,
-      handleSend: supremeChat.handleSend,
-      handleStop: supremeChat.handleStop,
-      handleKeyDown: supremeChat.handleKeyDown,
-      ...sharedProps,
-    };
-  }
-
-  if (isOmegaMode) {
-    return {
-      chatInput: omegaChat.chatInput,
-      setChatInput: omegaChat.setChatInput,
-      isThinking: omegaChat.isThinking,
-      isStreaming: omegaChat.isStreaming,
-      handleSend: omegaChat.handleSend,
-      handleStop: omegaChat.handleStop,
-      handleKeyDown: omegaChat.handleKeyDown,
-      ...sharedProps,
-    };
-  }
-
-  if (isTitanChatMode) {
-    return {
-      chatInput: titanChat.chatInput,
-      setChatInput: titanChat.setChatInput,
-      isThinking: titanChat.isThinking,
-      isStreaming: titanChat.isStreaming,
-      handleSend: titanChat.handleSend,
-      handleStop: titanChat.handleStop,
-      handleKeyDown: titanChat.handleKeyDown,
-      ...sharedProps,
-    };
-  }
 
   const setChatInputWithRef = useCallback((v: string | ((prev: string) => string)) => {
     setChatInput(prev => {
