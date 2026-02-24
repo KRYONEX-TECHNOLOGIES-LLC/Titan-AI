@@ -170,15 +170,29 @@ export function usePhoenixChat({
               updateLaneStatus(`lane-${String(payload.subtaskId)}`, 'MERGED');
             }
 
-            const line = formatPhoenixEvent(eventType, payload);
-            if (line) {
-              statusLines.push(line);
-              if (statusLines.length > 30) statusLines.shift();
+            if (eventType === 'phoenix_result') {
+              const output = String(payload.output || '');
+              const cost = Number(payload.cost || 0);
+              const elapsed = Number(payload.elapsedMs || 0);
+              const pipeline = String(payload.pipeline || 'unknown');
+              const success = payload.success !== false;
+              const header = `**Phoenix Protocol** — ${success ? 'Complete' : 'Partial'} · ${pipeline} pipeline · ${(elapsed / 1000).toFixed(1)}s · $${cost.toFixed(5)}`;
               updateMessage(sessionId, messageId, (m) => ({
                 ...m,
-                content: `**Phoenix Protocol**\n\n${statusLines.join('\n')}`,
-                streaming: true,
+                content: output ? `${header}\n\n${output}` : `${header}\n\n${statusLines.join('\n')}`,
+                streaming: false,
               }));
+            } else {
+              const line = formatPhoenixEvent(eventType, payload);
+              if (line) {
+                statusLines.push(line);
+                if (statusLines.length > 30) statusLines.shift();
+                updateMessage(sessionId, messageId, (m) => ({
+                  ...m,
+                  content: `**Phoenix Protocol**\n\n${statusLines.join('\n')}`,
+                  streaming: true,
+                }));
+              }
             }
           } catch {
             // ignore malformed payloads

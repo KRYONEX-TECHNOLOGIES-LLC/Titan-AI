@@ -166,15 +166,35 @@ export function useSupremeChat({
               updateLaneStatus(`lane-${String(payload.nodeId)}`, payload.success ? 'MERGED' : 'FAILED');
             }
 
-            const line = formatEventLine(eventType, payload);
-            if (line) {
-              statusLines.push(line);
-              if (statusLines.length > 24) statusLines.shift();
+            if (eventType === 'orchestration_result') {
+              const summary = String(payload.summary || '');
+              const success = payload.success !== false;
+              const merged = payload.lanesMerged ?? payload.nodesMerged ?? '?';
+              const total = payload.lanesTotal ?? payload.nodesTotal ?? '?';
+              const header = `**Titan Supreme Protocol** — ${success ? 'Complete' : 'Finished with failures'} · ${merged}/${total} merged`;
               updateMessage(sessionId, messageId, (m) => ({
                 ...m,
-                content: `**Titan Supreme Protocol**\n\n${statusLines.join('\n')}`,
-                streaming: true,
+                content: summary ? `${header}\n\n${summary}` : `${header}\n\n${statusLines.join('\n')}`,
+                streaming: false,
               }));
+            } else if (eventType === 'orchestration_error') {
+              updateMessage(sessionId, messageId, (m) => ({
+                ...m,
+                content: `**Titan Supreme Protocol — Error**\n\n${String(payload.message || 'Unknown error')}`,
+                streaming: false,
+                isError: true,
+              }));
+            } else {
+              const line = formatEventLine(eventType, payload);
+              if (line) {
+                statusLines.push(line);
+                if (statusLines.length > 24) statusLines.shift();
+                updateMessage(sessionId, messageId, (m) => ({
+                  ...m,
+                  content: `**Titan Supreme Protocol**\n\n${statusLines.join('\n')}`,
+                  streaming: true,
+                }));
+              }
             }
           } catch {
             // ignore malformed event payloads

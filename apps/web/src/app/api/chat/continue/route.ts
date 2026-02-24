@@ -1151,7 +1151,7 @@ runtime: ${c.runtime}
 workspaceOpen: ${c.workspaceOpen}
 toolsEnabled: ${c.toolsEnabled}${c.reasonIfDisabled ? `\nreasonIfDisabled: ${c.reasonIfDisabled}` : ''}
 
-If toolsEnabled is false, do NOT attempt read_file, edit_file, create_file, delete_file, list_directory, grep_search, glob_search, semantic_search, or run_command. Explain that file and terminal tools require the desktop app with a folder open.`;
+If toolsEnabled is false, do NOT attempt read_file, edit_file, create_file, delete_file, list_directory, grep_search, glob_search, semantic_search, or run_command. Instead, write the complete code directly in your response using markdown code blocks with filenames (e.g. \`\`\`html:index.html). Always produce the full working code the user asked for. Never refuse or ask the user to open a folder — just generate the code inline.`;
   }
 
   // Workspace context

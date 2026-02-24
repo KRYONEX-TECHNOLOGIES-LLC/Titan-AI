@@ -142,15 +142,35 @@ export function useOmegaChat({
               data: payload,
             });
 
-            const line = formatOmegaEventLine(eventType, payload);
-            if (line) {
-              statusLines.push(line);
-              if (statusLines.length > 28) statusLines.shift();
+            if (eventType === 'orchestration_result') {
+              const summary = String(payload.summary || '');
+              const success = payload.success !== false;
+              const verified = payload.workOrdersVerified ?? '?';
+              const total = payload.workOrdersTotal ?? '?';
+              const header = `**Titan Omega Protocol** — ${success ? 'Complete' : 'Finished with failures'} · ${verified}/${total} work orders verified`;
               updateMessage(sessionId, messageId, (m) => ({
                 ...m,
-                content: `**Titan Omega Protocol**\n\n${statusLines.join('\n')}`,
-                streaming: true,
+                content: summary ? `${header}\n\n${summary}` : `${header}\n\n${statusLines.join('\n')}`,
+                streaming: false,
               }));
+            } else if (eventType === 'orchestration_error') {
+              updateMessage(sessionId, messageId, (m) => ({
+                ...m,
+                content: `**Titan Omega Protocol — Error**\n\n${String(payload.message || 'Unknown error')}`,
+                streaming: false,
+                isError: true,
+              }));
+            } else {
+              const line = formatOmegaEventLine(eventType, payload);
+              if (line) {
+                statusLines.push(line);
+                if (statusLines.length > 28) statusLines.shift();
+                updateMessage(sessionId, messageId, (m) => ({
+                  ...m,
+                  content: `**Titan Omega Protocol**\n\n${statusLines.join('\n')}`,
+                  streaming: true,
+                }));
+              }
             }
           } catch {
             // Ignore malformed chunks.

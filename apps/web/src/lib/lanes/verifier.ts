@@ -263,11 +263,6 @@ function parseVerifierOutput(raw: string): VerifierArtifact {
   const checklistResults = parseChecklist(raw);
   const rationale = parseRationale(raw);
 
-  // Enforce: PASS with findings is treated as FAIL
-  if (verdict === 'PASS' && findings.length > 0) {
-    verdict = 'FAIL';
-  }
-
   // Enforce: any CRITICAL = FAIL
   if (findings.some(f => f.severity === 'CRITICAL')) {
     verdict = 'FAIL';
@@ -275,6 +270,13 @@ function parseVerifierOutput(raw: string): VerifierArtifact {
 
   // Enforce: 2+ MAJOR = FAIL
   if (findings.filter(f => f.severity === 'MAJOR').length >= 2) {
+    verdict = 'FAIL';
+  }
+
+  // Enforce: PASS with non-MINOR findings is treated as FAIL
+  // Rule 5: "MINOR findings alone do not cause FAIL but must be reported"
+  const nonMinorFindings = findings.filter(f => f.severity !== 'MINOR');
+  if (verdict === 'PASS' && nonMinorFindings.length > 0) {
     verdict = 'FAIL';
   }
 
