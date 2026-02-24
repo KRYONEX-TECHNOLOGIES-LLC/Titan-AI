@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       source:
-        description: 'Source to scrape (all, github, stackoverflow, docs, blog)'
+        description: 'Source to scrape (all, github, stackoverflow, docs, blog, dataset, reddit, devto, mdn, wikipedia, hackernews)'
         default: 'all'
         required: false
       topic:
@@ -53,14 +53,20 @@ jobs:
             echo "topic=${{ inputs.topic }}" >> $GITHUB_OUTPUT
             echo "limit=${{ inputs.limit }}" >> $GITHUB_OUTPUT
           else
-            # Rotate sources daily: Mon=github, Tue=stackoverflow, Wed=docs, Thu=blog, Fri=dataset, Sat-Sun=all
-            DAY=$(date +%u)
-            case $DAY in
-              1) SRC="github" ;;
-              2) SRC="stackoverflow" ;;
-              3) SRC="docs" ;;
-              4) SRC="blog" ;;
-              5) SRC="dataset" ;;
+            # Rotate sources daily across 10 scrapers (2-week cycle)
+            DAY_OF_YEAR=$(date +%j)
+            CYCLE=$((DAY_OF_YEAR % 10))
+            case $CYCLE in
+              0) SRC="github" ;;
+              1) SRC="stackoverflow" ;;
+              2) SRC="reddit" ;;
+              3) SRC="devto" ;;
+              4) SRC="mdn" ;;
+              5) SRC="wikipedia" ;;
+              6) SRC="hackernews" ;;
+              7) SRC="docs" ;;
+              8) SRC="blog" ;;
+              9) SRC="dataset" ;;
               *) SRC="all" ;;
             esac
             echo "source=$SRC" >> $GITHUB_OUTPUT
@@ -75,6 +81,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_API_TOKEN: ${{ secrets.HF_API_TOKEN }}
         run: |
           pnpm --filter @titan/forge run harvest -- \
             --source ${{ steps.source.outputs.source }} \

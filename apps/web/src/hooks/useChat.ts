@@ -1157,12 +1157,12 @@ export function useChat({
   const isOmegaMode = activeModel === 'titan-omega-protocol';
 
   const sharedProps = {
-    attachments,
-    addAttachments,
-    removeAttachment,
-    clearAttachments,
+    attachments: attachments || [],
+    addAttachments: addAttachments || (() => {}),
+    removeAttachment: removeAttachment || (() => {}),
+    clearAttachments: clearAttachments || (() => {}),
     capabilities: getCapabilities(workspacePath),
-    lastToolResult: agentTools.lastResult,
+    lastToolResult: agentTools.lastResult ?? null,
   };
 
   if (isPhoenixMode) {

@@ -68,7 +68,7 @@ async function main() {
   const minScore = parseInt(getArg('min-score') || '6', 10);
   const dryRun = hasFlag('dry-run');
 
-  const validSources = ['all', 'github', 'stackoverflow', 'docs', 'blog', 'dataset'];
+  const validSources = ['all', 'github', 'stackoverflow', 'docs', 'blog', 'dataset', 'reddit', 'devto', 'mdn', 'wikipedia', 'hackernews'];
   if (!validSources.includes(sourceArg)) {
     console.error(`Invalid source: ${sourceArg}. Use: ${validSources.join(', ')}`);
     process.exit(1);

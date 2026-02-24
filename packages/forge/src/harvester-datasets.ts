@@ -35,9 +35,11 @@ async function fetchHFRows(
   length: number,
 ): Promise<HFRowsResponse> {
   const url = `${HF_API}/rows?dataset=${encodeURIComponent(dataset)}&config=${encodeURIComponent(config)}&split=${split}&offset=${offset}&length=${Math.min(length, 100)}`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'TitanForge-Harvester/1.0' },
-  });
+  const headers: Record<string, string> = { 'User-Agent': 'TitanForge-Harvester/1.0' };
+  if (process.env.HF_API_TOKEN) {
+    headers['Authorization'] = `Bearer ${process.env.HF_API_TOKEN}`;
+  }
+  const res = await fetch(url, { headers });
   if (!res.ok) {
     console.warn(`[harvester/datasets] HF API ${res.status} for ${dataset}`);
     return {};

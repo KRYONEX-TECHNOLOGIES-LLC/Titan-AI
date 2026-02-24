@@ -126,6 +126,10 @@ module.exports = {
       filter: ['**/*'],
     },
     {
+      from: '../web/.env',
+      to: 'web-server/apps/web/.env',
+    },
+    {
       from: 'resources/icon.ico',
       to: 'icon.ico',
     },

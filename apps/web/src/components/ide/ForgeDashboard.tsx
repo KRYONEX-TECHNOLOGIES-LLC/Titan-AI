@@ -264,12 +264,17 @@ export function ForgeDashboard() {
             value={harvestSource}
             onChange={(e) => setHarvestSource(e.target.value)}
           >
-            <option value="all">All Sources (Web + Datasets)</option>
+            <option value="all">All Sources (10 Scrapers)</option>
             <option value="github">GitHub (Top Repos)</option>
             <option value="stackoverflow">Stack Overflow</option>
-            <option value="docs">Official Docs</option>
+            <option value="docs">Official Docs (React, Next.js, TS)</option>
             <option value="blog">Engineering Blogs</option>
-            <option value="dataset">Public Datasets (FineWeb, Stack, Pile, CodeSearchNet)</option>
+            <option value="dataset">Public Datasets (FineWeb, Stack, Pile)</option>
+            <option value="reddit">Reddit (Programming Subs)</option>
+            <option value="devto">Dev.to (Tech Articles)</option>
+            <option value="mdn">MDN Web Docs (Web Standards)</option>
+            <option value="wikipedia">Wikipedia (CS Theory)</option>
+            <option value="hackernews">Hacker News (Tech Discussions)</option>
           </select>
         </div>
 

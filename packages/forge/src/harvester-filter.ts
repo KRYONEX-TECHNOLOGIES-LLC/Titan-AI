@@ -1,6 +1,7 @@
 // ── Titan Forge — Harvester Filter Pipeline ──
-// 5-pass filtering: rule strip → AI content detection → quality judge → format → dedup
-// Only elite-quality HUMAN-WRITTEN data survives to enter the training set.
+// 5-pass filtering: rule strip → AI detection (soft penalty) → quality judge → format → dedup
+// AI-detected content gets a quality penalty instead of hard rejection.
+// High-quality content passes regardless of origin; low-quality AI slop gets filtered by score.
 
 import { createHash } from 'crypto';
 import { ForgeDB } from './db.js';
@@ -60,19 +61,28 @@ function pass1_ruleFilter(items: ScrapedItem[]): ScrapedItem[] {
 }
 
 // ══════════════════════════════════════════════════════
-// PASS 1.5: AI Content Detection (reject AI-generated text)
+// PASS 1.5: AI Content Detection (soft penalty, not hard reject)
 // Uses Binoculars-style two-layer detection:
 //   Layer 1: Free heuristic check (catches ~60%)
 //   Layer 2: AI judge for uncertain cases (catches ~30% more)
-// Combined: rejects 90%+ of AI slop at <1% false positive rate
+// AI-detected content gets a -3 quality penalty instead of
+// being rejected outright. High-quality AI content still passes
+// if the quality judge scores it high enough to overcome the penalty.
 // ══════════════════════════════════════════════════════
 
-async function pass1_5_aiContentFilter(items: ScrapedItem[]): Promise<ScrapedItem[]> {
-  const passed: ScrapedItem[] = [];
-  let rejected = 0;
+const AI_QUALITY_PENALTY = 3;
+
+interface AITaggedItem extends ScrapedItem {
+  aiDetected: boolean;
+  aiConfidence: number;
+  aiPenalty: number;
+}
+
+async function pass1_5_aiContentFilter(items: ScrapedItem[]): Promise<AITaggedItem[]> {
+  const tagged: AITaggedItem[] = [];
+  let aiDetectedCount = 0;
 
   for (const item of items) {
-    // Pure code files skip AI detection — code is code regardless of who typed it
     const isCode = item.source === 'dataset' && (
       item.tags.includes('code') ||
       item.tags.includes('codesearchnet') ||
@@ -81,27 +91,26 @@ async function pass1_5_aiContentFilter(items: ScrapedItem[]): Promise<ScrapedIte
     );
 
     if (isCode) {
-      passed.push(item);
+      tagged.push({ ...item, aiDetected: false, aiConfidence: 0, aiPenalty: 0 });
       continue;
     }
 
-    // For text content, run the full detector
     const result = await detectAIContent(item.raw_content);
 
     if (result.isAI) {
-      rejected++;
-      console.log(`[harvester/filter] REJECTED AI content (${result.confidence.toFixed(2)}): ${item.title.slice(0, 50)}`);
-      continue;
+      aiDetectedCount++;
+      console.log(`[harvester/filter] AI detected (${result.confidence.toFixed(2)}, penalty -${AI_QUALITY_PENALTY}): ${item.title.slice(0, 50)}`);
+      tagged.push({ ...item, aiDetected: true, aiConfidence: result.confidence, aiPenalty: AI_QUALITY_PENALTY });
+    } else {
+      tagged.push({ ...item, aiDetected: false, aiConfidence: result.confidence, aiPenalty: 0 });
     }
-
-    passed.push(item);
   }
 
-  if (rejected > 0) {
-    console.log(`[harvester/filter] Pass 1.5: Rejected ${rejected} AI-generated items`);
+  if (aiDetectedCount > 0) {
+    console.log(`[harvester/filter] Pass 1.5: ${aiDetectedCount} AI-detected items (penalty applied, not rejected)`);
   }
 
-  return passed;
+  return tagged;
 }
 
 // ══════════════════════════════════════════════════════
@@ -129,15 +138,16 @@ interface JudgeResult {
   reason: string;
 }
 
-async function pass2_aiJudge(items: ScrapedItem[]): Promise<Array<ScrapedItem & { aiScore: number; aiReason: string }>> {
-  const results: Array<ScrapedItem & { aiScore: number; aiReason: string }> = [];
+async function pass2_aiJudge(items: AITaggedItem[]): Promise<Array<AITaggedItem & { aiScore: number; aiReason: string }>> {
+  const results: Array<AITaggedItem & { aiScore: number; aiReason: string }> = [];
 
   for (const item of items) {
     const truncated = item.raw_content.slice(0, 3000);
     try {
       const apiKey = process.env.OPENROUTER_API_KEY;
       if (!apiKey) {
-        results.push({ ...item, aiScore: 6, aiReason: 'No API key — default pass' });
+        const finalScore = Math.max(0, 6 - item.aiPenalty);
+        results.push({ ...item, aiScore: finalScore, aiReason: 'No API key — default pass' + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
         continue;
       }
 
@@ -157,7 +167,8 @@ async function pass2_aiJudge(items: ScrapedItem[]): Promise<Array<ScrapedItem & 
       });
 
       if (!res.ok) {
-        results.push({ ...item, aiScore: 5, aiReason: `API error ${res.status}` });
+        const finalScore = Math.max(0, 5 - item.aiPenalty);
+        results.push({ ...item, aiScore: finalScore, aiReason: `API error ${res.status}` + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
         continue;
       }
 
@@ -166,15 +177,19 @@ async function pass2_aiJudge(items: ScrapedItem[]): Promise<Array<ScrapedItem & 
 
       const match = text.match(/\{[\s\S]*?"score"\s*:\s*(\d+)[\s\S]*?"reason"\s*:\s*"([^"]*)"[\s\S]*?\}/);
       if (match) {
-        const score = Math.min(10, Math.max(0, parseInt(match[1], 10)));
-        results.push({ ...item, aiScore: score, aiReason: match[2] });
+        const rawScore = Math.min(10, Math.max(0, parseInt(match[1], 10)));
+        const finalScore = Math.max(0, rawScore - item.aiPenalty);
+        const reason = match[2] + (item.aiPenalty ? ` [AI-detected, penalty -${item.aiPenalty}: ${rawScore}→${finalScore}]` : '');
+        results.push({ ...item, aiScore: finalScore, aiReason: reason });
       } else {
-        results.push({ ...item, aiScore: 5, aiReason: 'Could not parse judge response' });
+        const finalScore = Math.max(0, 5 - item.aiPenalty);
+        results.push({ ...item, aiScore: finalScore, aiReason: 'Could not parse judge response' + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
       }
 
       await new Promise(r => setTimeout(r, 500));
     } catch {
-      results.push({ ...item, aiScore: 5, aiReason: 'Judge call failed' });
+      const finalScore = Math.max(0, 5 - item.aiPenalty);
+      results.push({ ...item, aiScore: finalScore, aiReason: 'Judge call failed' + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
     }
   }
 
@@ -194,7 +209,7 @@ interface FormattedItem {
 }
 
 function pass3_formatConverter(
-  items: Array<ScrapedItem & { aiScore: number; aiReason: string }>
+  items: Array<AITaggedItem & { aiScore: number; aiReason: string }>
 ): FormattedItem[] {
   return items.map(item => {
     let instruction: string;
@@ -241,6 +256,31 @@ function pass3_formatConverter(
           instruction = item.title || 'Explain the following content:';
           response = item.raw_content;
         }
+        break;
+      }
+      case 'reddit': {
+        instruction = item.title.replace(/^r\/\w+:\s*/, '') || 'Explain the following:';
+        response = item.raw_content;
+        break;
+      }
+      case 'devto': {
+        instruction = `Explain the key technical insights from: ${item.title}`;
+        response = item.raw_content;
+        break;
+      }
+      case 'mdn': {
+        instruction = `Explain the following from MDN Web Docs: ${item.title.replace(/^MDN:\s*/, '')}`;
+        response = item.raw_content;
+        break;
+      }
+      case 'wikipedia': {
+        instruction = `Explain the computer science concept: ${item.title.replace(/^Wikipedia:\s*/, '')}`;
+        response = item.raw_content;
+        break;
+      }
+      case 'hackernews': {
+        instruction = `Summarize this technical discussion: ${item.title.replace(/^HN:\s*/, '')}`;
+        response = item.raw_content;
         break;
       }
       default: {
@@ -306,15 +346,16 @@ export async function runFilterPipeline(
   const afterP1 = pass1_ruleFilter(scraped);
   console.log(`[harvester/filter] Pass 1 (rules): ${scraped.length} → ${afterP1.length}`);
 
-  // Pass 1.5: AI content detection — reject AI-generated text
+  // Pass 1.5: AI content detection — soft penalty, not hard reject
   const afterP1_5 = await pass1_5_aiContentFilter(afterP1);
-  const aiRejected = afterP1.length - afterP1_5.length;
-  console.log(`[harvester/filter] Pass 1.5 (AI detector): ${afterP1.length} → ${afterP1_5.length} (${aiRejected} AI-generated rejected)`);
+  const aiDetectedCount = afterP1_5.filter(i => i.aiDetected).length;
+  console.log(`[harvester/filter] Pass 1.5 (AI detector): ${afterP1.length} tagged (${aiDetectedCount} AI-detected, penalty -${AI_QUALITY_PENALTY})`);
 
-  // Pass 2: AI quality judge
+  // Pass 2: AI quality judge (AI penalty already applied to scores)
   const afterP2 = await pass2_aiJudge(afterP1_5);
   const scoredAbove = afterP2.filter(i => i.aiScore >= minScore);
-  console.log(`[harvester/filter] Pass 2 (AI judge): ${afterP1_5.length} → ${scoredAbove.length} (score >= ${minScore})`);
+  const aiPenalizedOut = afterP2.filter(i => i.aiDetected && i.aiScore < minScore).length;
+  console.log(`[harvester/filter] Pass 2 (AI judge): ${afterP1_5.length} → ${scoredAbove.length} (score >= ${minScore}, ${aiPenalizedOut} dropped by AI penalty)`);
 
   // Pass 3
   const afterP3 = pass3_formatConverter(scoredAbove);
@@ -365,7 +406,7 @@ export async function runFilterPipeline(
     after_pass2: scoredAbove.length,
     after_pass3: afterP3.length,
     after_pass4: afterP4.length,
-    ai_rejected: aiRejected,
+    ai_rejected: aiPenalizedOut,
     saved: saved.length,
     items: saved,
   };
