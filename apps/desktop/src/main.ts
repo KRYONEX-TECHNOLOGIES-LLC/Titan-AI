@@ -162,7 +162,10 @@ async function startNextJsServer(port: number): Promise<void> {
     cwd = path.join(process.resourcesPath, 'web-server', 'apps', 'web');
     command = process.execPath;
     args = [path.join(cwd, 'server.js')];
-    env = { ...process.env, PORT: String(port), HOSTNAME: '127.0.0.1', NODE_ENV: 'production' };
+    // ELECTRON_RUN_AS_NODE=1 is required: process.execPath is the Electron binary, not Node.
+    // Without this flag the spawned child launches as a second Electron instance instead of
+    // plain Node, so the Next.js standalone server.js silently fails and the window goes black.
+    env = { ...process.env, PORT: String(port), HOSTNAME: '127.0.0.1', NODE_ENV: 'production', ELECTRON_RUN_AS_NODE: '1' };
   }
 
   console.log(`[Next.js] Starting server (${isDev ? 'dev' : 'prod'})...`);
