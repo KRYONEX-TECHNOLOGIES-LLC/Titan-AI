@@ -56,7 +56,7 @@ export function useSupremeChat({
   ) => {
     setSessions((prev) => prev.map((s) => {
       if (s.id !== sessionId) return s;
-      return { ...s, messages: s.messages.map((m) => (m.id === messageId ? updater(m) : m)) };
+      return { ...s, messages: (s.messages || []).map((m) => (m.id === messageId ? updater(m) : m)) };
     }));
   }, [setSessions]);
 
@@ -79,7 +79,7 @@ export function useSupremeChat({
     };
 
     setSessions((prev) => prev.map((s) => (
-      s.id === sessionId ? { ...s, messages: [...s.messages, userMessage, assistantMessage] } : s
+      s.id === sessionId ? { ...s, messages: [...(s.messages || []), userMessage, assistantMessage] } : s
     )));
 
     setIsRunning(true);

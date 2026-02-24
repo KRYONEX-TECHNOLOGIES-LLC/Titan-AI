@@ -39,6 +39,11 @@ export function normalizeModelId(modelId: string): string {
 }
 
 export const MODEL_REGISTRY: ModelInfo[] = [
+  // ═══ TITAN CHAT PROTOCOL (Ultra-Cheap Conversational — Adaptive 2-Role Pipeline) ═══
+  // Simple questions: Qwen3.5 397B MoE only. Complex: Qwen3.5 397B → Gemini 2.5 Flash.
+  // ~$0.001–$0.002 per message. Opus-quality reasoning at 98% less cost.
+  { id: 'titan-chat', providerModelId: 'qwen/qwen3.5-397b-a17b-20260216', name: 'Titan Chat', provider: 'Titan AI', tier: 'frontier', contextWindow: 262000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: false, supportsTools: false, costPer1MInput: 0.15, costPer1MOutput: 1.0, description: 'Ultra-cheap conversational protocol. Simple questions: Qwen3.5 397B MoE deep thinker. Complex questions: Qwen3.5 397B → Gemini 2.5 Flash quality gate. Opus-level output at ~$0.001 per message.' },
+
   // ═══ PHOENIX PROTOCOL (5-Role Multi-Model Orchestration) ═══
   // Adaptive pipeline: ARCHITECT (DeepSeek V3.2 Speciale) + CODER (MiniMax M2.5, 80.2% SWE-Bench)
   // + VERIFIER (DeepSeek V3.2) + SCOUT (Gemini 2.5 Flash) + JUDGE (Qwen3.5 397B MoE).

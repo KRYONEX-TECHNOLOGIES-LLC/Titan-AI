@@ -8,6 +8,7 @@ import { useParallelChat } from './useParallelChat';
 import { useSupremeChat } from './useSupremeChat';
 import { useOmegaChat } from './useOmegaChat';
 import { usePhoenixChat } from './usePhoenixChat';
+import { useTitanChat } from './useTitanChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
@@ -240,7 +241,7 @@ export function useChat({
   ) => {
     setSessions(prev => prev.map(s => {
       if (s.id !== sessionId) return s;
-      return { ...s, messages: s.messages.map(m => m.id === messageId ? updater(m) : m) };
+      return { ...s, messages: (s.messages || []).map(m => m.id === messageId ? updater(m) : m) };
     }));
   }, [setSessions]);
 
@@ -669,7 +670,7 @@ export function useChat({
 
     setSessions(prev => prev.map(s =>
       s.id === sessionId
-        ? { ...s, messages: [...s.messages, userMessage, assistantMessage] }
+        ? { ...s, messages: [...(s.messages || []), userMessage, assistantMessage] }
         : s
     ));
     // Forge: report user message as an acceptance/rejection signal for the previous turn
@@ -1095,7 +1096,7 @@ export function useChat({
 
     setSessions(prev => prev.map(s => ({
       ...s,
-      messages: s.messages.map(m =>
+      messages: (s.messages || []).map(m =>
         m.streaming ? { ...m, streaming: false, content: m.content || 'Stopped.' } : m
       ),
     })));
@@ -1151,10 +1152,17 @@ export function useChat({
     osPlatform,
   });
 
+  const titanChat = useTitanChat({
+    sessions,
+    setSessions,
+    activeSessionId,
+  });
+
   const isPhoenixMode = activeModel === 'titan-phoenix-protocol';
   const isParallelMode = activeModel === 'titan-protocol-v2';
   const isSupremeMode = activeModel === 'titan-supreme-protocol';
   const isOmegaMode = activeModel === 'titan-omega-protocol';
+  const isTitanChatMode = activeModel === 'titan-chat';
 
   const sharedProps = {
     attachments: attachments || [],
@@ -1213,6 +1221,19 @@ export function useChat({
       handleSend: omegaChat.handleSend,
       handleStop: omegaChat.handleStop,
       handleKeyDown: omegaChat.handleKeyDown,
+      ...sharedProps,
+    };
+  }
+
+  if (isTitanChatMode) {
+    return {
+      chatInput: titanChat.chatInput,
+      setChatInput: titanChat.setChatInput,
+      isThinking: titanChat.isThinking,
+      isStreaming: titanChat.isStreaming,
+      handleSend: titanChat.handleSend,
+      handleStop: titanChat.handleStop,
+      handleKeyDown: titanChat.handleKeyDown,
       ...sharedProps,
     };
   }

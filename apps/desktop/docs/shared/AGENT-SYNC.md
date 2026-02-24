@@ -45,10 +45,55 @@ Those are retired. Using them will silently 10–130x the cost per run.**
 ### Protocol Blended Cost Estimates
 | Protocol | Est. Cost/Run | Notes |
 |----------|---------------|-------|
+| **Titan Chat** | ~$0.001–$0.002 | Ultra-cheap conversational. Simple: Qwen3.5 397B only. Complex: Qwen3.5 397B → Gemini 2.5 Flash |
 | Titan Protocol (basic) | ~$0.05–$0.15 | Single-thread planner + worker |
 | Titan Protocol v2 (parallel lanes) | ~$0.10–$0.30 | 4 lanes, supervisor + worker + verifier |
 | Titan Supreme Protocol | ~$0.10–$0.30 | 4-role debate council |
 | Titan Omega Protocol | ~$0.15–$0.40 | Architect + specialist cadre |
+| Phoenix Protocol | ~$0.02–$0.10 | 5-role: Architect + Coder + Verifier + Scout + Judge |
+
+---
+
+## TITAN CHAT PROTOCOL — REFERENCE
+
+### What It Is
+Titan Chat is the ultra-cheap everyday conversational protocol. It uses a 2-role adaptive pipeline to deliver Opus-level quality at ~$0.001–$0.002 per message.
+
+### Architecture
+```
+User message → COMPLEXITY ROUTER (heuristic, free)
+                    ↓
+              score < 4: SIMPLE pipeline
+              score ≥ 4: FULL pipeline
+
+SIMPLE:  [User message] → THINKER (Qwen3.5 397B MoE) → Final answer
+FULL:    [User message] → THINKER (Qwen3.5 397B MoE) → REFINER (Gemini 2.5 Flash) → Final answer
+```
+
+### Models
+- **THINKER**: `qwen/qwen3.5-397b-a17b-20260216` — 397B MoE, SOTA reasoning, near-zero cost ($0.15/$1.00 per 1M)
+- **REFINER**: `google/gemini-2.5-flash` — fast, catches errors, polishes tone ($0.15/$0.60 per 1M)
+
+### Complexity Routing
+- Word count < 20 → 0–1 points
+- Word count 20–50 → 1 point
+- Word count 50–100 → 2 points
+- Word count > 100 → 3 points
+- Multi-part questions, comparisons, analysis → +2 points
+- Build/implement/design/architect patterns → +2 points
+- Code-related keywords → +1 point
+- Threshold: score ≥ 4 triggers FULL pipeline
+
+### Code Location
+- Orchestrator: `apps/web/src/lib/titan-chat/titan-chat-orchestrator.ts`
+- Model config: `apps/web/src/lib/titan-chat/titan-chat-model.ts`
+- API route: `apps/web/src/app/api/titan/chat/route.ts`
+- Hook: `apps/web/src/hooks/useTitanChat.ts`
+- Registry: `apps/web/src/lib/model-registry.ts` (id: `titan-chat`)
+- Routing: `apps/web/src/hooks/useChat.ts` (isTitanChatMode branch)
+
+### When To Use
+Use Titan Chat for: general questions, explanations, conversations, analysis, writing. For heavy coding tasks use Phoenix Protocol or Titan Protocol.
 
 ---
 

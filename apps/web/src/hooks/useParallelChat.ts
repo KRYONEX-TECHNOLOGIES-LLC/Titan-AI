@@ -90,7 +90,7 @@ export function useParallelChat({
   ) => {
     setSessions(prev => prev.map(s => {
       if (s.id !== sessionId) return s;
-      return { ...s, messages: s.messages.map(m => m.id === messageId ? updater(m) : m) };
+      return { ...s, messages: (s.messages || []).map(m => m.id === messageId ? updater(m) : m) };
     }));
   }, [setSessions]);
 
@@ -122,7 +122,7 @@ export function useParallelChat({
 
     setSessions(prev => prev.map(s =>
       s.id === sessionId
-        ? { ...s, messages: [...s.messages, userMessage, assistantMessage] }
+        ? { ...s, messages: [...(s.messages || []), userMessage, assistantMessage] }
         : s
     ));
 
@@ -364,7 +364,7 @@ export function useParallelChat({
 
     setSessions(prev => prev.map(s => ({
       ...s,
-      messages: s.messages.map(m =>
+      messages: (s.messages || []).map(m =>
         m.streaming ? { ...m, streaming: false, content: (m.content || '') + '\n\n**Stopped.**' } : m
       ),
     })));
