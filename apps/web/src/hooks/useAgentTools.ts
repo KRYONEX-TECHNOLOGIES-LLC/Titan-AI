@@ -401,16 +401,29 @@ export function useAgentTools({ onTerminalCommand, onFileEdited, onFileCreated, 
         case 'web_search': {
           const query = args.query as string;
           if (!query) return setLast({ success: false, output: '', error: 'query is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
-          const results = await api.web.search(query);
-          const output = results.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n\n');
-          return setLast({ success: true, output: output || 'No results found', metadata: { count: results.length }, meta: { ...baseMeta, durationMs: Date.now() - start } });
+          let searchResults: Array<{ title: string; url: string; snippet: string }>;
+          if (api?.web?.search) {
+            searchResults = await api.web.search(query);
+          } else {
+            const res = await fetch('/api/web/search', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query }) });
+            const json = await res.json();
+            searchResults = json.results ?? [];
+          }
+          const output = searchResults.map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`).join('\n\n');
+          return setLast({ success: true, output: output || 'No results found', metadata: { count: searchResults.length }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'web_fetch': {
           const url = args.url as string;
           if (!url) return setLast({ success: false, output: '', error: 'url is required', meta: { ...baseMeta, durationMs: Date.now() - start } });
-          const data = await api.web.fetch(url);
-          return setLast({ success: true, output: data.content.slice(0, 30000), metadata: { title: data.title }, meta: { ...baseMeta, durationMs: Date.now() - start } });
+          let fetchData: { content: string; title: string };
+          if (api?.web?.fetch) {
+            fetchData = await api.web.fetch(url);
+          } else {
+            const res = await fetch('/api/web/fetch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+            fetchData = await res.json();
+          }
+          return setLast({ success: true, output: (fetchData.content ?? '').slice(0, 30000), metadata: { title: fetchData.title }, meta: { ...baseMeta, durationMs: Date.now() - start } });
         }
 
         case 'read_lints': {

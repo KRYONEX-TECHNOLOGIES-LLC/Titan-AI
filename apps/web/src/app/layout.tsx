@@ -5,6 +5,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import TitanSessionProvider from '@/providers/session-provider';
+import { RootErrorBoundary } from '@/components/error-boundary';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -110,9 +111,11 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: hydrationGuardScript }}
         />
         <div id="titan-root" suppressHydrationWarning>
-          <TitanSessionProvider>
-            {children}
-          </TitanSessionProvider>
+          <RootErrorBoundary>
+            <TitanSessionProvider>
+              {children}
+            </TitanSessionProvider>
+          </RootErrorBoundary>
         </div>
       </body>
     </html>

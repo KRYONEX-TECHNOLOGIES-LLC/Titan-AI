@@ -141,7 +141,7 @@ function isPortInUse(port: number): Promise<boolean> {
 }
 
 async function startNextJsServer(port: number): Promise<void> {
-  const isDev = process.env.NODE_ENV !== 'production';
+  const isDev = !app.isPackaged;
 
   let command: string;
   let args: string[];
@@ -284,10 +284,25 @@ const LOADING_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTY
 app.whenReady().then(async () => {
   const portInUse = await isPortInUse(DESKTOP_PORT);
   if (portInUse) {
-    console.log(`[Main] Port ${DESKTOP_PORT} is in use. Assuming web server is already running.`);
-  } else {
-    await startNextJsServer(DESKTOP_PORT);
+    // Kill orphaned servers from a previous crashed instance so we always boot a fresh one
+    console.log(`[Main] Port ${DESKTOP_PORT} in use — killing stale process...`);
+    try {
+      const { execSync } = await import('child_process');
+      if (process.platform === 'win32') {
+        const out = execSync(`netstat -ano | findstr :${DESKTOP_PORT}`, { encoding: 'utf8', timeout: 5000 });
+        const pids = [...new Set(out.split('\n').map(l => l.trim().split(/\s+/).pop()).filter(Boolean))];
+        for (const pid of pids) {
+          try { execSync(`taskkill /F /PID ${pid}`, { timeout: 3000 }); } catch { /* already gone */ }
+        }
+      } else {
+        execSync(`lsof -ti :${DESKTOP_PORT} | xargs kill -9`, { timeout: 5000 });
+      }
+      await new Promise(r => setTimeout(r, 500));
+    } catch {
+      console.log('[Main] Could not kill stale process — proceeding anyway.');
+    }
   }
+  await startNextJsServer(DESKTOP_PORT);
 
   const windowState = restoreWindowState(store);
   mainWindow = createMainWindow(windowState);
@@ -313,6 +328,24 @@ app.whenReady().then(async () => {
     return { action: 'deny' };
   });
 
+  // DevTools shortcut — F12 or Ctrl+Shift+I even in production
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+      mainWindow?.webContents.toggleDevTools();
+    }
+  });
+
+  // Forward renderer console output to main-process stdout for diagnostics
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const tag = ['LOG', 'WARN', 'ERR'][level] || 'LOG';
+    console.log(`[Renderer:${tag}] ${message}  (${sourceId}:${line})`);
+  });
+
+  // Catch navigation failures so the user never stares at a blank screen
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Main] did-fail-load: ${errorCode} ${errorDescription} at ${validatedURL}`);
+  });
+
   registerIpcHandlers(mainWindow);
 
   protocol.registerFileProtocol('file', (request, callback) => {
@@ -329,7 +362,7 @@ app.whenReady().then(async () => {
   createAppMenu(mainWindow);
 
   // Wait for the Next.js server to be ready before navigating to it
-  const appUrl = `http://127.0.0.1:${DESKTOP_PORT}`;
+  const appUrl = `http://127.0.0.1:${DESKTOP_PORT}/editor`;
   try {
     console.log('[Main] Waiting for Next.js server to be ready...');
     await waitForServer(DESKTOP_PORT, 20000);
@@ -356,7 +389,27 @@ app.whenReady().then(async () => {
         }
       }
     }
-    console.error('[Main] All loadURL attempts failed.');
+    console.error('[Main] All loadURL attempts failed — showing diagnostic page.');
+    if (mainWindow) {
+      const errPage = `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a0a;display:flex;flex-direction:column;align-items:center;justify-content:center;
+     height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#e0e0e0;padding:2rem}
+h1{color:#ef4444;margin-bottom:1rem;font-size:1.5rem}
+p{max-width:480px;text-align:center;line-height:1.6;margin-bottom:.5rem;font-size:.9rem;color:#999}
+code{background:#1e1e1e;padding:2px 6px;border-radius:4px;font-size:.85rem}
+.btn{margin-top:1.5rem;padding:.6rem 1.4rem;border:1px solid #333;border-radius:6px;background:#111;color:#fff;
+     cursor:pointer;font-size:.85rem;-webkit-app-region:no-drag}
+.btn:hover{background:#222}
+</style></head><body>
+<h1>Titan could not start</h1>
+<p>The built-in web server did not respond on <code>127.0.0.1:${DESKTOP_PORT}</code>.</p>
+<p>Try closing any other Titan instances and restarting. Press <code>F12</code> to open DevTools for more detail.</p>
+<button class="btn" onclick="location.reload()">Retry</button>
+</body></html>`)}`;
+      mainWindow.loadURL(errPage).catch(() => {});
+    }
   };
 
   await loadWithRetry();

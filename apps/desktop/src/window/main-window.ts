@@ -57,7 +57,7 @@ export function createMainWindow(state: WindowState): BrowserWindow {
     win.show();
   });
 
-  if (process.env.NODE_ENV === 'development') {
+  if (!app.isPackaged) {
     win.webContents.openDevTools({ mode: 'detach' });
   }
 
