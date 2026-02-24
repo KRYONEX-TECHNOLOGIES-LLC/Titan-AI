@@ -32,7 +32,7 @@ export function useSessions(mounted: boolean) {
         time: s.time,
         messages: (s.messages || []).slice(-MAX_PERSISTED_MESSAGES).map(m => ({
           ...m,
-          content: m.content.length > MAX_MESSAGE_LENGTH ? m.content.slice(0, MAX_MESSAGE_LENGTH) + '\n\n…(truncated)' : m.content,
+          content: (m.content || '').length > MAX_MESSAGE_LENGTH ? (m.content || '').slice(0, MAX_MESSAGE_LENGTH) + '\n\n…(truncated)' : (m.content || ''),
           thinking: undefined,
           streaming: false,
         })),

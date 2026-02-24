@@ -1158,6 +1158,14 @@ export function useChat({
     activeSessionId,
   });
 
+  const setChatInputWithRef = useCallback((v: string | ((prev: string) => string)) => {
+    setChatInput(prev => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      chatInputRef.current = next;
+      return next;
+    });
+  }, []);
+
   const isPhoenixMode = activeModel === 'titan-phoenix-protocol';
   const isParallelMode = activeModel === 'titan-protocol-v2';
   const isSupremeMode = activeModel === 'titan-supreme-protocol';
@@ -1237,14 +1245,6 @@ export function useChat({
       ...sharedProps,
     };
   }
-
-  const setChatInputWithRef = useCallback((v: string | ((prev: string) => string)) => {
-    setChatInput(prev => {
-      const next = typeof v === 'function' ? v(prev) : v;
-      chatInputRef.current = next;
-      return next;
-    });
-  }, []);
 
   return {
     chatInput,

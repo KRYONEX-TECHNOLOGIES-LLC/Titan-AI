@@ -58,7 +58,7 @@ function LaneCard({ lane }: { lane: LaneSummary }) {
 
       <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: '#9ca3af' }}>
         <span>{elapsed}s</span>
-        {lane.files_touched.length > 0 && (
+        {(lane.files_touched || []).length > 0 && (
           <span>{lane.files_touched.length} file{lane.files_touched.length !== 1 ? 's' : ''}</span>
         )}
         {lane.failure_count > 0 && (
@@ -73,15 +73,15 @@ function LaneCard({ lane }: { lane: LaneSummary }) {
         )}
       </div>
 
-      {lane.files_touched.length > 0 && (
+      {(lane.files_touched || []).length > 0 && (
         <div style={{ marginTop: '4px', fontSize: '10px', color: '#6b7280' }}>
-          {lane.files_touched.slice(0, 3).map((f, i) => (
+          {(lane.files_touched || []).slice(0, 3).map((f, i) => (
             <div key={i} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {f}
             </div>
           ))}
-          {lane.files_touched.length > 3 && (
-            <div>+{lane.files_touched.length - 3} more</div>
+          {(lane.files_touched || []).length > 3 && (
+            <div>+{(lane.files_touched || []).length - 3} more</div>
           )}
         </div>
       )}
@@ -259,12 +259,12 @@ export default function LanePanel() {
       </div>
 
       {/* DAG Visualization */}
-      {activeManifest && activeManifest.nodes.length > 0 && (
+      {activeManifest && (activeManifest.nodes || []).length > 0 && (
         <div style={{ marginBottom: '12px' }}>
           <div style={{ fontSize: '11px', fontWeight: 600, color: '#9ca3af', marginBottom: '4px' }}>
-            Task DAG ({activeManifest.nodes.length} nodes)
+            Task DAG ({(activeManifest.nodes || []).length} nodes)
           </div>
-          <DAGMini nodes={activeManifest.nodes} />
+          <DAGMini nodes={activeManifest.nodes || []} />
         </div>
       )}
 
