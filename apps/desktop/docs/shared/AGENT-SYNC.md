@@ -718,3 +718,125 @@ If any box is not checked → you have an incomplete release. Fix it before tell
 - `apps/web/src/stores/layout-store.ts` — Added 'forge' sidebar view
 - `apps/web/src/components/titan-ide.tsx` — Added ForgeIcon + ForgeDashboard panel
 
+---
+
+## TITAN FORGE — COMPLETE SYSTEM REFERENCE
+
+### What It Is
+Titan Forge is a knowledge distillation engine inside the Titan AI monorepo. It has TWO data pipelines:
+1. **Distillation Collector** — passively captures high-value outputs from frontier models (Claude Opus, GPT-5, etc.) when users chat in Titan. Scores them 0-10 via the Quality Gate. Only score >= 7 gets exported for training.
+2. **Harvester (Scraper Army)** — actively scrapes 10 public sources for training data. Filters through a 5-pass pipeline. Stores in Supabase.
+
+### Architecture
+```
+packages/forge/             ← The distillation engine package
+├── src/
+│   ├── index.ts            ← Barrel exports
+│   ├── types.ts            ← All TypeScript interfaces (ForgeSample, HarvestSample, etc.)
+│   ├── db.ts               ← Supabase client (insertSample, insertHarvest, getStats, etc.)
+│   ├── collector.ts        ← Intercepts chat responses from route.ts (passive distillation)
+│   ├── quality-gate.ts     ← Scores samples 0-10 based on build/lint/user signals
+│   ├── signals.ts          ← Detects user acceptance/rejection signals
+│   ├── exporter.ts         ← Exports to ShareGPT JSON / OpenAI JSONL for training
+│   ├── eval.ts             ← Benchmark harness (student vs teacher models)
+│   ├── vault.ts            ← Automated backup system
+│   ├── harvester.ts        ← 10 web scraper adapters (GitHub, SO, Reddit, etc.)
+│   ├── harvester-filter.ts ← 5-pass filter pipeline (rules → AI detect → quality → format → dedup)
+│   ├── harvester-datasets.ts ← HuggingFace public dataset sampler (FineWeb, StarCoder, Pile, CodeSearchNet)
+│   ├── ai-content-detector.ts ← Two-layer AI content detection (heuristic + LLM judge)
+│   └── cli/
+│       ├── harvest.ts      ← CLI: pnpm --filter @titan/forge run harvest
+│       └── backup.ts       ← CLI: pnpm --filter @titan/forge run backup
+├── trainer/
+│   ├── axolotl-config.yml  ← QLoRA training configuration
+│   └── train.sh            ← Training launch script
+├── package.json            ← @titan/forge package (build script uses tsup)
+└── tsconfig.json
+```
+
+### The 10 Scraper Sources (Harvester Army)
+| # | Source | API Used | What It Gets |
+|---|--------|----------|-------------|
+| 1 | GitHub | GitHub REST API | README files from top-starred repos |
+| 2 | StackOverflow | StackExchange API | High-vote Q&A pairs with accepted answers |
+| 3 | Official Docs | GitHub raw files | React, Next.js, TypeScript handbook pages |
+| 4 | Blogs | RSS feeds | Engineering blogs (Vercel, Netflix, Uber) — often blocked |
+| 5 | HF Datasets | HuggingFace Datasets API | FineWeb-Edu, StarCoder, The Pile, CodeSearchNet |
+| 6 | Reddit | Reddit JSON API | Top posts from programming subreddits |
+| 7 | Dev.to | Dev.to API | Popular tech articles with full markdown |
+| 8 | MDN Web Docs | GitHub raw (mdn/content) | Gold-standard JS/CSS/Web API documentation |
+| 9 | Wikipedia | Wikipedia REST API | CS/programming theory articles |
+| 10 | Hacker News | Firebase API | Top stories + technical comment threads |
+
+### 5-Pass Filter Pipeline (harvester-filter.ts)
+1. **Rule filter** — removes junk (cookie banners, SEO spam, too short/long)
+2. **AI content detector** — SOFT PENALTY (not hard reject). AI-detected content gets -3 quality penalty. High-quality AI content can still pass if overall score is high enough.
+3. **AI quality judge** — Gemini Flash scores content 0-10. AI penalty applied here. Only score >= 6 passes.
+4. **Format converter** — Converts raw content to instruction/response pairs
+5. **Dedup** — SHA256 hash check against existing DB entries
+
+### Database (Supabase PostgreSQL)
+Tables:
+- `forge_samples` — Distillation data (captured from Titan chat sessions)
+- `forge_runs` — Training run metadata
+- `forge_evals` — Benchmark results (student vs teacher)
+- `forge_harvest` — Scraped web data (from harvester)
+- `forge_harvest_batches` — Batch metadata per harvest run
+
+### How to Run Harvests
+
+**From CLI (manual):**
+```bash
+cd packages/forge
+# Build first (only needed after code changes):
+pnpm build
+# Dry run (no DB writes):
+node dist/cli/harvest.js --source github --topic "typescript" --limit 5 --dry-run
+# Real harvest:
+node dist/cli/harvest.js --source stackoverflow --topic "javascript" --limit 30
+# Check stats:
+node dist/cli/harvest.js --stats
+# Valid sources: all, github, stackoverflow, docs, blog, dataset, reddit, devto, mdn, wikipedia, hackernews
+```
+
+**From Titan UI (manual):**
+- Click the Forge icon (anvil/layers) in the sidebar
+- Pick source from dropdown (10 options)
+- Set topic and limit
+- Click "Start Harvest"
+
+**Automated (GitHub Actions):**
+- `.github/workflows/forge-harvest.yml` runs daily at 2 AM UTC
+- Rotates through all 10 sources on a 10-day cycle
+- Free on public repos (uses GitHub-hosted runners)
+- Needs these GitHub repo secrets: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `GITHUB_TOKEN`, `HF_API_TOKEN`
+
+### How to Add a New Scraper Source
+1. Add the source name to `HarvestSource` type in `packages/forge/src/types.ts`
+2. Add a rate limit entry in `RATE_LIMIT_MS` in `packages/forge/src/harvester.ts`
+3. Write the `async function scrapeNewSource(topic, limit): Promise<ScrapedItem[]>` function
+4. Wire it into the `harvest()` method with `if (source === 'all' || source === 'newsource')`
+5. Add a format case in `pass3_formatConverter` in `harvester-filter.ts`
+6. Add it to the CLI valid sources in `packages/forge/src/cli/harvest.ts`
+7. Add it to the dashboard dropdown in `apps/web/src/components/ide/ForgeDashboard.tsx`
+8. Add it to the GitHub Actions schedule in `.github/workflows/forge-harvest.yml`
+9. Rebuild: `pnpm --filter @titan/forge build`
+
+### How to Stop/Start
+- **Harvester**: It's a one-shot CLI command. It runs, scrapes, filters, saves, exits. No daemon to stop.
+- **Automated harvests**: Disable by removing the schedule in `.github/workflows/forge-harvest.yml`
+- **Distillation collector**: Always-on in `route.ts`. It's a fire-and-forget async call. To disable, comment out the `forgeCollector.capture(...)` call in `apps/web/src/app/api/chat/continue/route.ts`.
+
+### Environment Variables Needed
+- `OPENROUTER_API_KEY` — For the AI quality judge (Gemini Flash, ~$0.001/item)
+- `NEXT_PUBLIC_SUPABASE_URL` — Supabase project URL
+- `SUPABASE_SERVICE_ROLE_KEY` — Supabase service role key (server-side only)
+- `GITHUB_TOKEN` — For GitHub API (higher rate limits)
+- `HF_API_TOKEN` — For gated HuggingFace datasets (StarCoder, The Pile, etc.)
+
+### Current Data Stats (as of v0.3.10)
+- 149+ items in `forge_harvest` table
+- Sources: GitHub (23), StackOverflow (104), Docs (3), Reddit (4), Dev.to (9), MDN (6)
+- AI content detector uses soft penalty (-3 score), not hard reject
+- HuggingFace token configured for gated dataset access
+
