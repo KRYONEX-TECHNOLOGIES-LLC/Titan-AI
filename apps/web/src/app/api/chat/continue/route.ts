@@ -117,7 +117,7 @@ const TOOL_DEFINITIONS = [
     type: 'function' as const,
     function: {
       name: 'run_command',
-      description: 'Execute a shell command in the workspace directory (PowerShell on Windows, bash on macOS/Linux). Use for: npm/yarn/pnpm, git, build tools, linters, test runners. NEVER use Start-Process, start cmd, or any command that opens new windows. Run commands directly. If a command fails twice, stop retrying.',
+      description: 'Execute a shell command in the workspace directory. You can use standard bash-style syntax even on Windows — brace expansion ({a,b,c}), mkdir -p, touch, &&, cat, rm -rf, cp -r are all automatically converted to PowerShell equivalents. Use for: npm/yarn/pnpm, git, build tools, linters, test runners. NEVER use Start-Process, start cmd, or any command that opens new windows. Run commands directly. If a command fails twice, stop retrying.',
       parameters: {
         type: 'object',
         properties: {
@@ -430,7 +430,13 @@ TOOL: glob_search
 TOOL: run_command
   Purpose: Execute a shell command -- install packages, run builds, run tests, git operations, start servers.
   When to use: After creating/editing files to verify they work. For git, package management, starting servers.
-  Tips: On Windows, commands run in PowerShell. Chain with ";" (not "&&"). On macOS/Linux, use standard bash.
+  Tips: You can use standard bash-style commands even on Windows. The system automatically converts:
+    - Brace expansion: mkdir -p src/{components,pages,utils} works correctly
+    - mkdir -p → New-Item -ItemType Directory -Force
+    - touch → New-Item -ItemType File -Force
+    - && → ; (sequential execution)
+    - cat → Get-Content, rm -rf → Remove-Item -Recurse -Force, cp -r → Copy-Item -Recurse
+    Just write bash-style commands naturally and they will work on any platform.
   SERVER COMMANDS: When starting a server (python app.py, npm start, npx vite, etc.), the system will detect it,
   wait for startup output, and return automatically while keeping the server running in the background.
   Just run the command directly -- it handles long-running processes automatically. Do NOT add & or nohup.

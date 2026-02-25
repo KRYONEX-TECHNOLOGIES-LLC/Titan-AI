@@ -40,6 +40,66 @@ function isCommandSafe(command: string): boolean {
   return !DANGEROUS_PATTERNS.some(p => p.test(command));
 }
 
+/**
+ * Expand bash-style brace expressions for Windows compatibility.
+ * e.g. "mkdir -p src/{components,pages,utils}" →
+ *      "mkdir -p src/components src/pages src/utils"
+ * Also converts `mkdir -p` to `New-Item -ItemType Directory -Force -Path` on Windows.
+ */
+function expandBraces(cmd: string): string {
+  let result = cmd;
+
+  // Expand brace patterns: prefix{a,b,c}suffix → prefixa suffix prefixb suffix prefixcsuffix
+  const braceRegex = /([^\s{]*)\{([^}]+)\}([^\s}]*)/g;
+  let match;
+  while ((match = braceRegex.exec(result)) !== null) {
+    const prefix = match[1];
+    const items = match[2].split(',').map(s => s.trim());
+    const suffix = match[3];
+    const expanded = items.map(item => `${prefix}${item}${suffix}`).join(' ');
+    result = result.slice(0, match.index) + expanded + result.slice(match.index + match[0].length);
+    braceRegex.lastIndex = 0;
+  }
+
+  // Convert `mkdir -p` to PowerShell equivalent
+  result = result.replace(
+    /mkdir\s+-p\s+(.+)/,
+    (_, paths) => {
+      const dirs = paths.trim().split(/\s+/);
+      return dirs.map((d: string) => `New-Item -ItemType Directory -Force -Path "${d}"`).join('; ');
+    }
+  );
+
+  // Convert `touch` to PowerShell equivalent
+  result = result.replace(
+    /\btouch\s+(.+)/,
+    (_, files) => {
+      const fileList = files.trim().split(/\s+/);
+      return fileList.map((f: string) => `New-Item -ItemType File -Force -Path "${f}"`).join('; ');
+    }
+  );
+
+  // Convert `&&` to `;` for PowerShell
+  result = result.replace(/\s*&&\s*/g, '; ');
+
+  // Convert `cat` to `Get-Content`
+  result = result.replace(/\bcat\s+/g, 'Get-Content ');
+
+  // Convert `ls` (standalone) to `Get-ChildItem`
+  result = result.replace(/\bls\b(?!\s+-)/g, 'Get-ChildItem');
+
+  // Convert `rm -rf` to `Remove-Item -Recurse -Force`
+  result = result.replace(/\brm\s+-rf?\s+/g, 'Remove-Item -Recurse -Force ');
+
+  // Convert `cp -r` to `Copy-Item -Recurse`
+  result = result.replace(/\bcp\s+-r\s+/g, 'Copy-Item -Recurse ');
+
+  // Convert `mv` to `Move-Item`
+  result = result.replace(/\bmv\s+/g, 'Move-Item ');
+
+  return result;
+}
+
 async function executeTool(call: ToolCall): Promise<ToolResult> {
   const workspace = call.workspacePath || process.cwd();
 
@@ -162,7 +222,7 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
     }
 
     case 'run_command': {
-      const command = call.args.command as string;
+      let command = call.args.command as string;
       const cwd = call.args.cwd as string;
 
       if (!command) return { success: false, output: '', error: 'command is required' };
@@ -173,16 +233,30 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
         return { success: false, output: '', error: 'Working directory must be within workspace' };
       }
 
+      const isWin = process.platform === 'win32';
+
+      // Expand bash-style brace expansion on Windows (e.g. mkdir -p src/{a,b,c})
+      if (isWin) {
+        command = expandBraces(command);
+      }
+
       try {
         const timeout = (call.args.timeout as number) || 30000;
-        const result = execSync(command, {
+        const shellOpts: Record<string, unknown> = {
           cwd: execDir,
           encoding: 'utf-8',
           timeout,
           maxBuffer: 2 * 1024 * 1024,
           env: { ...process.env, FORCE_COLOR: '0' },
-        });
-        return { success: true, output: result.slice(0, 15000) };
+        };
+
+        if (isWin) {
+          shellOpts.shell = 'powershell.exe';
+          command = `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; ${command}`;
+        }
+
+        const result = execSync(command, shellOpts as Parameters<typeof execSync>[1]);
+        return { success: true, output: (result as string).slice(0, 15000) };
       } catch (e: any) {
         const stdout = e.stdout?.toString() || '';
         const stderr = e.stderr?.toString() || '';

@@ -47,6 +47,58 @@ function resolveWindowsShell(): { shellPath: string; isPowerShell: boolean } {
   return { shellPath: cmd, isPowerShell: false };
 }
 
+/**
+ * Adapt bash-style commands for Windows/PowerShell compatibility.
+ * Handles brace expansion, mkdir -p, touch, &&, and common Unix utilities.
+ */
+function adaptCommandForWindows(cmd: string): string {
+  let result = cmd;
+
+  // Expand brace patterns: prefix{a,b,c}suffix → prefixa prefixb prefixc
+  const braceRegex = /([^\s{]*)\{([^}]+)\}([^\s}]*)/g;
+  let match;
+  while ((match = braceRegex.exec(result)) !== null) {
+    const prefix = match[1];
+    const items = match[2].split(',').map((s: string) => s.trim());
+    const suffix = match[3];
+    const expanded = items.map((item: string) => `${prefix}${item}${suffix}`).join(' ');
+    result = result.slice(0, match.index) + expanded + result.slice(match.index + match[0].length);
+    braceRegex.lastIndex = 0;
+  }
+
+  // Convert `mkdir -p` to PowerShell equivalent
+  result = result.replace(
+    /mkdir\s+-p\s+(.+?)(?=;|$)/g,
+    (_, paths) => {
+      const dirs = paths.trim().split(/\s+/);
+      return dirs.map((d: string) => `New-Item -ItemType Directory -Force -Path "${d}"`).join('; ');
+    }
+  );
+
+  // Convert `touch` to PowerShell equivalent
+  result = result.replace(
+    /\btouch\s+(.+?)(?=;|$)/g,
+    (_, files) => {
+      const fileList = files.trim().split(/\s+/);
+      return fileList.map((f: string) => `New-Item -ItemType File -Force -Path "${f}"`).join('; ');
+    }
+  );
+
+  // Convert `&&` to `;` for PowerShell
+  result = result.replace(/\s*&&\s*/g, '; ');
+
+  // Convert `cat` to `Get-Content`
+  result = result.replace(/\bcat\s+/g, 'Get-Content ');
+
+  // Convert `rm -rf` to `Remove-Item -Recurse -Force`
+  result = result.replace(/\brm\s+-rf?\s+/g, 'Remove-Item -Recurse -Force ');
+
+  // Convert `cp -r` to `Copy-Item -Recurse`
+  result = result.replace(/\bcp\s+-r\s+/g, 'Copy-Item -Recurse ');
+
+  return result;
+}
+
 export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): void {
 
   ipcMain.handle('tools:readFile', async (_e, filePath: string, opts?: { lineOffset?: number; lineLimit?: number }) => {
@@ -188,16 +240,21 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
     const isServer = looksLikeServer(command);
     const timeout = isServer ? 15000 : 120000;
 
+    let cmd = command;
+    if (isWindows) {
+      cmd = adaptCommandForWindows(cmd);
+    }
+
     if (win && !win.isDestroyed()) {
-      try { win.webContents.send('tools:commandStarted', { command, cwd: resolved }); } catch {}
+      try { win.webContents.send('tools:commandStarted', { command: cmd, cwd: resolved }); } catch {}
     }
 
     return new Promise((resolve) => {
       const args = isWindows
         ? isPowerShell
-          ? ['-NoProfile', '-NonInteractive', '-Command', command]
-          : ['/d', '/s', '/c', command]
-        : ['-c', command];
+          ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', cmd]
+          : ['/d', '/s', '/c', cmd]
+        : ['-c', cmd];
 
       const proc = spawn(shellPath, args, {
         cwd: resolved,
