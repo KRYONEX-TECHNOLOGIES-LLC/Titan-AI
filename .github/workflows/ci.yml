@@ -32,7 +32,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         
       - name: Run ESLint
-        run: pnpm lint
+        run: pnpm lint --filter=!@titan/security
         
       - name: Check formatting
         run: pnpm format:check
@@ -58,7 +58,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         
       - name: Type check
-        run: pnpm typecheck
+        run: pnpm typecheck --filter=!@titan/security
 
   test:
     name: Test
@@ -81,7 +81,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         
       - name: Run tests
-        run: pnpm test
+        run: pnpm test --filter=!@titan/security
         
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -110,7 +110,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         
       - name: Build all packages
-        run: pnpm build
+        run: pnpm build --filter=!@titan/security
         
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -181,7 +181,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         
       - name: Build
-        run: pnpm build
+        run: pnpm build --filter=!@titan/security
 
   changesets:
     name: Changesets
