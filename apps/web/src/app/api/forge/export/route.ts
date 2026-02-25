@@ -15,7 +15,13 @@ export async function POST(request: NextRequest) {
     ForgeExporter = forge.ForgeExporter;
     ForgeDB = forge.ForgeDB;
   } catch {
-    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+    try {
+      const forge = require('@titan/forge');
+      ForgeExporter = forge.ForgeExporter;
+      ForgeDB = forge.ForgeDB;
+    } catch {
+      return NextResponse.json({ error: 'Forge module failed to load. Ensure packages/forge is built.' }, { status: 503 });
+    }
   }
 
   try {

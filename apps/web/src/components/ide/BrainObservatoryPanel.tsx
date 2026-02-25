@@ -30,9 +30,11 @@ export default function BrainObservatoryPanel() {
   const [selected, setSelected] = useState<Sample | null>(null);
   const [source, setSource] = useState('all');
   const [topic, setTopic] = useState('');
-  const [limit, setLimit] = useState(20);
-  const [harvestState, setHarvestState] = useState('Idle');
-  const [parallelMode, setParallelMode] = useState(false);
+  const [limit, setLimit] = useState(100);
+  const [harvestState, setHarvestState] = useState<'idle' | 'running' | 'error' | 'complete'>('idle');
+  const [harvestMessage, setHarvestMessage] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const harvestAbortRef = useRef<AbortController | null>(null);
   const [feedLines, setFeedLines] = useState<Array<{ ts: string; text: string; level?: 'info' | 'warn' | 'error' | 'success' }>>([]);
   const [destination, setDestination] = useState('local');
   const [prepareStatus, setPrepareStatus] = useState('');
@@ -98,9 +100,11 @@ export default function BrainObservatoryPanel() {
     return Math.max(0, totalHighValue - totalExported);
   }, [stats]);
 
-  const startHarvest = async (scaleMode = false) => {
-    const useParallel = scaleMode || parallelMode;
-    setHarvestState(useParallel ? 'Parallel harvesting (4 workers)...' : 'Harvesting...');
+  const startHarvest = async () => {
+    const abort = new AbortController();
+    harvestAbortRef.current = abort;
+    setHarvestState('running');
+    setHarvestMessage('Launching 100 parallel workers across all sources...');
     try {
       const res = await fetch('/api/forge/harvest', {
         method: 'POST',
@@ -108,25 +112,41 @@ export default function BrainObservatoryPanel() {
         body: JSON.stringify({
           source,
           topic: topic || 'all',
-          limit: scaleMode ? 100 : limit,
-          parallel: useParallel,
-          workerCount: 4,
+          limit,
+          parallel: true,
+          workerCount: 100,
         }),
+        signal: abort.signal,
       });
       const data = await res.json();
       if (!res.ok) {
-        setHarvestState(`Error: ${data?.error || res.statusText}`);
+        setHarvestState('error');
+        setHarvestMessage(data?.error || res.statusText);
         return;
       }
       const parts = [`${data.saved || 0} saved`];
       if (data.evolved) parts.push(`${data.evolved} evolved`);
       if (data.near_duplicates) parts.push(`${data.near_duplicates} near-dups removed`);
       if (data.elapsed) parts.push(`${data.elapsed}s`);
-      setHarvestState(`Complete — ${parts.join(' · ')}`);
+      setHarvestState('complete');
+      setHarvestMessage(parts.join(' · '));
       await loadData();
     } catch (err: unknown) {
-      setHarvestState(`Failed: ${err instanceof Error ? err.message : 'network error'}`);
+      if ((err as Error).name === 'AbortError') {
+        setHarvestState('idle');
+        setHarvestMessage('Harvest stopped.');
+      } else {
+        setHarvestState('error');
+        setHarvestMessage(err instanceof Error ? err.message : 'network error');
+      }
     }
+  };
+
+  const stopHarvest = () => {
+    harvestAbortRef.current?.abort();
+    harvestAbortRef.current = null;
+    setHarvestState('idle');
+    setHarvestMessage('Harvest stopped.');
   };
 
   const bulkApprove = async () => {
@@ -260,38 +280,62 @@ export default function BrainObservatoryPanel() {
       </HudCard>
 
       <HudCard title="Harvest Control Center" tone="amber">
-        <div className="grid grid-cols-3 gap-2">
-          <label className="text-[12px] text-slate-300">Source
-            <select className="mt-1 w-full rounded bg-[#0b1120] border border-white/10 px-2 py-1" value={source} onChange={(e) => setSource(e.target.value)}>
-              <option value="all">All (16 sources)</option>
-              <option value="github">GitHub</option>
-              <option value="stackoverflow">StackOverflow</option>
-              <option value="dataset">HuggingFace Datasets</option>
-              <option value="docs">Docs</option>
-              <option value="github-issues">GitHub Issues+PRs</option>
-              <option value="arxiv">ArXiv CS Papers</option>
-              <option value="gitlab">GitLab Repos</option>
-              <option value="npm-docs">npm/PyPI Docs</option>
-              <option value="competitive">Competitive Programming</option>
-            </select>
-          </label>
-          <label className="text-[12px] text-slate-300">Topic
-            <input className="mt-1 w-full rounded bg-[#0b1120] border border-white/10 px-2 py-1" value={topic} onChange={(e) => setTopic(e.target.value)} />
-          </label>
-          <label className="text-[12px] text-slate-300">Limit: {limit}
-            <input className="mt-1 w-full" type="range" min={5} max={500} step={5} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
-          </label>
-        </div>
-        <div className="mt-2">
-          <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer mb-2">
-            <input type="checkbox" checked={parallelMode} onChange={(e) => setParallelMode(e.target.checked)} className="accent-amber-500" />
-            Parallel Mode (4 workers, 10x faster)
-          </label>
-        </div>
-        <div className="mt-1 flex items-center gap-2">
-          <HudButton tone="amber" onClick={() => void startHarvest()}>Start Harvest</HudButton>
-          <HudButton tone="purple" onClick={() => void startHarvest(true)}>Scale Harvest</HudButton>
-          <span className="text-[11px] text-slate-400">{harvestState}</span>
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            {harvestState === 'running' ? (
+              <button
+                onClick={stopHarvest}
+                className="flex-1 py-2.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white text-[13px] font-semibold tracking-wide transition-all flex items-center justify-center gap-2"
+              >
+                <span className="w-2 h-2 rounded-sm bg-white" />
+                Stop Harvest
+              </button>
+            ) : (
+              <button
+                onClick={() => void startHarvest()}
+                className="flex-1 py-2.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-[13px] font-semibold tracking-wide transition-all animate-pulse hover:animate-none flex items-center justify-center gap-2"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><polygon points="5,3 19,12 5,21" /></svg>
+                Start Harvest (100 Workers)
+              </button>
+            )}
+          </div>
+          {harvestMessage && (
+            <div className={`text-[11px] px-2 py-1.5 rounded ${harvestState === 'error' ? 'bg-red-500/15 text-red-300' : harvestState === 'running' ? 'bg-amber-500/15 text-amber-300' : harvestState === 'complete' ? 'bg-emerald-500/15 text-emerald-300' : 'text-slate-400'}`}>
+              {harvestState === 'running' && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse mr-1.5" />}
+              {harvestMessage}
+            </div>
+          )}
+          <div className="text-[10px] text-slate-500 flex items-center justify-between">
+            <span>100 parallel workers | All sources | Topic rotation</span>
+            <button onClick={() => setShowAdvanced(!showAdvanced)} className="text-cyan-400/70 hover:text-cyan-300 underline">
+              {showAdvanced ? 'Hide' : 'Advanced'}
+            </button>
+          </div>
+          {showAdvanced && (
+            <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/5">
+              <label className="text-[11px] text-slate-400">Source
+                <select className="mt-1 w-full rounded bg-[#0b1120] border border-white/10 px-2 py-1 text-[11px]" value={source} onChange={(e) => setSource(e.target.value)}>
+                  <option value="all">All (16 sources)</option>
+                  <option value="github">GitHub</option>
+                  <option value="stackoverflow">StackOverflow</option>
+                  <option value="dataset">HuggingFace Datasets</option>
+                  <option value="docs">Docs</option>
+                  <option value="github-issues">GitHub Issues+PRs</option>
+                  <option value="arxiv">ArXiv CS Papers</option>
+                  <option value="gitlab">GitLab Repos</option>
+                  <option value="npm-docs">npm/PyPI Docs</option>
+                  <option value="competitive">Competitive Programming</option>
+                </select>
+              </label>
+              <label className="text-[11px] text-slate-400">Topic
+                <input className="mt-1 w-full rounded bg-[#0b1120] border border-white/10 px-2 py-1 text-[11px]" value={topic} onChange={(e) => setTopic(e.target.value)} />
+              </label>
+              <label className="text-[11px] text-slate-400">Limit: {limit}
+                <input className="mt-1 w-full" type="range" min={5} max={500} step={5} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+              </label>
+            </div>
+          )}
         </div>
       </HudCard>
 

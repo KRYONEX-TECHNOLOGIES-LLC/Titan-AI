@@ -6,7 +6,9 @@ export async function POST(request: NextRequest) {
     const forge = await import('@titan/forge');
     ForgeDB = forge.ForgeDB;
   } catch {
-    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+    try { ForgeDB = require('@titan/forge').ForgeDB; } catch {
+      return NextResponse.json({ error: 'Forge module failed to load. Ensure packages/forge is built.' }, { status: 503 });
+    }
   }
 
   try {

@@ -7,8 +7,21 @@ export async function POST(request: NextRequest) {
     ForgeHarvester = forge.ForgeHarvester;
     runFilterPipeline = forge.runFilterPipeline;
     runParallelHarvest = forge.runParallelHarvest;
-  } catch {
-    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+  } catch (importErr) {
+    console.error('[api/forge/harvest] Import failed:', (importErr as Error).message, (importErr as Error).stack);
+    try {
+      const forge = require('@titan/forge');
+      ForgeHarvester = forge.ForgeHarvester;
+      runFilterPipeline = forge.runFilterPipeline;
+      runParallelHarvest = forge.runParallelHarvest;
+    } catch (requireErr) {
+      console.error('[api/forge/harvest] require() fallback also failed:', (requireErr as Error).message);
+      return NextResponse.json({
+        error: 'Forge module failed to load. Ensure packages/forge is built (pnpm --filter @titan/forge build).',
+        importError: (importErr as Error).message,
+        requireError: (requireErr as Error).message,
+      }, { status: 503 });
+    }
   }
 
   try {

@@ -1118,7 +1118,80 @@ THE DONE CHECKLIST:
   [ ] Build compiles (if TypeScript was touched)
   [ ] git log shows the commit
   [ ] AGENT-SYNC.md was not violated
-  [ ] If a release: CI build triggered and not immediately failing`;
+  [ ] If a release: CI build triggered and not immediately failing
+
+==========================================================================
+SECTION 18: FORGE HARVESTER AND TRAINING MISSION
+==========================================================================
+
+You have a data harvesting system called the Forge Harvester. Its purpose is to collect
+high-quality coding, reasoning, and instruction-following training data to build the best
+AI coding model on the planet. Here is everything you need to know:
+
+TRAINING PHASES:
+  Phase 1: 10,000 samples → first model fine-tune (coding basics, tool use, reasoning)
+  Phase 2: 50,000 samples → improved model (advanced patterns, multi-file, debugging)
+  Phase 3: 150,000 samples → production model (frontier-level, full-stack mastery)
+
+DATA SOURCES (16+):
+  GitHub repos, StackOverflow, Official Docs (React, Next.js, TypeScript, Python),
+  Tech Blogs (Vercel, Netflix, Uber), Reddit (r/programming, r/webdev), Dev.to,
+  MDN Web Docs, Wikipedia (CS), Hacker News, GitHub Issues+PRs, ArXiv CS papers,
+  GitLab repos, npm/PyPI docs, Competitive Programming (Codeforces),
+  HuggingFace Datasets (FineWeb-Edu, The Stack v2, CodeSearchNet)
+
+QUALITY PIPELINE:
+  5-pass filter: Rule-based → AI content detection → AI quality judge (score 0-10) →
+  Format conversion (raw → instruction/response) → Deduplication (SHA-256 + MinHash)
+  Then Evol-Instruct to upgrade mid-score samples into higher quality.
+
+HOW TO START HARVESTING:
+  CLI (recommended for large runs): pnpm --filter @titan/forge run harvest:continuous
+  Desktop UI: Brain Observatory → Harvest Control Center → Start Harvest (100 Workers)
+  The continuous harvester runs 100 parallel workers with automatic topic rotation.
+
+HOW TO CHECK STATUS:
+  CLI: Check the terminal output for round progress, samples/min, ETA
+  Desktop UI: Brain Observatory polls Supabase every 10s — Knowledge Base counter,
+  Phase progress bars, Source Radar, and Live Data Feed all update in real-time.
+
+WHEN USER SAYS:
+  "start harvesting" / "run the harvester" → Guide them to the Brain Observatory
+    Start Harvest button, or run the CLI command above.
+  "check harvest status" / "how many samples" → Check Brain Observatory stats or
+    query the forge_harvest table count.
+  "prepare training data" → Use the Brain Observatory "Prepare Training Data" button
+    or run pnpm --filter @titan/forge run export.
+  "train the model" → Explain current phase progress, recommend waiting until target
+    is met, then use the Training Lab panel.
+
+ENVIRONMENT VARIABLES NEEDED:
+  NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (for Supabase storage)
+  GITHUB_TOKEN (for GitHub API), OPENROUTER_API_KEY (for AI quality judge)
+
+THE MISSION: Build the #1 coding/reasoning model. Every sample matters. Quality > quantity.
+  When harvesting, prioritize diverse topics and sources for well-rounded training data.
+
+==========================================================================
+SECTION 19: TITAN PLAN SNIPER PROTOCOL
+==========================================================================
+
+When the user selects "Titan Plan Sniper" from the model dropdown, you enter Plan Sniper mode.
+This is a 7-role model orchestra that executes Plan Mode tasks using specialized cheap models:
+
+  SCANNER (Devstral 2, FREE) → Reads entire codebase, maps dependencies
+  ARCHITECT (MiMo-V2, FREE) → Creates task DAG from plan, assigns risk levels
+  CODER (MiniMax M2.1/$0.28 or DeepSeek V3.2/$0.25 for high-risk) → Generates code
+  EXECUTOR (Qwen3 Coder Next, $0.12) → Applies file edits, runs commands
+  SENTINEL (ByteDance Seed 1.6, $0.25) → Verifies each task (lint, typecheck, criteria)
+  JUDGE (Qwen3.5 Plus, $0.40) → Final quality gate, fills common-sense checklist
+
+FLOW: User describes what to build → You generate full task list via bulkAddTasks() →
+  Switch to Plan Mode → Trigger sniper pipeline via /api/titan/sniper →
+  8 parallel worker lanes execute tasks → Real-time status updates in Plan Mode panel
+
+Cost: ~$5-15 for a complete 50-task app (vs $500-1000 with Opus/GPT-5)
+Speed: 50 tasks in 10-20 minutes with 8 parallel lanes`;
 
 
 // ── Build the full system prompt with dynamic context ──
@@ -1442,6 +1515,7 @@ function getCachedOrBuildSystemPrompt(
   selfWorkContext: string,
   isTitanProtocol: boolean,
   isPhoenixProtocol: boolean = false,
+  isPlanSniper: boolean = false,
 ): string {
   const key = sessionId ?? '__nosession__';
   const cached = systemPromptCache.get(key);
@@ -1449,7 +1523,9 @@ function getCachedOrBuildSystemPrompt(
     return cached.prompt;
   }
   let prompt = buildSystemPrompt(body, creatorContext, selfWorkContext);
-  if (isPhoenixProtocol) {
+  if (isPlanSniper) {
+    prompt = `[TITAN PLAN SNIPER MODE ACTIVE — 7-Role Model Orchestra Engaged]\n[SCANNER: Devstral 2 (FREE) | ARCHITECT: MiMo-V2 (FREE) | CODER: MiniMax M2.1 / DeepSeek V3.2 | EXECUTOR: Qwen3 Coder Next | SENTINEL: Seed 1.6 | JUDGE: Qwen3.5 Plus]\n[8 parallel lanes | Plan Mode integration | ~$5-15 per complete app]\nYou are in Plan Sniper mode. Generate a comprehensive task list, then trigger the sniper pipeline.\n\n` + prompt;
+  } else if (isPhoenixProtocol) {
     prompt = `[PHOENIX PROTOCOL MODE ACTIVE — 5-Role Multi-Model Orchestration Engaged]\n[ARCHITECT: DeepSeek V3.2 Speciale | CODER: MiniMax M2.5 (80.2% SWE-Bench) | VERIFIER: DeepSeek V3.2 | SCOUT: Gemini 2.5 Flash | JUDGE: Qwen3.5 397B]\n[Adaptive routing: simple/medium/full pipeline | 3-strike self-healing | Consensus voting]\n\n` + prompt;
   } else if (isTitanProtocol) {
     prompt = `[TITAN PROTOCOL MODE ACTIVE — Full Governance Architecture v2.0 Engaged]\n\n` + prompt;
@@ -1484,6 +1560,7 @@ export async function POST(request: NextRequest) {
   const normalizedModel = normalizeModelId(model);
   const isTitanProtocol = Boolean(body?.titanProtocol);
   const isPhoenixProtocol = normalizedModel === 'titan-phoenix-protocol' || model === 'titan-phoenix-protocol';
+  const isPlanSniper = normalizedModel === 'titan-plan-sniper' || model === 'titan-plan-sniper';
   const modelEntry = MODEL_REGISTRY.find((m: { id: string }) => m.id === normalizedModel);
   const usedRegistryFallback = !modelEntry && !normalizedModel.includes('/');
   const providerModelId = modelEntry?.providerModelId
@@ -1515,6 +1592,7 @@ export async function POST(request: NextRequest) {
       selfWorkContext,
       isTitanProtocol,
       isPhoenixProtocol,
+      isPlanSniper,
     );
     messages = [{ role: 'system', content: systemPrompt }, ...messages];
   }

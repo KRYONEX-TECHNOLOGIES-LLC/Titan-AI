@@ -5,11 +5,17 @@ export async function GET() {
   try {
     const forge = await import('@titan/forge');
     ForgeDB = forge.ForgeDB;
-  } catch {
-    return NextResponse.json({
-      distillation: { total_samples: 0, high_value: 0, exported: 0, by_model: {}, by_outcome: {} },
-      harvest: { total: 0, approved: 0, migrated: 0, rejected: 0, pending: 0, bySource: {}, recentBatches: [] },
-    });
+  } catch (importErr) {
+    console.error('[api/forge/stats] Import failed:', (importErr as Error).message);
+    try {
+      const forge = require('@titan/forge');
+      ForgeDB = forge.ForgeDB;
+    } catch {
+      return NextResponse.json({
+        distillation: { total_samples: 0, high_value: 0, exported: 0, by_model: {}, by_outcome: {} },
+        harvest: { total: 0, approved: 0, migrated: 0, rejected: 0, pending: 0, bySource: {}, recentBatches: [] },
+      });
+    }
   }
 
   try {

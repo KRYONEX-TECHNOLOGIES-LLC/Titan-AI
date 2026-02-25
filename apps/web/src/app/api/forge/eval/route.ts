@@ -8,7 +8,13 @@ export async function POST(request: NextRequest) {
     ForgeEvaluator = forge.ForgeEvaluator;
     ForgeDB = forge.ForgeDB;
   } catch {
-    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+    try {
+      const forge = require('@titan/forge');
+      ForgeEvaluator = forge.ForgeEvaluator;
+      ForgeDB = forge.ForgeDB;
+    } catch {
+      return NextResponse.json({ error: 'Forge module failed to load. Ensure packages/forge is built.' }, { status: 503 });
+    }
   }
 
   try {
