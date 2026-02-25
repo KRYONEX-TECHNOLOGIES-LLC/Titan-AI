@@ -96,17 +96,21 @@ Titan AI/
 - 600px wide panel with "Back to IDE" button
 
 ### Voice Input
-- Speech-to-text via Web Speech API (Chrome/Electron)
-- Auto-send after 2.5s of silence
+- Speech-to-text via Web Speech API (Chrome/Electron) with Whisper fallback
+- Auto-send after 2s of silence
 - Error display with dismissible messages
 - Interim text preview while speaking
 
 ### Alfred (Titan Voice Protocol)
 - 4-role multi-model orchestrator: PERCEIVER (vision), THINKER (reasoning), RESPONDER (conversation), SCANNER (code analysis)
+- **Wake word activation**: Say "Alfred" to activate — responds "Yes sir" and listens for command
+- **Ambient always-on listening**: Runs globally, not just in Alfred panel. Orb indicator in sidebar glows/pulses to show state
+- **Full conversational memory**: Injects persistent memory (preferences, decisions, identity), brain knowledge, and conversation history into every response
 - Text-to-speech via Web Speech API with auto-speak toggle
-- Voice commands: "Titan, start midnight", "Titan, scan the project", "Titan, what's the status?"
-- Proactive thought engine: AI-generated suggestions at human-cognition timing intervals
+- Voice commands: "Alfred, start midnight mode", "Alfred, scan the project", "Alfred, status"
+- Proactive thought engine: AI-generated suggestions with dedup, snooze, and cooldown
 - Persistent brain: Supabase + localStorage for knowledge, skills, ideas, conversations
+- Async parallel data ingestion pipeline for knowledge harvesting
 - Evolution tracking: level system, milestones, growth stats
 - Full system control: can operate Plan Mode, Midnight Mode, Forge, file system
 - Knowledge ingestion: feeds from Forge harvester data into the brain
@@ -122,7 +126,7 @@ Titan AI/
 7. Learned Skills (auto-extracted how-to knowledge)
 
 ### AI Protocols
-- **Alfred (Titan Voice)**: 4-role voice companion (PERCEIVER, THINKER, RESPONDER, SCANNER) with TTS, proactive thoughts, and brain
+- **Alfred (Titan Voice)**: 4-role voice companion with wake word "Alfred", ambient always-on listening, persistent memory, and conversational AI
 - **Titan Plan Sniper**: 7-role multi-model orchestra (Scanner, Architect, Coder, Executor, Sentinel, Judge) using cost-effective models
 - **Phoenix Protocol**: Multi-agent orchestration with parallel workers
 - **Supreme Protocol**: Specialized 3-worker pipeline with oversight
@@ -162,8 +166,10 @@ Titan AI/
 - **Titan Voice protocol**: `apps/web/src/lib/voice/` (TTS, personality, brain, thought engine, vision, commands)
 - **Titan Voice API**: `apps/web/src/app/api/titan/voice/route.ts`
 - **Titan Voice store**: `apps/web/src/stores/titan-voice.store.ts`
+- **Alfred ambient hook**: `apps/web/src/hooks/useAlfredAmbient.ts` (wake word, global listener, memory integration)
 - **Titan Voice chat hook**: `apps/web/src/hooks/useTitanVoiceChat.ts`
-- **Voice input**: `apps/web/src/hooks/useVoiceInput.ts`
+- **Voice input**: `apps/web/src/hooks/useVoiceInput.ts` (Web Speech API + Whisper fallback)
+- **Speech transcription API**: `apps/web/src/app/api/speech/transcribe/route.ts`
 - **Forge harvester**: `packages/forge/src/` (CLI: `harvest.ts`, continuous: `harvest-continuous.ts`)
 - **Brain Observatory**: `apps/web/src/components/ide/BrainObservatoryPanel.tsx`
 - **Desktop IPC tool implementations**: `apps/desktop/src/ipc/tools.ts`

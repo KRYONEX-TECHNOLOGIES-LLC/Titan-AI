@@ -14,6 +14,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { useMidnight } from '@/hooks/useMidnight';
 import { useFileSystem } from '@/hooks/useFileSystem';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { useAlfredAmbient } from '@/hooks/useAlfredAmbient';
 import { useSession } from '@/providers/session-provider';
 import GitHubAuthProvider from '@/providers/github-auth-provider';
 
@@ -654,6 +655,11 @@ export default function TitanIDE() {
           <div className="flex-1" />
           <ActivityIcon active={activeView === 'accounts'} onClick={() => handleActivityClick('accounts')} title="Accounts"><AccountIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'settings'} onClick={() => handleActivityClick('settings')} title="Settings"><SettingsGearIcon /></ActivityIcon>
+          {/* Alfred Ambient Indicator */}
+          <AlfredSidebarIndicator
+            state={alfred.alfredState}
+            onClick={() => handleActivityClick('alfred')}
+          />
         </div>
 
         {/* LEFT PANEL */}
@@ -720,7 +726,7 @@ export default function TitanIDE() {
                 onBackToIDE={() => setActiveView('explorer')}
               />
             )}
-            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} />}
+            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} alfred={alfred} />}
             {activeView === 'training-lab' && <TrainingLabPanel />}
             {activeView === 'brain' && <BrainObservatoryPanel />}
             {activeView === 'accounts' && <AccountsPanel />}
@@ -908,6 +914,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
 
   // ═══ Titan Voice (TTS + Proactive Thoughts) ═══
   const titanVoice = useTitanVoice();
+  const alfred = useAlfredAmbient();
   const [activeThought, setActiveThought] = useState<ProactiveThought | null>(null);
 
   useEffect(() => {
@@ -1592,215 +1599,27 @@ function WaveformVisualizer({ active, speaking }: { active: boolean; speaking: b
   );
 }
 
-/* ─── ALFRED GREETINGS ─── */
-const ALFRED_GREETINGS = [
-  "Good to see you, sir. Systems are online and ready. What shall we build today?",
-  "Welcome back, sir. I've been keeping watch. All systems nominal — let's make something great.",
-  "Ah, there you are. I was just reviewing our project status. Ready when you are, sir.",
-  "Sir, good to have you. I've got a few ideas brewing — say the word and I'll share them.",
-  "All systems green, sir. The forge is warm, the codebase is clean. Let's get to work.",
-];
-
-function getTimeBasedGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 6) return "Burning the midnight oil, sir? I'm right here with you. Let's make it count.";
-  if (hour < 12) return "Good morning, sir. Fresh start, fresh opportunities. What's on the agenda?";
-  if (hour < 17) return "Good afternoon, sir. We're making solid progress. What's next?";
-  if (hour < 21) return "Good evening, sir. Still going strong. I'm here whenever you need me.";
-  return "Late session, sir? I never sleep — let's keep pushing.";
-}
-
 /* ─── ALFRED PANEL ─── */
-function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
+function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred: ReturnType<typeof useAlfredAmbient> }) {
   const titanVoice = useTitanVoice();
   const autoListenMode = titanVoice.autoListenMode;
-  const [greetingText, setGreetingText] = useState('');
-  const [hasGreeted, setHasGreeted] = useState(false);
-  const [conversationLog, setConversationLog] = useState<Array<{ role: 'user' | 'alfred'; text: string; time: string }>>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const { alfredState, conversationLog, voice, sendManual } = alfred;
   const logEndRef = useRef<HTMLDivElement>(null);
-  const pendingTranscript = useRef('');
-  const sendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const addToLog = useCallback((role: 'user' | 'alfred', text: string) => {
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    setConversationLog(prev => [...prev.slice(-50), { role, text, time }]);
-  }, []);
 
   // Auto-scroll conversation log
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversationLog]);
 
-  // Process a voice transcript: try voice commands first, then send to Alfred AI
-  const processTranscript = useCallback(async (text: string) => {
-    if (!text.trim() || text.trim().length < 3) return;
-
-    addToLog('user', text);
-    titanVoice.stopSpeaking();
-
-    // Try voice commands first
-    try {
-      const { parseVoiceCommand } = await import('@/lib/voice/voice-commands');
-      const { executeVoiceAction } = await import('@/lib/voice/system-control');
-      const result = parseVoiceCommand(text);
-      if (result.matched) {
-        setIsProcessing(true);
-        const controlResult = await executeVoiceAction(result.action, result.params);
-        addToLog('alfred', controlResult.message);
-        titanVoice.speak(controlResult.message, 8);
-        setIsProcessing(false);
-        return;
-      }
-    } catch { /* voice commands not available */ }
-
-    // Send to Alfred voice API for a real AI response
-    setIsProcessing(true);
-    try {
-      const response = await fetch('/api/titan/voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          conversationHistory: conversationLog.slice(-10).map(c => ({
-            role: c.role === 'user' ? 'user' : 'assistant',
-            content: c.text,
-          })),
-        }),
-      });
-
-      if (!response.ok || !response.body) {
-        addToLog('alfred', 'I had trouble processing that, sir. Could you try again?');
-        titanVoice.speak('I had trouble processing that, sir. Could you try again?', 5);
-        setIsProcessing(false);
-        return;
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let responseText = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split('\n\n');
-        buffer = events.pop() || '';
-
-        for (const evt of events) {
-          const lines = evt.split('\n');
-          let eventType = '';
-          let data = '';
-          for (const line of lines) {
-            if (line.startsWith('event:')) eventType = line.slice(6).trim();
-            if (line.startsWith('data:')) data += line.slice(5).trim();
-          }
-          if (eventType === 'voice_response' && data) {
-            try {
-              const payload = JSON.parse(data) as { content?: string };
-              responseText = payload.content || '';
-            } catch { /* skip */ }
-          }
-        }
-      }
-
-      if (responseText) {
-        addToLog('alfred', responseText);
-        if (titanVoice.autoSpeak) {
-          titanVoice.speak(responseText, 6);
-        }
-      } else {
-        addToLog('alfred', 'Hmm, I didn\'t get a clear response. Let me try again if you repeat that, sir.');
-      }
-    } catch {
-      addToLog('alfred', 'Connection issue, sir. I\'ll be ready when you try again.');
-    }
-    setIsProcessing(false);
-  }, [addToLog, titanVoice, conversationLog]);
-
-  // Voice input handler — accumulates transcript and auto-sends after silence
-  const handleVoiceTranscript = useCallback((text: string) => {
-    pendingTranscript.current += (pendingTranscript.current ? ' ' : '') + text;
-
-    // Clear previous timer
-    if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
-
-    // Auto-send after 2s of silence (no new transcript)
-    sendTimerRef.current = setTimeout(() => {
-      const fullText = pendingTranscript.current.trim();
-      pendingTranscript.current = '';
-      if (fullText.length > 3) {
-        void processTranscript(fullText);
-      }
-    }, 2000);
-  }, [processTranscript]);
-
-  const voice = useVoiceInput(handleVoiceTranscript, {
-    onAutoSend: undefined,
-    autoSendDelayMs: 3000,
-  });
-
-  // Auto-start listening when panel opens if auto mode is on
-  useEffect(() => {
-    if (autoListenMode && voice.isSupported && !voice.isListening) {
-      voice.startListening();
-    }
-    return () => {
-      if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // React to auto-listen mode toggle
-  useEffect(() => {
-    if (autoListenMode && voice.isSupported && !voice.isListening) {
-      voice.startListening();
-    } else if (!autoListenMode && voice.isListening) {
-      voice.stopListening();
-    }
-  }, [autoListenMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Re-start listening after Alfred finishes speaking (in auto mode)
-  useEffect(() => {
-    if (autoListenMode && !titanVoice.isSpeaking && voice.isSupported && !voice.isListening && !isProcessing) {
-      const timer = setTimeout(() => {
-        if (autoListenMode && !voice.isListening) {
-          voice.startListening();
-        }
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [titanVoice.isSpeaking, autoListenMode, isProcessing]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Alfred greeting on first open
-  useEffect(() => {
-    if (hasGreeted) return;
-    setHasGreeted(true);
-
-    const isReturning = localStorage.getItem('alfred-last-visit');
-    localStorage.setItem('alfred-last-visit', new Date().toISOString());
-
-    const greeting = isReturning
-      ? getTimeBasedGreeting()
-      : "Sir, I'm Alfred — your AI companion. I'll be watching over everything: code quality, project health, new ideas. Just speak or type, and I'm on it. Welcome to Titan.";
-
-    setGreetingText(greeting);
-    addToLog('alfred', greeting);
-
-    const timer = setTimeout(() => {
-      titanVoice.speak(greeting, 9);
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, [hasGreeted, titanVoice, addToLog]);
-
   // Manual text input
   const [manualInput, setManualInput] = useState('');
   const handleManualSend = useCallback(() => {
     if (!manualInput.trim()) return;
-    void processTranscript(manualInput.trim());
+    sendManual(manualInput.trim());
     setManualInput('');
-  }, [manualInput, processTranscript]);
+  }, [manualInput, sendManual]);
+
+  const isProcessing = alfredState === 'processing';
 
   return (
     <div className="flex flex-col h-full">
@@ -1817,8 +1636,8 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
           </div>
           <div>
             <span className="text-[13px] font-semibold text-white">Alfred</span>
-            <span className="text-[10px] ml-2" style={{ color: voice.isListening ? '#22d3ee' : isProcessing ? '#f59e0b' : titanVoice.isSpeaking ? '#3b82f6' : '#808080' }}>
-              {voice.isListening ? 'Listening' : isProcessing ? 'Thinking...' : titanVoice.isSpeaking ? 'Speaking' : 'Ready'}
+            <span className="text-[10px] ml-2" style={{ color: alfredState === 'activated' ? '#22d3ee' : alfredState === 'listening' ? '#10b981' : isProcessing ? '#f59e0b' : alfredState === 'speaking' ? '#3b82f6' : '#808080' }}>
+              {alfredState === 'activated' ? 'Activated — listening...' : alfredState === 'listening' ? 'In the air — say "Alfred"' : isProcessing ? 'Thinking...' : alfredState === 'speaking' ? 'Speaking' : 'Ready'}
             </span>
           </div>
         </div>
@@ -1964,6 +1783,71 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ─── ALFRED SIDEBAR INDICATOR ─── */
+function AlfredSidebarIndicator({ state, onClick }: { state: string; onClick: () => void }) {
+  const colors: Record<string, { bg: string; glow: string; ring: string }> = {
+    idle: { bg: '#555', glow: 'transparent', ring: '#555' },
+    listening: { bg: '#10b981', glow: '#10b98130', ring: '#10b981' },
+    activated: { bg: '#22d3ee', glow: '#22d3ee40', ring: '#22d3ee' },
+    processing: { bg: '#f59e0b', glow: '#f59e0b30', ring: '#f59e0b' },
+    speaking: { bg: '#3b82f6', glow: '#3b82f640', ring: '#3b82f6' },
+  };
+  const c = colors[state] || colors.idle!;
+  const isActive = state !== 'idle';
+
+  return (
+    <button
+      onClick={onClick}
+      className="relative w-[48px] h-[40px] flex items-center justify-center group"
+      title={`Alfred — ${state}`}
+    >
+      <div className="relative">
+        {/* Outer glow ring */}
+        {isActive && (
+          <div
+            className="absolute -inset-2 rounded-full animate-pulse"
+            style={{ background: c.glow, filter: 'blur(4px)' }}
+          />
+        )}
+        {/* Core orb */}
+        <div
+          className={`w-5 h-5 rounded-full transition-all duration-300 ${isActive ? 'scale-110' : 'scale-100'}`}
+          style={{
+            background: `radial-gradient(circle at 40% 40%, ${c.bg}, ${c.bg}80)`,
+            boxShadow: isActive ? `0 0 8px ${c.glow}, 0 0 16px ${c.glow}` : 'none',
+            border: `1.5px solid ${c.ring}`,
+          }}
+        />
+        {/* Inner pulse for speaking */}
+        {state === 'speaking' && (
+          <div className="absolute inset-0 rounded-full animate-ping" style={{ background: c.bg, opacity: 0.3 }} />
+        )}
+        {/* Waveform bars for listening/activated */}
+        {(state === 'listening' || state === 'activated') && (
+          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 flex gap-[1px] items-end h-[6px]">
+            {[0, 1, 2, 3, 4].map(i => (
+              <div
+                key={i}
+                className="w-[2px] rounded-full animate-pulse"
+                style={{
+                  background: c.bg,
+                  height: `${2 + Math.random() * 4}px`,
+                  animationDelay: `${i * 120}ms`,
+                  animationDuration: `${600 + i * 100}ms`,
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      {/* Label on hover */}
+      <div className="absolute left-full ml-2 px-2 py-0.5 rounded bg-[#1e1e1e] border border-[#3c3c3c] text-[10px] text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+        Alfred {state === 'listening' ? '— say my name' : state === 'activated' ? '— listening' : state === 'processing' ? '— thinking' : state === 'speaking' ? '— speaking' : ''}
+      </div>
+    </button>
   );
 }
 

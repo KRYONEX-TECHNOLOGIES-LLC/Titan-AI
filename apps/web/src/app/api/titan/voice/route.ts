@@ -11,6 +11,7 @@ interface VoiceRequestBody {
   hasImage?: boolean;
   imageBase64?: string;
   memoryContext?: string;
+  brainContext?: string;
   codeDirectory?: string;
   projectStatus?: string;
 }
@@ -42,16 +43,21 @@ export async function POST(request: NextRequest) {
 
         let brainContext = '';
         try {
-          brainContext = serializeBrainContext(1500);
+          brainContext = body.brainContext || serializeBrainContext(1500);
         } catch { /* client-only function, skip on server */ }
 
         const systemPrompt = [
           TITAN_VOICE_PERSONALITY,
-          body.memoryContext ? `\n[PERSISTENT MEMORY]\n${body.memoryContext}` : '',
+          body.memoryContext ? `\n[PERSISTENT MEMORY]\n${body.memoryContext}\n\nUse this memory to recall user preferences, past decisions, and personal details. Reference them naturally in conversation.` : '',
           body.codeDirectory ? `\n[CODE DIRECTORY]\n${body.codeDirectory}` : '',
           body.projectStatus ? `\n[PROJECT STATUS]\n${body.projectStatus}` : '',
           brainContext ? `\n[BRAIN KNOWLEDGE]\n${brainContext}` : '',
-          '\nIMPORTANT: Keep spoken responses concise (2-4 sentences) unless the user asks for detail. You are speaking aloud.',
+          '\nCONVERSATION RULES:',
+          '- Keep spoken responses concise (2-4 sentences) unless the user asks for detail.',
+          '- You are speaking aloud, so be natural and conversational.',
+          '- Reference things you remember about the user from memory — their name, preferences, past conversations.',
+          '- When the user tells you something personal (name, preference, opinion), acknowledge it warmly and remember it.',
+          '- You are an ultimate conversationalist: witty, insightful, warm, and sharp. Like a brilliant friend who also happens to be a genius.',
         ].filter(Boolean).join('\n');
 
         emit('voice_thinking', { roles: ['analyzing'] });
