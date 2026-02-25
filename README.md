@@ -86,6 +86,12 @@ Titan AI/
 - **Chat provider routing / OpenRouter + LiteLLM**: `apps/web/src/app/api/chat/route.ts`
 - **Model registry**: `apps/web/src/lib/model-registry.ts`
 - **Omega protocol modules**: `apps/web/src/lib/omega/` + `apps/web/src/app/api/titan/omega/route.ts`
+- **Plan Sniper protocol**: `apps/web/src/lib/sniper/` + `apps/web/src/app/api/titan/sniper/route.ts`
+- **Plan Mode store**: `apps/web/src/stores/plan-store.ts`
+- **Persistent memory**: `apps/web/src/stores/titan-memory.ts`
+- **Plan task generation API**: `apps/web/src/app/api/plan/generate/route.ts`
+- **Forge harvester**: `packages/forge/src/` (CLI: `harvest.ts`, continuous: `harvest-continuous.ts`)
+- **Brain Observatory**: `apps/web/src/components/ide/BrainObservatoryPanel.tsx`
 - **Desktop IPC tool implementations**: `apps/desktop/src/ipc/tools.ts`
 
 Full map:
@@ -96,7 +102,7 @@ Full map:
 
 ## Preventing protocol UI crashes (must-follow)
 
-Titan has multiple protocol modes (Phoenix/Supreme/Omega/Parallel/Titan Chat + default Titan Protocol). These modes often use **early returns** in hooks/components. Two rules prevent the class of crashes we hit (including `Cannot read properties of undefined (reading 'length')`):
+Titan has multiple protocol modes (Phoenix/Supreme/Omega/Parallel/Plan Sniper/Titan Chat + default Titan Protocol). These modes often use **early returns** in hooks/components. Two rules prevent the class of crashes we hit (including `Cannot read properties of undefined (reading 'length')`):
 
 - **Never place React hooks after a conditional early return**: if a hook (e.g. `useCallback`, `useMemo`, `useEffect`) is declared after `if (isPhoenixMode) return ...`, React will see a different hook order depending on selected protocol and can corrupt state in production builds.
   - If you need a helper hook for the “default” path, declare it **before** any protocol-mode returns.

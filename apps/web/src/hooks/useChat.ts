@@ -15,6 +15,7 @@ import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
 import { ContextNavigator } from '@/lib/autonomy/context-navigator';
 import { MemoryManager } from '@/lib/autonomy/memory-manager';
+import { useTitanMemory } from '@/stores/titan-memory';
 import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
 import { playBellSound } from '@/utils/notification-sound';
 
@@ -645,11 +646,18 @@ export function useChat({
     const selectedText = selection ? editorInstance?.getModel()?.getValueInRange(selection) : '';
     const currentLanguage = getLanguageFromFilename(activeTab);
 
+    // Persistent memory injection — always include for cross-conversation recall
     let memoryPrefix = '';
+    const persistentMemory = useTitanMemory.getState().serialize(3000);
+    if (persistentMemory) {
+      memoryPrefix = `${persistentMemory}\n\n`;
+    }
+
+    // Also include file-based architectural memory when relevant
     if (memoryManagerRef.current.shouldReadMemory(msg)) {
       const memory = await agentTools.executeToolCall('memory_read', {});
       if (memory.success && memory.output) {
-        memoryPrefix = `[Architectural Memory]\n${memory.output.slice(0, 6000)}\n\n`;
+        memoryPrefix += `[Architectural Memory]\n${memory.output.slice(0, 4000)}\n\n`;
       }
     }
 
@@ -809,6 +817,17 @@ export function useChat({
             content: m.content || content || (productiveCallsMade > 0 ? 'Changes applied.' : 'No actionable changes were needed.'),
           }));
           taskCompletedSuccessfully = true;
+
+          // Persistent memory: auto-extract important context from this turn
+          try {
+            const finalContent = content || '';
+            useTitanMemory.getState().extractAndStore(
+              msg,
+              finalContent,
+              Array.from(touchedFiles).slice(0, 20),
+            );
+          } catch { /* best-effort */ }
+
           // Forge: finalize quality scoring for this turn, store ID for next message
           if (forgeSampleId) {
             try {
@@ -1038,6 +1057,26 @@ export function useChat({
         if (!memoryWrite.success) {
           console.warn('Memory auto-write failed:', memoryWrite.error || memoryWrite.output);
         }
+
+        // Also store to persistent Zustand memory
+        try {
+          const memStore = useTitanMemory.getState();
+          memStore.addFact({
+            layer: 'decision',
+            category: 'architectural-change',
+            content: decision,
+            importance: 8,
+            expiresAt: null,
+            source: 'auto',
+            tags: touchedSummary.slice(0, 5),
+          });
+          memStore.addSummary({
+            sessionId,
+            summary: `${msg.slice(0, 150)} → ${productiveCallsMade} changes, ${touchedSummary.length} files`,
+            keyDecisions: [decision],
+            filesModified: touchedSummary,
+          });
+        } catch { /* best-effort */ }
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {

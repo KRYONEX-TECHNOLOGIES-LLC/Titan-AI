@@ -52,7 +52,7 @@ export interface PhoenixCallbacks {
   ) => Promise<{ success: boolean; output: string; error?: string }>;
   invokeModel: (
     model: string,
-    messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }>,
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   ) => Promise<string>;
   workspacePath?: string;
 }
@@ -194,7 +194,7 @@ async function executeWorker(
   let fullOutput = '';
   let iterations = 0;
 
-  const messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }> = [
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
     { role: 'system', content: system },
     { role: 'user', content: user },
   ];
@@ -227,8 +227,8 @@ async function executeWorker(
 
       messages.push({ role: 'assistant', content: output });
       messages.push({
-        role: 'tool',
-        content: `[${toolName}] ${result.success ? 'Success' : 'Error'}: ${result.output.slice(0, 3000)}`,
+        role: 'user',
+        content: `[Tool Result: ${toolName}] ${result.success ? 'Success' : 'Error'}: ${result.output.slice(0, 3000)}`,
       });
     }
 

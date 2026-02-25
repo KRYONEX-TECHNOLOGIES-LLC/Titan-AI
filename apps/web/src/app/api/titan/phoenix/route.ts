@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
       const invokeModel = async (
         model: string,
-        messages: Array<{ role: 'system' | 'user' | 'assistant' | 'tool'; content: string }>,
+        messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
       ) => {
         return callModelDirect(model, messages);
       };

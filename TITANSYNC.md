@@ -69,7 +69,7 @@ pnpm --filter @titan/forge run harvest -- --review
 
 ### Continuous Harvest (Phase 1: 10,000 samples)
 
-The continuous harvester runs non-stop, cycling through 120+ topics across all 15 sources with 4 parallel workers.
+The continuous harvester runs non-stop, cycling through 120+ topics across all 15 sources with 100 parallel workers.
 
 ```powershell
 # Load env and run continuous harvester
@@ -84,7 +84,7 @@ node packages/forge/dist/cli/harvest-continuous.js
 
 # Or with custom settings
 $env:FORGE_TARGET = "50000"        # Phase 2 target
-$env:FORGE_WORKERS = "4"           # Parallel workers
+$env:FORGE_WORKERS = "100"          # Parallel workers
 $env:FORGE_LIMIT = "30"            # Items per source per round
 $env:FORGE_MIN_SCORE = "6"         # Quality threshold (0-10)
 $env:FORGE_COOLDOWN = "30000"      # ms between rounds
@@ -118,6 +118,69 @@ pnpm --filter @titan/forge run eval
 
 - **forge-harvest.yml**: Daily at 2:00 AM UTC, rotates sources on 10-day cycle
 - **forge-backup.yml**: Weekly backup to `forge-backups` branch
+
+---
+
+## Titan Plan Sniper Protocol
+
+The Plan Sniper is a 7-role multi-model orchestra that executes Plan Mode tasks using specialized cheap models. When the user selects "Titan Plan Sniper" from the model dropdown, all conversation goes through the sniper pipeline.
+
+### Roles & Models
+
+| Role | Model | Cost | Purpose |
+|------|-------|------|---------|
+| SCANNER | Devstral 2 | FREE | Reads codebase, maps dependencies |
+| ARCHITECT | MiMo-V2-Flash | FREE | Creates task DAG, assigns risk |
+| CODER (low/med) | MiniMax M2.1 | $0.28/M in | Generates code |
+| CODER (high) | DeepSeek V3.2 | $0.25/M in | High-risk code |
+| EXECUTOR | Qwen3 Coder Next | $0.12/M in | Applies edits, runs commands |
+| SENTINEL | Seed 1.6 | $0.25/M in | Verifies each task |
+| JUDGE | Qwen3.5 Plus | $0.40/M in | Final quality gate |
+
+### Flow
+
+1. User describes what to build in Plan Mode
+2. Sniper generates full task list via `bulkAddTasks()`
+3. 8 parallel worker lanes execute tasks
+4. Real-time status updates in Plan Mode panel
+5. Cost: ~$5-15 for a complete 50-task app (vs $500-1000 with Opus/GPT-5)
+
+### API Route
+
+`POST /api/titan/sniper` — SSE streaming endpoint for sniper execution.
+
+---
+
+## Titan Persistent Memory
+
+Titan has a 5-layer persistent memory system that survives across conversations:
+
+1. **Core Facts** — User identity, preferences, project context (importance 8-10)
+2. **Decisions** — Architectural choices, tech stack, conventions (importance 8-9)
+3. **Active Context** — Current tasks, recent changes, WIP (expires in 7 days)
+4. **Conversation Summaries** — Compressed history of past sessions (last 50)
+5. **Error Patterns** — Mistakes, anti-patterns, things to avoid (importance 7-8)
+
+Memory is stored in localStorage (instant) and auto-injected into every message. It auto-extracts important context from each conversation turn (preferences, decisions, file changes, model usage, errors).
+
+### How it works
+
+- `useTitanMemory` Zustand store persisted to localStorage
+- `serialize()` generates a memory prefix injected into every user message
+- `extractAndStore()` runs after each assistant response to capture new facts
+- Deduplication prevents storing the same fact twice
+- Expiring facts (context layer) auto-clean after 7 days
+
+---
+
+## Model Protocols
+
+| Protocol | Models | Best For |
+|----------|--------|----------|
+| Phoenix Protocol | Gemini Flash (Scout), DeepSeek (Coder), Claude (Architect) | General tasks |
+| Plan Sniper | 7 specialized models | Plan Mode execution |
+| Supreme Protocol | Multi-pass verification | High-stakes changes |
+| Omega Protocol | Long-horizon governance | Complex refactors |
 
 ---
 

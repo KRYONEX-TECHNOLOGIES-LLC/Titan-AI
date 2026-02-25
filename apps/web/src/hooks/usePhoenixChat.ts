@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { ChatMessage, Session } from '@/types/ide';
 import { useLaneStore } from '@/stores/lane-store';
 import { useFileStore } from '@/stores/file-store';
+import { useTitanMemory } from '@/stores/titan-memory';
 
 interface UsePhoenixChatOptions {
   sessions: Session[];
@@ -91,12 +92,15 @@ export function usePhoenixChat({
     abortControllerRef.current = controller;
 
     try {
+      const memoryContext = useTitanMemory.getState().serialize(2000);
+      const enrichedGoal = memoryContext ? `${memoryContext}\n\n---\nUser Request: ${goal}` : goal;
+
       const response = await fetch('/api/titan/phoenix', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          goal,
+          goal: enrichedGoal,
           sessionId,
           workspacePath: workspacePath || '',
           fileTree: serializeFileTree(),
@@ -182,6 +186,7 @@ export function usePhoenixChat({
                 content: output ? `${header}\n\n${output}` : `${header}\n\n${statusLines.join('\n')}`,
                 streaming: false,
               }));
+              try { useTitanMemory.getState().extractAndStore(goal, output); } catch { /* best-effort */ }
             } else {
               const line = formatPhoenixEvent(eventType, payload);
               if (line) {
