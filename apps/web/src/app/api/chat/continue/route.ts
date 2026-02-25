@@ -1689,10 +1689,8 @@ export async function POST(request: NextRequest) {
         });
 
         // Titan Forge: capture this interaction for distillation (non-blocking, fire-and-forget)
-        // Dynamic string prevents TypeScript from resolving at compile time (forge is optional on Railway)
         try {
-          const forgePkg = '@titan' + '/forge';
-          const { forgeCollector } = await import(/* webpackIgnore: true */ forgePkg);
+          const { forgeCollector } = await import('@titan/forge');
           const forgeTier = (modelEntry as { tier?: string } | undefined)?.tier === 'frontier'
             ? 'frontier' as const
             : (normalizedModel.startsWith('ollama') ? 'local' as const : 'economy' as const);

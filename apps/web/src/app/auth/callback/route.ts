@@ -105,6 +105,7 @@ export async function GET(request: Request) {
       if (isCreator) {
         updates.is_creator = true;
         updates.role = 'creator';
+        updates.creator_mode_on = true;
       }
 
       const { error: updateError } = await adminSupabase
@@ -129,17 +130,27 @@ export async function GET(request: Request) {
       }
 
       if (linkedUser) {
-        // Link new provider to existing account
+        // Link new provider to existing account — update identity fields
+        // so the display name/avatar reflect the current provider, not a stale one
+        const linkUpdates: Record<string, unknown> = {
+          provider,
+          provider_user_id: user.id,
+          username,
+          last_login_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          email_verified: emailVerified,
+        };
+        if (name) linkUpdates.name = name;
+        if (avatarUrl) linkUpdates.avatar_url = avatarUrl;
+        if (isCreator) {
+          linkUpdates.is_creator = true;
+          linkUpdates.role = 'creator';
+          linkUpdates.creator_mode_on = true;
+        }
+
         const { error: linkError } = await adminSupabase
           .from('users')
-          .update({
-            provider,
-            provider_user_id: user.id,
-            last_login_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            email_verified: emailVerified,
-            ...(isCreator ? { is_creator: true, role: 'creator' } : {}),
-          })
+          .update(linkUpdates)
           .eq('id', linkedUser.id);
         if (linkError) {
           console.error('[auth/callback] Failed to link provider identity:', linkError.message);
@@ -157,6 +168,7 @@ export async function GET(request: Request) {
           provider_user_id: user.id,
           role: isCreator ? 'creator' : 'user',
           is_creator: isCreator,
+          creator_mode_on: isCreator,
           email_verified: emailVerified,
           github_id: provider === 'github' ? (user.user_metadata?.provider_id || null) : null,
           last_login_at: new Date().toISOString(),

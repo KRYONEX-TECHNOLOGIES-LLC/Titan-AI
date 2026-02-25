@@ -912,8 +912,8 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           </div>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="px-3 py-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 titan-chat-scroll">
+        <div className="px-3 py-3 max-w-full">
           {(currentSession?.messages || []).map((msg, i) => (
             <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} attachments={msg.attachments} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} generatedImages={msg.generatedImages} onRetry={onRetry} onApplyCode={onApplyCode} />
           ))}
@@ -1029,47 +1029,185 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
 }
 
 function ExtensionsPanel() {
+  const installed = [
+    { name: 'Titan Chat', version: '1.0.0', desc: 'Core conversational AI protocol', tone: 'cyan' },
+    { name: 'Phoenix Protocol', version: '1.0.0', desc: 'Multi-agent orchestration with parallel workers', tone: 'amber' },
+    { name: 'Supreme Protocol', version: '1.0.0', desc: 'Specialized 3-worker pipeline with oversight', tone: 'purple' },
+    { name: 'Omega Protocol', version: '1.0.0', desc: 'Deep-research multi-specialist engine', tone: 'green' },
+    { name: 'Project Midnight', version: '1.0.0', desc: 'Autonomous build engine with trust levels', tone: 'red' },
+  ];
+  const upcoming = [
+    { name: 'Theme Studio', desc: 'Custom UI themes and color schemes' },
+    { name: 'Language Packs', desc: 'Additional language support and grammars' },
+    { name: 'Custom Protocols', desc: 'Create and share your own AI protocols' },
+    { name: 'Plugin Marketplace', desc: 'Community extensions and integrations' },
+    { name: 'Voice Commands', desc: 'Full voice-driven code editing' },
+  ];
+  const toneColors: Record<string, string> = {
+    cyan: 'border-cyan-500/40 text-cyan-300',
+    amber: 'border-amber-500/40 text-amber-300',
+    purple: 'border-violet-500/40 text-violet-300',
+    green: 'border-emerald-500/40 text-emerald-300',
+    red: 'border-red-500/40 text-red-300',
+  };
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-3 pt-3 pb-2 shrink-0">
-        <input placeholder="Search Extensions" className="w-full bg-[#2d2d2d] border border-[#3c3c3c] rounded-md px-3 py-1.5 text-[12px] text-[#cccccc] placeholder-[#666] focus:outline-none focus:border-[#007acc]" />
+    <div className="h-full overflow-y-auto p-3 space-y-3 bg-[#090f1b] text-slate-100">
+      <div className="relative rounded-xl border border-cyan-500/30 bg-[linear-gradient(135deg,#0b1222_0%,#101a32_55%,#1a1232_100%)] shadow-[0_0_30px_rgba(34,211,238,0.15)] p-4 overflow-hidden">
+        <div className="absolute inset-0 opacity-20 pointer-events-none [background-image:linear-gradient(rgba(34,211,238,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.2)_1px,transparent_1px)] [background-size:24px_24px]" />
+        <div className="relative z-10">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-300/90">Titan Interface</div>
+          <h2 className="mt-1 text-[18px] font-semibold text-white">EXTENSIONS</h2>
+          <p className="mt-1 text-[12px] text-slate-300">Installed protocols, tools, and upcoming add-ons.</p>
+        </div>
       </div>
-      <div className="px-2 text-[11px]">
-        <div className="font-semibold text-[#808080] uppercase px-2 py-1.5">Installed</div>
-        {[{ name: 'TypeScript', author: 'Microsoft', color: '#007acc' }, { name: 'ESLint', author: 'Microsoft', color: '#764abc' }, { name: 'Prettier', author: 'Prettier', color: '#c596c7' }].map(ext => (
-          <div key={ext.name} className="flex items-center gap-2 px-2 py-1.5 hover:bg-[#2a2a2a] rounded cursor-pointer">
-            <span className="w-8 h-8 rounded flex items-center justify-center text-white text-[10px] font-bold" style={{ background: ext.color }}>{ext.name.slice(0, 2)}</span>
-            <div><div className="text-[#e0e0e0] text-[12px]">{ext.name}</div><div className="text-[#808080]">{ext.author}</div></div>
-          </div>
-        ))}
+
+      <div className="rounded-xl border border-cyan-500/40 bg-[#0d1322]/85 backdrop-blur-sm shadow-[0_0_24px_rgba(34,211,238,0.12)]">
+        <div className="border-b border-white/10 px-3 py-2"><h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Active Protocols</h3></div>
+        <div className="p-3 space-y-2">
+          {installed.map((ext) => (
+            <div key={ext.name} className={`flex items-center gap-3 rounded-lg border ${toneColors[ext.tone] || 'border-white/10 text-slate-200'} bg-[#0b1120]/70 p-2.5`}>
+              <div className="w-9 h-9 rounded-lg border border-white/10 bg-[#0a1224] flex items-center justify-center text-[14px] font-bold flex-shrink-0">{ext.name[0]}</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-medium truncate">{ext.name} <span className="text-slate-500 font-normal">v{ext.version}</span></div>
+                <div className="text-[11px] text-slate-400 truncate">{ext.desc}</div>
+              </div>
+              <span className="text-[10px] text-emerald-400 flex-shrink-0">Active</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-violet-500/40 bg-[#0d1322]/85 backdrop-blur-sm shadow-[0_0_24px_rgba(139,92,246,0.12)]">
+        <div className="border-b border-white/10 px-3 py-2"><h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-300">Coming Soon</h3></div>
+        <div className="p-3 space-y-2">
+          {upcoming.map((ext) => (
+            <div key={ext.name} className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#0b1120]/50 p-2.5 opacity-70">
+              <div className="w-9 h-9 rounded-lg border border-white/10 bg-[#0a1224] flex items-center justify-center text-[14px] font-bold text-slate-500 flex-shrink-0">{ext.name[0]}</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] text-slate-300 truncate">{ext.name}</div>
+                <div className="text-[11px] text-slate-500 truncate">{ext.desc}</div>
+              </div>
+              <span className="text-[10px] text-slate-500 flex-shrink-0">Soon</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
 function AccountsPanel() {
-  const [apiKeys, setApiKeys] = useState({ openai: { connected: true, key: 'sk-...4a2f' }, anthropic: { connected: true, key: 'sk-ant-...b3d1' }, google: { connected: false, key: '' }, openrouter: { connected: true, key: 'sk-or-...9e1c' }, deepseek: { connected: false, key: '' }, mistral: { connected: false, key: '' } });
+  const { user } = useSession();
+  const [apiKeys, setApiKeys] = useState<Record<string, { connected: boolean; key: string }>>({
+    openai: { connected: false, key: '' },
+    anthropic: { connected: false, key: '' },
+    google: { connected: false, key: '' },
+    openrouter: { connected: false, key: '' },
+    deepseek: { connected: false, key: '' },
+    mistral: { connected: false, key: '' },
+  });
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
-  const handleAddKey = (provider: string) => { if (keyInput.trim()) { setApiKeys(prev => ({ ...prev, [provider]: { connected: true, key: keyInput.slice(0, 6) + '...' + keyInput.slice(-4) } })); setEditingKey(null); setKeyInput(''); } };
-  const providers = [{ id: 'openai', name: 'OpenAI', icon: '⚪' }, { id: 'anthropic', name: 'Anthropic', icon: '🟠' }, { id: 'google', name: 'Google AI', icon: '🔵' }, { id: 'openrouter', name: 'OpenRouter', icon: '🟣' }, { id: 'deepseek', name: 'DeepSeek', icon: '🔴' }, { id: 'mistral', name: 'Mistral', icon: '🟡' }];
+  const handleAddKey = (provider: string) => {
+    if (keyInput.trim()) {
+      setApiKeys(prev => ({ ...prev, [provider]: { connected: true, key: keyInput.slice(0, 6) + '...' + keyInput.slice(-4) } }));
+      setEditingKey(null);
+      setKeyInput('');
+    }
+  };
+  const providers = [
+    { id: 'openai', name: 'OpenAI', letter: 'O', color: 'text-emerald-300' },
+    { id: 'anthropic', name: 'Anthropic', letter: 'A', color: 'text-amber-300' },
+    { id: 'google', name: 'Google AI', letter: 'G', color: 'text-cyan-300' },
+    { id: 'openrouter', name: 'OpenRouter', letter: 'R', color: 'text-violet-300' },
+    { id: 'deepseek', name: 'DeepSeek', letter: 'D', color: 'text-red-300' },
+    { id: 'mistral', name: 'Mistral', letter: 'M', color: 'text-yellow-300' },
+  ];
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-3 pt-3 pb-2">
-        <div className="flex items-center gap-3 p-3 bg-[#2a2a2a] rounded-lg">
-          <div className="w-12 h-12 rounded-full bg-[#007acc] flex items-center justify-center text-white text-[18px] font-bold">T</div>
-          <div><div className="text-[14px] text-[#e0e0e0] font-medium">Titan User</div><div className="text-[12px] text-[#808080]">titan@example.com</div></div>
+    <div className="h-full overflow-y-auto p-3 space-y-3 bg-[#090f1b] text-slate-100">
+      <div className="relative rounded-xl border border-cyan-500/30 bg-[linear-gradient(135deg,#0b1222_0%,#101a32_55%,#1a1232_100%)] shadow-[0_0_30px_rgba(34,211,238,0.15)] p-4 overflow-hidden">
+        <div className="absolute inset-0 opacity-20 pointer-events-none [background-image:linear-gradient(rgba(34,211,238,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(34,211,238,0.2)_1px,transparent_1px)] [background-size:24px_24px]" />
+        <div className="relative z-10">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-300/90">Titan Interface</div>
+          <h2 className="mt-1 text-[18px] font-semibold text-white">ACCOUNTS</h2>
+          <p className="mt-1 text-[12px] text-slate-300">User profile, connections, and API key management.</p>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-2">
-        <div className="text-[11px] font-semibold text-[#808080] uppercase px-2 py-1.5 flex items-center justify-between"><span>API Keys (BYOK)</span><span className="text-[10px] text-[#007acc] font-normal">Bring Your Own Key</span></div>
-        {providers.map(p => { const data = apiKeys[p.id as keyof typeof apiKeys]; return (
-          <div key={p.id} className="px-2 py-2 hover:bg-[#2a2a2a] rounded">
-            <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span>{p.icon}</span><span className="text-[12px] text-[#cccccc]">{p.name}</span></div>
-            {data.connected ? <span className="text-[11px] text-[#3fb950]">✓ Connected</span> : <button onClick={() => setEditingKey(p.id)} className="text-[11px] text-[#007acc] hover:text-[#0098ff]">+ Add Key</button>}</div>
-            {data.connected && <div className="text-[10px] text-[#555] mt-0.5 ml-6">{data.key}</div>}
-            {editingKey === p.id && (<div className="mt-2 flex gap-1"><input type="password" placeholder={`Enter ${p.name} API key...`} value={keyInput} onChange={(e) => setKeyInput(e.target.value)} className="flex-1 bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-[11px] text-[#cccccc] focus:outline-none focus:border-[#007acc]" /><button onClick={() => handleAddKey(p.id)} className="px-2 py-1 bg-[#007acc] hover:bg-[#0098ff] text-white text-[10px] rounded">Save</button><button onClick={() => { setEditingKey(null); setKeyInput(''); }} className="px-2 py-1 bg-[#3c3c3c] hover:bg-[#4c4c4c] text-white text-[10px] rounded">✕</button></div>)}
-          </div>); })}
+
+      <div className="rounded-xl border border-emerald-500/40 bg-[#0d1322]/85 backdrop-blur-sm shadow-[0_0_24px_rgba(16,185,129,0.12)]">
+        <div className="border-b border-white/10 px-3 py-2"><h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">Profile</h3></div>
+        <div className="p-3">
+          <div className="flex items-center gap-3">
+            {user?.avatarUrl ? (
+              <img src={user.avatarUrl} alt="" className="w-12 h-12 rounded-full border-2 border-emerald-500/40" />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500 to-violet-500 flex items-center justify-center text-white text-[18px] font-bold border-2 border-emerald-500/40">
+                {(user?.username || 'T')[0].toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] text-white font-medium truncate">{user?.name || user?.username || 'Not signed in'}</div>
+              <div className="text-[12px] text-slate-400 truncate">{user?.email || 'No email'}</div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${user?.id ? 'border-emerald-500/40 text-emerald-300 bg-emerald-500/10' : 'border-red-500/40 text-red-300 bg-red-500/10'}`}>
+                  {user?.id ? 'Authenticated' : 'Not signed in'}
+                </span>
+                {user?.isCreator && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/40 text-amber-300 bg-amber-500/10">Creator</span>
+                )}
+                {user?.role && user.role !== 'user' && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border border-violet-500/40 text-violet-300 bg-violet-500/10">{user.role}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          {user?.provider && (
+            <div className="mt-3 text-[11px] text-slate-400">Signed in via <span className="text-cyan-300">{user.provider}</span></div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-violet-500/40 bg-[#0d1322]/85 backdrop-blur-sm shadow-[0_0_24px_rgba(139,92,246,0.12)]">
+        <div className="border-b border-white/10 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-300">API Keys (BYOK)</h3>
+            <span className="text-[10px] text-violet-400">Bring Your Own Key</span>
+          </div>
+        </div>
+        <div className="p-3 space-y-2">
+          {providers.map(p => {
+            const data = apiKeys[p.id];
+            return (
+              <div key={p.id} className="rounded-lg border border-white/10 bg-[#0b1120]/70 p-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-7 h-7 rounded-lg border border-white/10 bg-[#0a1224] flex items-center justify-center text-[13px] font-bold ${p.color}`}>{p.letter}</span>
+                    <span className="text-[12px] text-slate-200">{p.name}</span>
+                  </div>
+                  {data?.connected ? (
+                    <span className="text-[11px] text-emerald-400">Connected</span>
+                  ) : (
+                    <button onClick={() => setEditingKey(p.id)} className="text-[11px] text-cyan-400 hover:text-cyan-300 transition-colors">+ Add Key</button>
+                  )}
+                </div>
+                {data?.connected && <div className="text-[10px] text-slate-500 mt-1 ml-9">{data.key}</div>}
+                {editingKey === p.id && (
+                  <div className="mt-2 flex gap-1">
+                    <input
+                      type="password"
+                      placeholder={`Enter ${p.name} API key...`}
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      className="flex-1 bg-[#0a1224] border border-white/15 rounded px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-cyan-400/60"
+                    />
+                    <button onClick={() => handleAddKey(p.id)} className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] rounded transition-colors">Save</button>
+                    <button onClick={() => { setEditingKey(null); setKeyInput(''); }} className="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white text-[10px] rounded transition-colors">Cancel</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { ForgeExporter, ForgeDB } from '@titan/forge';
 
 type ExportFormat = 'sharegpt' | 'jsonl' | 'alpaca';
 
@@ -15,10 +16,6 @@ export async function POST(request: NextRequest) {
     const minScore = Number(body.minScore || 7);
     const limit = Number(body.limit || 10000);
     const destination = String(body.destination || 'local');
-
-    const forgePkg = '@titan' + '/forge';
-    const mod = await import(/* webpackIgnore: true */ forgePkg);
-    const { ForgeExporter, ForgeDB } = mod;
 
     const outDir = join(process.cwd(), '.titan', 'forge', 'exports');
     ensureDir(outDir);

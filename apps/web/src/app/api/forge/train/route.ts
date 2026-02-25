@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ForgeDB } from '@titan/forge';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,8 +9,6 @@ export async function POST(request: NextRequest) {
     const minQualityScore = Number(body.minQualityScore || 7);
     const cfg = body.config || {};
 
-    const forgePkg = '@titan' + '/forge';
-    const { ForgeDB } = await import(/* webpackIgnore: true */ forgePkg);
     const db = new ForgeDB();
 
     const availableSamples = await db.getSamplesForExport(minQualityScore, 50000);

@@ -891,3 +891,24 @@ node dist/cli/harvest.js --stats
 - AI content detector uses soft penalty (-3 score), not hard reject
 - HuggingFace token configured for gated dataset access
 
+### 2026-02-24 | Cursor AI — v0.3.21: Chat overflow fix, GitHub OAuth fix, auth button clarity
+
+**Chat message horizontal overflow (ChatMessage.tsx, titan-ide.tsx, globals.css):**
+- Added `min-w-0` to flex-1 message container so flexbox items shrink properly
+- Added `overflow-x-hidden` and `titan-chat-scroll` class to messages scroll container
+- Replaced non-functional `prose` Tailwind classes (Typography plugin not installed) with explicit `break-words overflow-hidden` styles
+- Added custom ReactMarkdown `components` for `pre`, `code`, and `table` with proper overflow handling (`overflow-x-auto`, `max-w-full`, `whitespace-pre-wrap`)
+- Added global CSS rules in `globals.css` targeting `.titan-chat-scroll` for code blocks, paragraphs, tables, and images
+- **RULE:** Chat message containers MUST have `min-w-0` on any `flex-1` child, and `overflow-x-hidden` on the scroll container. Without `min-w-0`, flexbox items will not shrink below their content width.
+
+**GitHub OAuth popup stuck after Google SSO (github.ts):**
+- Fixed `isCallbackUrl` function (line 163) to require `hostname === 'localhost'` before treating a URL as the OAuth callback
+- Previously, intermediate SSO redirects (e.g., Google → GitHub with `code`+`state` params) were incorrectly matched as callback URLs, causing `event.preventDefault()` to block the redirect and kill the entire OAuth flow
+- **RULE:** The `isCallbackUrl` check MUST verify `hostname === 'localhost'` first. GitHub's OAuth always redirects to `localhost` callback as the final step. Intermediate SSO URLs (google.com, github.com/login/saml/consume) carry their own `code`+`state` params and must NOT be intercepted.
+
+**Auth button confusion (TitleBar.tsx, UserMenu.tsx):**
+- Changed "Connect GitHub" button label to "Connect Git (push/pull)" to clarify it's for Git operations, not app sign-in
+- Added green "Git" badge next to the connected avatar on GitHubConnectButton
+- Added green "Signed in" indicator before username in UserMenu to distinguish it from the Git connect button
+- **Context:** There are TWO separate GitHub auth systems: (1) Electron IPC GitHub OAuth for Git push/pull operations, (2) Supabase GitHub OAuth for app sign-in. They serve different purposes and must remain visually distinct.
+

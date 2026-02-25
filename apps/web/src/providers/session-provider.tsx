@@ -32,37 +32,47 @@ export function useSession(): TitanSession {
   return useContext(SessionContext);
 }
 
+function deriveUsername(provider: string, dbUsername: string | null | undefined, email: string | null | undefined, metaUserName: string | null | undefined): string {
+  const isEmail = provider === 'google' || provider === 'email';
+  if (isEmail) {
+    return email?.split('@')[0] || dbUsername || 'user';
+  }
+  return dbUsername || metaUserName || email?.split('@')[0] || 'user';
+}
+
 async function fetchUserProfile(supabaseUser: User): Promise<TitanSession['user']> {
   try {
     const res = await fetch('/api/me', { credentials: 'include' });
     if (res.ok) {
       const data = await res.json();
+      const provider = data.provider || supabaseUser.app_metadata?.provider || 'unknown';
       return {
         id: data.id || supabaseUser.id,
         email: data.email || supabaseUser.email || null,
-        username: data.username || supabaseUser.user_metadata?.user_name || supabaseUser.email?.split('@')[0] || 'user',
+        username: deriveUsername(provider, data.username, data.email || supabaseUser.email, supabaseUser.user_metadata?.user_name),
         name: data.name || supabaseUser.user_metadata?.full_name || null,
         avatarUrl: data.avatar_url || supabaseUser.user_metadata?.avatar_url || null,
         isCreator: data.is_creator || false,
         role: data.role || 'user',
         creatorModeOn: data.creator_mode_on || false,
-        provider: data.provider || supabaseUser.app_metadata?.provider || 'unknown',
+        provider,
       };
     }
   } catch {
     // Fallback to Supabase user metadata
   }
 
+  const fallbackProvider = supabaseUser.app_metadata?.provider || 'unknown';
   return {
     id: supabaseUser.id,
     email: supabaseUser.email || null,
-    username: supabaseUser.user_metadata?.user_name || supabaseUser.email?.split('@')[0] || 'user',
+    username: deriveUsername(fallbackProvider, null, supabaseUser.email, supabaseUser.user_metadata?.user_name),
     name: supabaseUser.user_metadata?.full_name || null,
     avatarUrl: supabaseUser.user_metadata?.avatar_url || null,
     isCreator: false,
     role: 'user',
     creatorModeOn: false,
-    provider: supabaseUser.app_metadata?.provider || 'unknown',
+    provider: fallbackProvider,
   };
 }
 

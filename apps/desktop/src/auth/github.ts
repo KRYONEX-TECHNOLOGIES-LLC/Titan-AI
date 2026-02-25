@@ -1,4 +1,4 @@
-import { IpcMain, BrowserWindow, safeStorage, shell } from 'electron';
+import { IpcMain, BrowserWindow, safeStorage } from 'electron';
 import * as https from 'https';
 import * as crypto from 'crypto';
 import Store from 'electron-store';
@@ -163,10 +163,31 @@ export function registerAuthHandlers(ipcMain: IpcMain, parentWin: BrowserWindow)
       const isCallbackUrl = (url: string) => {
         try {
           const u = new URL(url);
+          if (u.hostname !== 'localhost') return false;
           return (u.searchParams.has('code') && u.searchParams.has('state')) || u.searchParams.has('error');
         } catch { return false; }
       };
 
+      // --- Network-level interceptor (most reliable) ---
+      // Catches the redirect at Chromium's network stack before any navigation
+      // events fire.  Works regardless of SSO redirect chains (Google → GitHub → localhost).
+      const ses = popup.webContents.session;
+      const filter = { urls: ['http://localhost/*'] };
+      ses.webRequest.onBeforeRequest(filter, (details, callback) => {
+        if (settled) { callback({}); return; }
+        try {
+          const u = new URL(details.url);
+          if (u.hostname === 'localhost' &&
+              ((u.searchParams.has('code') && u.searchParams.has('state')) || u.searchParams.has('error'))) {
+            callback({ cancel: true });
+            handleRedirect(details.url);
+            return;
+          }
+        } catch { /* ignore malformed URLs */ }
+        callback({});
+      });
+
+      // --- Navigation-event handlers (kept as secondary fallbacks) ---
       popup.webContents.on('will-navigate', (_event, navUrl) => {
         handleRedirect(navUrl);
       });
@@ -182,7 +203,14 @@ export function registerAuthHandlers(ipcMain: IpcMain, parentWin: BrowserWindow)
         handleRedirect(navUrl);
       });
 
+      // did-redirect-navigation fires after a server-side redirect completes
+      popup.webContents.on('did-redirect-navigation' as any, (_event: any, navUrl: string) => {
+        handleRedirect(navUrl);
+      });
+
       popup.on('closed', () => {
+        // Clean up the network interceptor to avoid leaking across sessions
+        ses.webRequest.onBeforeRequest(filter, null as any);
         if (!settled) {
           settled = true;
           reject(new Error('Sign-in window was closed'));

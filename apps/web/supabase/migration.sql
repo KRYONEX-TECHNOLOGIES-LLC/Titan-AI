@@ -151,7 +151,7 @@ CREATE INDEX IF NOT EXISTS idx_forge_evals_created ON forge_evals(created_at DES
 -- forge_harvest: Web-scraped training data (from Forge Harvester)
 CREATE TABLE IF NOT EXISTS forge_harvest (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  source           TEXT NOT NULL CHECK (source IN ('github', 'stackoverflow', 'docs', 'blog', 'dataset')),
+  source           TEXT NOT NULL CHECK (source IN ('github', 'stackoverflow', 'docs', 'blog', 'dataset', 'reddit', 'devto', 'mdn', 'wikipedia', 'hackernews')),
   source_url       TEXT NOT NULL DEFAULT '',
   batch_id         TEXT NOT NULL,
   instruction      TEXT NOT NULL DEFAULT '',

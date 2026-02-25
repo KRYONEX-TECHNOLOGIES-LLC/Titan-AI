@@ -1,22 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ForgeHarvester, runFilterPipeline } from '@titan/forge';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { source = 'all', topic = 'all', limit = 20 } = body;
 
-    const forgePkg = '@titan' + '/forge';
-    const mod = await import(/* webpackIgnore: true */ forgePkg);
-    const { ForgeHarvester, runFilterPipeline } = mod;
+    let harvester;
+    try {
+      harvester = new ForgeHarvester();
+    } catch (initErr) {
+      const msg = (initErr as Error).message;
+      if (msg.includes('Missing Supabase')) {
+        return NextResponse.json(
+          { error: 'Supabase credentials not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in apps/web/.env', detail: msg },
+          { status: 500 },
+        );
+      }
+      throw initErr;
+    }
 
-    const harvester = new ForgeHarvester();
-    const { scraped, batchId } = await harvester.harvest({ source, topic, limit });
+    let scraped;
+    let batchId: string;
+    try {
+      const harvest = await harvester.harvest({ source, topic, limit });
+      scraped = harvest.scraped;
+      batchId = harvest.batchId;
+    } catch (harvestErr) {
+      const msg = (harvestErr as Error).message;
+      console.error('[api/forge/harvest] Harvest phase error:', msg);
+      return NextResponse.json({ error: `Harvest failed: ${msg}` }, { status: 500 });
+    }
 
-    if (scraped.length === 0) {
+    if (!scraped || scraped.length === 0) {
       return NextResponse.json({ total_input: 0, saved: 0, message: 'No items scraped' });
     }
 
-    const result = await runFilterPipeline(scraped, batchId, 6);
+    let result;
+    try {
+      result = await runFilterPipeline(scraped, batchId, 6);
+    } catch (filterErr) {
+      const msg = (filterErr as Error).message;
+      console.error('[api/forge/harvest] Filter pipeline error:', msg);
+      return NextResponse.json(
+        { error: `Filter pipeline failed: ${msg}`, total_input: scraped.length, saved: 0 },
+        { status: 500 },
+      );
+    }
 
     return NextResponse.json({
       total_input: result.total_input,
@@ -29,9 +59,9 @@ export async function POST(request: NextRequest) {
       saved: result.saved,
     });
   } catch (err) {
-    console.error('[api/forge/harvest] Error:', (err as Error).message);
+    console.error('[api/forge/harvest] Unhandled error:', (err as Error).message);
     return NextResponse.json(
-      { error: (err as Error).message },
+      { error: (err as Error).message || 'Unknown harvest error' },
       { status: 500 },
     );
   }

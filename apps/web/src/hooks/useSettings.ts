@@ -18,7 +18,7 @@ export function useSettings(mounted: boolean) {
 
   // Keep fallback model IDs aligned with MODEL_REGISTRY ids.
   // Mismatched IDs cause selector changes to get auto-reset.
-  const models = ['titan-protocol', 'titan-protocol-v2', 'titan-omega-protocol', 'claude-opus-4.6', 'claude-sonnet-4.6', 'gpt-5.3', 'gpt-4o', 'gemini-2.5-pro'];
+  const models = ['protocol-team', 'titan-protocol', 'titan-protocol-v2', 'titan-omega-protocol', 'claude-opus-4.6', 'claude-sonnet-4.6', 'gpt-5.3', 'gpt-4o', 'gemini-2.5-pro'];
 
   const cappedModelRegistry = useMemo(() => modelRegistry.slice(0, 32), [modelRegistry]);
 

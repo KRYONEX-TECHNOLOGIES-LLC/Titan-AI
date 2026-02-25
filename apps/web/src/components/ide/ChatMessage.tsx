@@ -9,7 +9,30 @@ import remarkGfm from 'remark-gfm';
 // Memoized so it only re-parses/re-renders when content actually changes,
 // preventing spurious re-renders from parent state updates during streaming.
 const MemoizedMarkdown = memo(({ content }: { content: string }) => (
-  <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      pre: ({ children, ...props }) => (
+        <pre className="overflow-x-auto max-w-full rounded bg-[#1a1a2e] p-3 my-2 text-[13px] leading-relaxed" {...props}>
+          {children}
+        </pre>
+      ),
+      code: ({ children, className, ...props }) => {
+        const isBlock = className?.includes('language-');
+        if (isBlock) {
+          return <code className={`${className || ''} break-words whitespace-pre-wrap`} {...props}>{children}</code>;
+        }
+        return <code className="bg-[#2a2a3e] px-1.5 py-0.5 rounded text-[12px] break-all" {...props}>{children}</code>;
+      },
+      table: ({ children, ...props }) => (
+        <div className="overflow-x-auto max-w-full my-2">
+          <table className="text-xs border-collapse" {...props}>{children}</table>
+        </div>
+      ),
+    }}
+  >
+    {content}
+  </ReactMarkdown>
 ));
 import type { ToolCallBlock as ToolCallBlockType, CodeDiffBlock as CodeDiffBlockType, GeneratedImage } from '@/types/ide';
 
@@ -197,7 +220,7 @@ export default function ChatMessage(props: ChatMessageProps) {
 
   const renderMessageContent = () => {
     return (
-      <div className="prose prose-sm prose-invert max-w-none">
+      <div className="text-sm text-[#cccccc] break-words overflow-hidden [&>*]:max-w-full">
         <MemoizedMarkdown content={renderableContent} />
       </div>
     );
@@ -238,7 +261,7 @@ export default function ChatMessage(props: ChatMessageProps) {
         >
           {getAvatar()}
         </div>
-        <div className="flex-1 pt-0.5">
+        <div className="flex-1 min-w-0 pt-0.5">
           <div className="flex items-center gap-2 text-xs text-gray-400 mb-1">
             <span className="font-bold text-white">{role === 'user' ? 'You' : 'Titan'}</span>
             {streaming && (

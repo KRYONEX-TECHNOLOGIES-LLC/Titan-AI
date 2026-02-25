@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { electronAPI, isElectron } from '@/lib/electron';
 import { QueueList } from '@/components/midnight/QueueList';
 import TrustSlider from '@/components/midnight/TrustSlider';
@@ -28,6 +28,18 @@ type Snapshot = {
   timestamp?: string;
   label?: string;
   projectId?: string;
+};
+
+type PlanTask = {
+  text: string;
+  status: 'pending' | 'in_progress' | 'complete' | 'failed';
+};
+
+type GeneratedPlan = {
+  projectName: string;
+  idea: string;
+  techStack: Record<string, unknown>;
+  tasks: string[];
 };
 
 type MidnightProps = {
@@ -64,6 +76,15 @@ export default function MidnightPanel({
   const [currentTask, setCurrentTask] = useState('Awaiting assignment');
   const [currentProject, setCurrentProject] = useState('No active project');
   const streamRef = useRef<EventSource | null>(null);
+
+  // Project Setup state
+  const [projectName, setProjectName] = useState('');
+  const [instruction, setInstruction] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedPlan, setGeneratedPlan] = useState<GeneratedPlan | null>(null);
+  const [planError, setPlanError] = useState('');
+  const [planTasks, setPlanTasks] = useState<PlanTask[]>([]);
+  const [showSetup, setShowSetup] = useState(true);
 
   const statusLabel = useMemo(() => {
     if (isPaused) return 'PAUSED';
@@ -215,6 +236,103 @@ export default function MidnightPanel({
     }
   };
 
+  const generatePlan = useCallback(async () => {
+    if (!instruction.trim()) return;
+    setIsGenerating(true);
+    setPlanError('');
+    try {
+      const res = await fetch('/api/midnight/generate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction, projectName: projectName || 'Untitled Project' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPlanError(data.error || 'Failed to generate plan');
+        return;
+      }
+      setGeneratedPlan(data);
+      setPlanTasks(data.tasks.map((t: string) => ({ text: t, status: 'pending' as const })));
+    } catch (err: unknown) {
+      setPlanError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [instruction, projectName]);
+
+  const removeTask = useCallback((idx: number) => {
+    setPlanTasks((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const addTask = useCallback(() => {
+    setPlanTasks((prev) => [...prev, { text: '', status: 'pending' }]);
+  }, []);
+
+  const updateTaskText = useCallback((idx: number, text: string) => {
+    setPlanTasks((prev) => prev.map((t, i) => i === idx ? { ...t, text } : t));
+  }, []);
+
+  const startBuilding = useCallback(async () => {
+    if (!generatedPlan || planTasks.length === 0) return;
+
+    const tasksText = planTasks
+      .filter((t) => t.text.trim())
+      .map((t) => `- [ ] ${t.text}`)
+      .join('\n');
+
+    const ideaMd = `# ${generatedPlan.projectName}\n\n${generatedPlan.idea}`;
+    const techStackJson = JSON.stringify(generatedPlan.techStack, null, 2);
+    const defOfDone = `# Definition of Done\n\n${tasksText}`;
+
+    try {
+      const toolRes = await fetch('/api/agent/tools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tool: 'run_command',
+          args: {
+            command: `mkdir "${generatedPlan.projectName.replace(/[^a-zA-Z0-9_-]/g, '_')}"`,
+          },
+        }),
+      });
+      if (!toolRes.ok) throw new Error('Could not create project folder');
+
+      const folderName = generatedPlan.projectName.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      for (const [filename, content] of [
+        ['idea.md', ideaMd],
+        ['tech_stack.json', techStackJson],
+        ['definition_of_done.md', defOfDone],
+      ]) {
+        await fetch('/api/agent/tools', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: 'write_file',
+            args: { path: `${folderName}/${filename}`, content },
+          }),
+        });
+      }
+
+      await fetch('/api/midnight/queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectPath: folderName, name: generatedPlan.projectName }),
+      });
+
+      const queueRes = await fetch('/api/midnight/queue', { cache: 'no-store' });
+      if (queueRes.ok) {
+        const q = await queueRes.json();
+        setQueue(Array.isArray(q.projects) ? q.projects : []);
+      }
+
+      setShowSetup(false);
+      void startMidnight();
+    } catch (err: unknown) {
+      setPlanError(err instanceof Error ? err.message : 'Failed to start build');
+    }
+  }, [generatedPlan, planTasks, startMidnight]);
+
   return (
     <div className="h-full overflow-y-auto p-3 space-y-3 bg-[#090f1b] text-slate-100">
       <HudHeader
@@ -229,6 +347,148 @@ export default function MidnightPanel({
         <AnimatedCounter label="Tasks" value={`${tasksCompleted}/${tasksTotal}`} />
         <AnimatedCounter label="Queue" value={queue.length} />
       </div>
+
+      {/* Project Setup — instruction input + plan generation */}
+      <HudCard
+        title="New Project"
+        tone="cyan"
+        actions={
+          <HudButton tone="neutral" onClick={() => setShowSetup((p) => !p)}>
+            {showSetup ? 'Hide' : 'Show'}
+          </HudButton>
+        }
+      >
+        {showSetup && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wider mb-1">Project Name</label>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="My Awesome App"
+                className="w-full rounded-md border border-white/15 bg-[#0b1120] px-3 py-2 text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400/60"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-slate-400 uppercase tracking-wider mb-1">What do you want to build?</label>
+              <textarea
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder="Describe your project... e.g. 'Build a full-stack todo app with Next.js, authentication, and a PostgreSQL database'"
+                rows={4}
+                className="w-full rounded-md border border-white/15 bg-[#0b1120] px-3 py-2 text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400/60 resize-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <HudButton
+                tone="cyan"
+                onClick={() => void generatePlan()}
+                disabled={isGenerating || instruction.trim().length < 5}
+              >
+                {isGenerating ? 'Generating Plan...' : 'Generate Plan'}
+              </HudButton>
+              {generatedPlan && (
+                <HudButton tone="green" onClick={() => void startBuilding()}>
+                  Start Building
+                </HudButton>
+              )}
+            </div>
+            {planError && (
+              <div className="text-[12px] text-red-400 bg-red-900/20 border border-red-500/30 rounded-md px-3 py-2">{planError}</div>
+            )}
+          </div>
+        )}
+      </HudCard>
+
+      {/* Generated Plan — editable task checklist */}
+      {generatedPlan && (
+        <HudCard title="Generated Plan" tone="purple">
+          <div className="space-y-3">
+            <div className="text-[12px] text-slate-300 bg-violet-900/15 border border-violet-500/20 rounded-md p-3">
+              <div className="text-[11px] text-violet-300 uppercase tracking-wider mb-1 font-semibold">{generatedPlan.projectName}</div>
+              <p className="text-slate-300 leading-relaxed">{generatedPlan.idea.slice(0, 300)}{generatedPlan.idea.length > 300 ? '...' : ''}</p>
+            </div>
+            <div className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">
+              Tech Stack
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(generatedPlan.techStack).map(([key, val]) => (
+                <span key={key} className="px-2 py-0.5 rounded-full bg-cyan-900/30 border border-cyan-500/20 text-[11px] text-cyan-200">
+                  {key}: {typeof val === 'string' ? val : Array.isArray(val) ? (val as string[]).join(', ') : String(val)}
+                </span>
+              ))}
+            </div>
+            <div className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold flex items-center justify-between">
+              <span>Tasks ({planTasks.length})</span>
+              <HudButton tone="green" onClick={addTask}>+ Add Task</HudButton>
+            </div>
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+              {planTasks.map((task, idx) => (
+                <div key={idx} className="flex items-start gap-2 group">
+                  <span className={`mt-1 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[10px] ${
+                    task.status === 'complete' ? 'bg-emerald-500/30 border-emerald-400/60 text-emerald-300' :
+                    task.status === 'in_progress' ? 'bg-cyan-500/30 border-cyan-400/60 text-cyan-300' :
+                    task.status === 'failed' ? 'bg-red-500/30 border-red-400/60 text-red-300' :
+                    'border-white/20'
+                  }`}>
+                    {task.status === 'complete' ? '✓' : task.status === 'in_progress' ? '▸' : task.status === 'failed' ? '✕' : (idx + 1)}
+                  </span>
+                  <input
+                    type="text"
+                    value={task.text}
+                    onChange={(e) => updateTaskText(idx, e.target.value)}
+                    className="flex-1 bg-transparent border-b border-white/10 text-[12px] text-slate-200 py-0.5 focus:outline-none focus:border-cyan-400/40 placeholder-slate-600"
+                    placeholder="Task description..."
+                  />
+                  <button
+                    onClick={() => removeTask(idx)}
+                    className="opacity-0 group-hover:opacity-100 text-[10px] text-red-400 hover:text-red-300 px-1 transition-opacity"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </HudCard>
+      )}
+
+      {/* Active Plan — live task status from sidecar */}
+      {midnightActive && (
+        <HudCard title="Active Plan" tone="green">
+          <div className="space-y-2">
+            <div className="text-[11px] text-slate-300">
+              Project: <span className="text-cyan-200 font-medium">{currentProject}</span>
+            </div>
+            <div className="text-[11px] text-slate-300">
+              Current Task: <span className="text-violet-200 font-medium">{currentTask}</span>
+            </div>
+            <HudGauge
+              label={`Progress (${tasksCompleted} / ${tasksTotal})`}
+              value={queueProgress}
+              tone="green"
+            />
+            {planTasks.length > 0 && (
+              <div className="space-y-1 mt-2 max-h-48 overflow-y-auto">
+                {planTasks.map((task, idx) => (
+                  <div key={idx} className={`flex items-center gap-2 text-[12px] rounded px-2 py-1 ${
+                    task.status === 'complete' ? 'bg-emerald-900/20 text-emerald-300' :
+                    task.status === 'in_progress' ? 'bg-cyan-900/20 text-cyan-200' :
+                    task.status === 'failed' ? 'bg-red-900/20 text-red-300 line-through' :
+                    'text-slate-400'
+                  }`}>
+                    <span className="w-4 text-center flex-shrink-0">
+                      {task.status === 'complete' ? '✓' : task.status === 'in_progress' ? '▸' : task.status === 'failed' ? '✕' : '○'}
+                    </span>
+                    {task.text}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </HudCard>
+      )}
 
       <HudCard
         title="Controls"

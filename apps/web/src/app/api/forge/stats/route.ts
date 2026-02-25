@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
+import { ForgeDB } from '@titan/forge';
 
 export async function GET() {
   try {
-    const forgePkg = '@titan' + '/forge';
-    const { ForgeDB } = await import(/* webpackIgnore: true */ forgePkg);
     const db = new ForgeDB();
 
     const [sampleStats, harvestStats] = await Promise.all([

@@ -173,6 +173,39 @@ export default function TrainingLabPanel() {
         <AnimatedCounter label="Exported" value={stats?.distillation.exported || 0} />
       </div>
 
+      {(!stats || (stats.distillation.total_samples === 0 && runs.length === 0)) && (
+        <HudCard title="Getting Started" tone="cyan">
+          <div className="space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/30 to-violet-500/30 border border-cyan-500/30 flex items-center justify-center text-[18px] flex-shrink-0">🧠</div>
+              <div>
+                <div className="text-[13px] text-white font-medium">No training data collected yet</div>
+                <p className="text-[12px] text-slate-400 mt-1 leading-relaxed">
+                  Use Titan to chat and code — Forge automatically captures high-quality interactions from every protocol.
+                  Once enough data accumulates, you can export datasets and run fine-tuning jobs right here.
+                </p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-[#0b1120]/70 p-3 space-y-2">
+              <div className="text-[11px] uppercase tracking-wider text-cyan-300 font-semibold">How it works</div>
+              <div className="flex items-start gap-2 text-[12px] text-slate-300">
+                <span className="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-[10px] text-cyan-300 flex-shrink-0 mt-0.5">1</span>
+                <span><strong className="text-white">Chat &amp; Code</strong> — Use any Titan protocol. Every interaction is recorded as a distillation sample.</span>
+              </div>
+              <div className="flex items-start gap-2 text-[12px] text-slate-300">
+                <span className="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-[10px] text-cyan-300 flex-shrink-0 mt-0.5">2</span>
+                <span><strong className="text-white">Quality Scoring</strong> — Samples are scored automatically. High-value samples (7+) are flagged for training.</span>
+              </div>
+              <div className="flex items-start gap-2 text-[12px] text-slate-300">
+                <span className="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-[10px] text-cyan-300 flex-shrink-0 mt-0.5">3</span>
+                <span><strong className="text-white">Export &amp; Train</strong> — Export datasets in ShareGPT/JSONL/Alpaca format, then launch QLoRA or full fine-tuning runs.</span>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-500 text-center">Start using Titan Chat or any protocol to begin collecting training data</div>
+          </div>
+        </HudCard>
+      )}
+
       <HudCard title="Data Pipeline" tone="green">
         <div className="space-y-2">
           <HudGauge

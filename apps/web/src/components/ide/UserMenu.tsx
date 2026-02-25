@@ -38,7 +38,10 @@ export default function UserMenu() {
     );
   }
 
-  const username = user.username || user.name || 'User';
+  const isEmailProvider = user.provider === 'google' || user.provider === 'email';
+  const displayName = isEmailProvider
+    ? (user.name || user.email?.split('@')[0] || user.username || 'User')
+    : (user.username || user.name || 'User');
   const avatarUrl = user.avatarUrl || '';
 
   return (
@@ -46,21 +49,21 @@ export default function UserMenu() {
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
         className="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-[#3c3c3c] transition-colors"
-        title={username}
+        title={displayName}
       >
         {avatarUrl ? (
           <img
             src={avatarUrl}
-            alt={username}
+            alt={displayName}
             className="w-6 h-6 rounded-full border border-[#3c3c3c]"
           />
         ) : (
           <div className="w-6 h-6 rounded-full bg-[#007acc] flex items-center justify-center text-white text-[11px] font-bold">
-            {username[0]?.toUpperCase()}
+            {displayName[0]?.toUpperCase()}
           </div>
         )}
-        <span className="text-[12px] text-[#cccccc] max-w-[100px] truncate hidden sm:block">
-          {username}
+        <span className="text-[12px] text-[#cccccc] max-w-[120px] truncate hidden sm:block">
+          <span className="text-[10px] text-[#3fb950] mr-1">Signed in</span>{displayName}
         </span>
         <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="text-[#808080]">
           <path d="M4 6l4 4 4-4z"/>
@@ -71,22 +74,22 @@ export default function UserMenu() {
         <div className="absolute top-full right-0 mt-1.5 w-[220px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-2xl z-[9999] overflow-hidden">
           <div className="px-4 py-3 border-b border-[#3c3c3c] flex items-center gap-3">
             {avatarUrl ? (
-              <img src={avatarUrl} alt={username} className="w-9 h-9 rounded-full" />
+              <img src={avatarUrl} alt={displayName} className="w-9 h-9 rounded-full" />
             ) : (
               <div className="w-9 h-9 rounded-full bg-[#007acc] flex items-center justify-center text-white font-bold">
-                {username[0]?.toUpperCase()}
+                {displayName[0]?.toUpperCase()}
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-white truncate">{user.name || username}</div>
-              <div className="text-[11px] text-[#808080] truncate">{user.email || `@${username}`}</div>
+              <div className="text-[13px] font-medium text-white truncate">{user.name || displayName}</div>
+              <div className="text-[11px] text-[#808080] truncate">{user.email || `@${displayName}`}</div>
             </div>
           </div>
 
           <div className="py-1">
             {user.provider === 'github' && (
               <a
-                href={`https://github.com/${username}`}
+                href={`https://github.com/${user.username}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setOpen(false)}

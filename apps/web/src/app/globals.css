@@ -116,6 +116,34 @@ code, pre, .font-mono {
   font-variant-ligatures: none;
 }
 
+/* Chat message content overflow control */
+.titan-chat-scroll pre {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.titan-chat-scroll code {
+  word-break: break-word;
+}
+
+.titan-chat-scroll p,
+.titan-chat-scroll li,
+.titan-chat-scroll blockquote {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.titan-chat-scroll table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.titan-chat-scroll img {
+  max-width: 100%;
+  height: auto;
+}
+
 /* Ensure text is selectable in chat */
 .select-text {
   user-select: text !important;

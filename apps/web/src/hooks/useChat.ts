@@ -35,11 +35,18 @@ const GIT_STATUS_TTL_MS = 5000;
 const TITAN_PLANNER = 'qwen3.5-plus-02-15';
 const TITAN_TOOL_CALLER = 'deepseek-r1';
 const TITAN_WORKER = 'qwen3-coder-next';
-const TITAN_PROTOCOL_IDS = new Set(['titan-protocol']);
+const TITAN_EXECUTOR = 'gemini-2.0-flash';
+const TITAN_PROTOCOL_IDS = new Set(['titan-protocol', 'protocol-team']);
 const CODE_WRITE_TOOLS = new Set(['edit_file', 'create_file']);
 
 function getIterationModel(baseModel: string, iteration: number): string {
   if (!TITAN_PROTOCOL_IDS.has(baseModel)) return baseModel;
+  if (baseModel === 'protocol-team') {
+    if (iteration === 1) return TITAN_PLANNER;
+    if (iteration % 4 === 0) return TITAN_TOOL_CALLER;
+    if (iteration % 3 === 0) return TITAN_EXECUTOR;
+    return TITAN_WORKER;
+  }
   if (iteration === 1) return TITAN_PLANNER;
   return TITAN_TOOL_CALLER;
 }

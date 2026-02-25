@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/lib/supabase/server';
+import { ForgeEvaluator, ForgeDB } from '@titan/forge';
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,11 +20,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Run not found' }, { status: 404 });
     }
 
-    const forgePkg = '@titan' + '/forge';
-    const mod = await import(/* webpackIgnore: true */ forgePkg);
-    const { ForgeEvaluator, ForgeDB } = mod;
     const db = new ForgeDB();
-
     const evaluator = new ForgeEvaluator();
     const teacherModel = String(body.teacherModel || 'anthropic/claude-opus-4.6');
     const studentModel = String(body.studentModel || run.model_path || run.base_model);

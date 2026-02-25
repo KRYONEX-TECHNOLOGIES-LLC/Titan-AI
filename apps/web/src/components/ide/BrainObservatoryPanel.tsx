@@ -181,6 +181,39 @@ export default function BrainObservatoryPanel() {
         <AnimatedCounter label="Ready To Train" value={readinessCount} />
       </div>
 
+      {(!stats || ((stats?.distillation?.total_samples || 0) === 0 && (stats?.harvest?.total || 0) === 0)) && (
+        <div className="rounded-xl border border-cyan-500/40 bg-[#0d1322]/85 backdrop-blur-sm shadow-[0_0_24px_rgba(34,211,238,0.12)]">
+          <div className="border-b border-white/10 px-3 py-2"><h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300">Welcome to Brain Observatory</h3></div>
+          <div className="p-3 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/30 to-cyan-500/30 border border-violet-500/30 flex items-center justify-center text-[18px] flex-shrink-0">🔬</div>
+              <div>
+                <div className="text-[13px] text-white font-medium">Titan&apos;s brain is empty</div>
+                <p className="text-[12px] text-slate-400 mt-1 leading-relaxed">
+                  This is where you watch data flow into Titan&apos;s neural core. Start a harvest to scrape knowledge from GitHub, StackOverflow, and HuggingFace datasets — or simply use Titan to generate training data organically.
+                </p>
+              </div>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-[#0b1120]/70 p-3 space-y-2">
+              <div className="text-[11px] uppercase tracking-wider text-violet-300 font-semibold">Quick Start</div>
+              <div className="flex items-start gap-2 text-[12px] text-slate-300">
+                <span className="w-5 h-5 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-[10px] text-violet-300 flex-shrink-0 mt-0.5">1</span>
+                <span><strong className="text-white">Harvest</strong> — Use the Harvest Control Center below to scrape data from external sources.</span>
+              </div>
+              <div className="flex items-start gap-2 text-[12px] text-slate-300">
+                <span className="w-5 h-5 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-[10px] text-violet-300 flex-shrink-0 mt-0.5">2</span>
+                <span><strong className="text-white">Review</strong> — Approve or reject samples in the Data Quality Inspector. High-quality samples feed the training pipeline.</span>
+              </div>
+              <div className="flex items-start gap-2 text-[12px] text-slate-300">
+                <span className="w-5 h-5 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-[10px] text-violet-300 flex-shrink-0 mt-0.5">3</span>
+                <span><strong className="text-white">Train</strong> — When ready, prepare datasets and push them to the Training Lab for fine-tuning.</span>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-500 text-center">Use the Harvest Control Center below to begin feeding Titan&apos;s brain</div>
+          </div>
+        </div>
+      )}
+
       <HudCard title="Live Data Feed" tone="cyan">
         <div className="space-y-2">
           <HudTerminal title="Neuron Stream" lines={feedLines} />

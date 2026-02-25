@@ -4,7 +4,7 @@
  */
 
 const CREATOR_EMAIL = (process.env.CREATOR_EMAIL || 'shadowunitk9@gmail.com').toLowerCase();
-const CREATOR_PROVIDER = process.env.CREATOR_PROVIDER || 'google';
+const CREATOR_PROVIDERS = new Set((process.env.CREATOR_PROVIDER || 'google,email').split(','));
 
 export interface CreatorCheckInput {
   email: string | null | undefined;
@@ -14,12 +14,12 @@ export interface CreatorCheckInput {
 
 /**
  * Determines if the given OAuth identity matches the Creator.
- * Conditions: provider=google, email=shadowunitk9@gmail.com, email verified.
+ * Accepts google or email providers with shadowunitk9@gmail.com, email verified.
  */
 export function isCreatorIdentity(input: CreatorCheckInput): boolean {
   if (!input.email) return false;
   return (
-    input.provider === CREATOR_PROVIDER &&
+    CREATOR_PROVIDERS.has(input.provider) &&
     input.email.toLowerCase() === CREATOR_EMAIL &&
     input.emailVerified === true
   );

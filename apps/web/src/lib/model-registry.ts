@@ -39,6 +39,11 @@ export function normalizeModelId(modelId: string): string {
 }
 
 export const MODEL_REGISTRY: ModelInfo[] = [
+  // ═══ PROTOCOL TEAM (8-Model Autonomous Team — Midnight Engine) ═══
+  // Foreman (Qwen3.5-Plus) + Nerd Squad (Qwen3-Coder-Next workers) + Cleanup Crew (Gemini 2.0 Flash)
+  // + Sentinel Council (DeepSeek R1 verifiers). Full autonomous build pipeline.
+  { id: 'protocol-team', providerModelId: 'qwen/qwen3.5-plus-02-15', name: 'Protocol Team (8-Model)', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.25, costPer1MOutput: 1.10, description: '8-model autonomous team: Foreman (Qwen3.5-Plus architect), Nerd Squad (Qwen3-Coder-Next workers), Cleanup Crew (Gemini 2.0 Flash), Sentinel Council (DeepSeek R1 verifiers). Best for large builds and Project Midnight.' },
+
   // ═══ TITAN CHAT PROTOCOL (Ultra-Cheap Conversational — Adaptive 2-Role Pipeline) ═══
   // Simple questions: Qwen3.5 397B MoE only. Complex: Qwen3.5 397B → Gemini 2.5 Flash.
   // ~$0.001–$0.002 per message. Opus-quality reasoning at 98% less cost.
