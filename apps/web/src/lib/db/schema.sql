@@ -36,8 +36,26 @@ CREATE TABLE IF NOT EXISTS workspaces (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Persistent AI memory (architectural decisions, project context, user preferences)
+CREATE TABLE IF NOT EXISTS titan_memory (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL,
+  category TEXT NOT NULL DEFAULT 'decision',
+  decision TEXT NOT NULL,
+  rationale TEXT,
+  task_id TEXT,
+  status TEXT DEFAULT 'ACTIVE',
+  references TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_workspaces_user_id ON workspaces(user_id);
 CREATE INDEX IF NOT EXISTS idx_workspaces_last_opened ON workspaces(last_opened DESC);
+CREATE INDEX IF NOT EXISTS idx_titan_memory_user_id ON titan_memory(user_id);
+CREATE INDEX IF NOT EXISTS idx_titan_memory_workspace_id ON titan_memory(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_titan_memory_category ON titan_memory(category);

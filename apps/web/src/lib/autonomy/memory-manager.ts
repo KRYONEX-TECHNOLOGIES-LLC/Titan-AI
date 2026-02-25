@@ -181,6 +181,6 @@ export class MemoryManager {
   }
 
   shouldReadMemory(userMessage: string): boolean {
-    return /architecture|database|protocol|framework|infrastructure|migration|deployment|redis|cache|decision|adr|rationale|model|models|cost|price|pricing|stack|qwen|deepseek|gemini|opus|gpt|claude|tokens|token|build|electron|package\.json|electron-builder|ipc|railway|vercel|ci|github.actions|release|version|bump|tag|config|tsconfig|webpack|pnpm|npm|yarn/i.test(userMessage);
+    return /architecture|database|protocol|framework|infrastructure|migration|deployment|redis|cache|decision|adr|rationale|model|models|cost|price|pricing|stack|qwen|deepseek|gemini|opus|gpt|claude|tokens|token|build|electron|package\.json|electron-builder|ipc|railway|vercel|ci|github.actions|release|version|bump|tag|config|tsconfig|webpack|pnpm|npm|yarn|remember|forgot|last time|we discussed|we planned|we decided|we built|we changed|previously|before|earlier|history|what did|where did|project|feature|engine|module|component|system|improvement|refactor|fix|bug|issue|setup|install|plan|design|midnight|forge|phoenix|supreme|omega|titan|memecoin|trading|landing|auth|login|sign.?in|supabase|api|route|endpoint|sidebar|panel|brain|observatory|training|lab|status|working on|todo|task/i.test(userMessage);
   }
 }

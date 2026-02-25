@@ -21,8 +21,8 @@ const MAX_TOOL_CALLS = 120;
 const MAX_CONSECUTIVE_FAILURES = 5;
 const MAX_LOOP_ITERATIONS = 60;
 const MAX_TOTAL_FAILURES = 12;
-const MAX_HISTORY_ENTRIES = 60;
-const MAX_TOOL_RESULT_LEN = 6000;
+const MAX_HISTORY_ENTRIES = 100;
+const MAX_TOOL_RESULT_LEN = 8000;
 const TOKEN_BATCH_MS = 150;
 const TOKEN_BUDGET_CHARS = 120000;
 
@@ -154,17 +154,17 @@ function compressConversationHistory(history: LLMMessage[]): LLMMessage[] {
     });
   }
 
-  const recentCount = 6;
+  const recentCount = 12;
   const recent = history.slice(-recentCount);
   const older = history.slice(0, -recentCount).slice(-MAX_HISTORY_ENTRIES);
 
   const compressed = older.map(msg => {
-    if (msg.role === 'tool' && msg.content && msg.content.length > 200) {
-      const firstLine = msg.content.split('\n')[0]?.slice(0, 150) || '';
-      return { ...msg, content: `[Compressed] ${firstLine}...` };
+    if (msg.role === 'tool' && msg.content && msg.content.length > 500) {
+      const firstLines = msg.content.split('\n').slice(0, 3).join('\n').slice(0, 400);
+      return { ...msg, content: `[Compressed] ${firstLines}...` };
     }
-    if (msg.role === 'assistant' && msg.content && msg.content.length > 500 && !msg.tool_calls?.length) {
-      return { ...msg, content: msg.content.slice(0, 400) + '\n[TRIMMED]' };
+    if (msg.role === 'assistant' && msg.content && msg.content.length > 1000 && !msg.tool_calls?.length) {
+      return { ...msg, content: msg.content.slice(0, 800) + '\n[TRIMMED]' };
     }
     return msg;
   });
@@ -1019,7 +1019,7 @@ export function useChat({
       }
 
       const shouldWriteMemory = taskCompletedSuccessfully
-        && /architecture|decision|adr|chose|chosen|rationale|protocol/i.test(msg)
+        && /architecture|decision|adr|chose|chosen|rationale|protocol|refactor|migrate|deploy|setup|config|build|fix|implement|create|design|plan|feature|engine|module|upgrade|switch|change|update|improve|integrate/i.test(msg)
         && !abortedRef.current
         && !controller.signal.aborted;
       if (shouldWriteMemory) {

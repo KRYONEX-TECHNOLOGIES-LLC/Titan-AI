@@ -4,8 +4,8 @@ import { useState, useCallback, useEffect } from 'react';
 import type { Session } from '@/types/ide';
 
 const STORAGE_VERSION = 3;
-const MAX_PERSISTED_MESSAGES = 50;
-const MAX_MESSAGE_LENGTH = 50000;
+const MAX_PERSISTED_MESSAGES = 80;
+const MAX_MESSAGE_LENGTH = 80000;
 
 const DEFAULT_SESSION: Session = {
   id: '1',

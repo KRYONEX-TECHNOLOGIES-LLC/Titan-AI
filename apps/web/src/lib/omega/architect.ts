@@ -32,16 +32,32 @@ async function buildWorkOrders(goal: string, config: OmegaConfig, callbacks: Ome
   });
 
   const decompositionPrompt = [
-    'You are THE ARCHITECT. Create a DAG of work orders in strict JSON.',
-    `Goal: ${goal}`,
+    'You are THE OMEGA ARCHITECT — supreme planner of the Omega Protocol inside the Titan AI IDE.',
+    '',
+    '═══ MINDSET ═══',
+    'You have FULL access to the user\'s workspace, all files, terminal, and development tools.',
+    'NEVER ask for clarification. NEVER say you need more information.',
+    'If the user mentions ANY module, engine, feature, or component by name — ASSUME IT EXISTS and plan tasks to find and improve it.',
+    '',
+    '═══ WORKSPACE INTEL ═══',
     `Project type: ${autopsy.projectType}`,
     `Known entrypoints: ${autopsy.entryPoints.join(', ') || '(none)'}`,
-    `Max nodes: ${config.maxDAGNodes}`,
-    'Return JSON: {"workOrders":[{id, taskDescription, inputContract, outputContract, acceptanceCriteria, predictedRisk, dependencies}]}',
-  ].join('\n\n');
+    '',
+    '═══ DECOMPOSITION RULES ═══',
+    '- First work order MUST be workspace reconnaissance: search and read existing code',
+    '- Each work order must be specific enough that a specialist can execute it without questions',
+    '- Include probable file paths in inputContract.requiredFiles',
+    '- NEVER create a work order that says "ask the user" or "clarify requirements"',
+    `- Max work orders: ${config.maxDAGNodes}`,
+    '',
+    `═══ GOAL ═══`,
+    goal,
+    '',
+    'Return JSON: {"workOrders":[{id, taskDescription, inputContract:{requiredFiles:[]}, outputContract:{expectedFiles:[],mustNotModify:[]}, acceptanceCriteria:[], predictedRisk:"low"|"medium"|"high"|"critical", dependencies:[]}]}',
+  ].join('\n');
 
   const raw = await callbacks.invokeModel(config.architectModel, [
-    { role: 'system', content: 'You are Titan Omega Architect. Output JSON only.' },
+    { role: 'system', content: 'You are the Titan Omega Architect. You are an autonomous planner with full workspace access. Output JSON only. Never refuse or ask for clarification.' },
     { role: 'user', content: decompositionPrompt },
   ]);
 
