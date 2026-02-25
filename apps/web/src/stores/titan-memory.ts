@@ -70,10 +70,23 @@ interface TitanMemoryState {
   // Serialization for system prompt injection
   serialize: (maxTokens?: number) => string;
 
+  // Workspace scoping
+  setWorkspace: (path: string | undefined) => void;
+
   // Maintenance
   cleanup: () => void;
   clearAll: () => void;
 }
+
+function hashMemPath(path: string): string {
+  let h = 0;
+  for (let i = 0; i < path.length; i++) {
+    h = ((h << 5) - h + path.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36);
+}
+
+let _currentWorkspace: string | undefined;
 
 let factCounter = 0;
 function genId(): string {
@@ -423,6 +436,43 @@ export const useTitanMemory = create<TitanMemoryState>()(
             summaries: state.summaries.slice(-50),
           };
         });
+      },
+
+      setWorkspace: (path: string | undefined) => {
+        if (typeof window === 'undefined') return;
+        const oldKey = _currentWorkspace
+          ? `titan-memory-${hashMemPath(_currentWorkspace)}`
+          : 'titan-persistent-memory';
+
+        // Snapshot current state to the old workspace key
+        const current = get();
+        try {
+          localStorage.setItem(oldKey, JSON.stringify({
+            state: { facts: current.facts, summaries: current.summaries, version: current.version },
+            version: 0,
+          }));
+        } catch { /* best-effort */ }
+
+        _currentWorkspace = path;
+        const newKey = path
+          ? `titan-memory-${hashMemPath(path)}`
+          : 'titan-persistent-memory';
+
+        // Load from the new workspace key (or start fresh)
+        try {
+          const saved = localStorage.getItem(newKey);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            const s = parsed.state || parsed;
+            if (s.facts) {
+              set({ facts: s.facts, summaries: s.summaries || [], version: s.version || 1 });
+              return;
+            }
+          }
+        } catch { /* ignore */ }
+
+        // Fresh start for new workspace
+        set({ facts: {}, summaries: [], version: 1 });
       },
 
       clearAll: () => {

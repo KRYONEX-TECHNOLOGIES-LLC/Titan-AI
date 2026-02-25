@@ -173,9 +173,11 @@ export default function TitanIDE() {
   // Composed hooks
   const settings = useSettings(mounted);
   const midnight = useMidnight(mounted, settings.activeModel);
-  const { sessions, setSessions, activeSessionId, setActiveSessionId, currentSession, handleNewAgent, handleRenameSession, handleDeleteSession } = useSessions(mounted);
   const fileSystem = useFileSystem(setTabs, setActiveTab, applyFiles, setActiveView, activeView);
   const setWorkspacePath = fileSystem.setWorkspacePath;
+  const storeWorkspacePath = useFileStore(s => s.workspacePath);
+  const resolvedWorkspacePath = fileSystem.workspacePath || storeWorkspacePath || undefined;
+  const { sessions, setSessions, activeSessionId, setActiveSessionId, currentSession, handleNewAgent, handleRenameSession, handleDeleteSession } = useSessions(mounted, resolvedWorkspacePath);
 
   // Terminal history for agent context
   const [terminalHistory, setTerminalHistory] = useState<Array<{ command: string; output?: string; exitCode: number }>>([]);
@@ -210,6 +212,13 @@ export default function TitanIDE() {
     setWorkspacePath(fileState.workspacePath);
     fileState.refreshFileTree();
   }, [mounted, isLikelyWorkspacePath, setWorkspacePath]);
+
+  // Sync persistent memory store to current workspace
+  useEffect(() => {
+    if (!mounted) return;
+    const { useTitanMemory } = require('@/stores/titan-memory');
+    useTitanMemory.getState().setWorkspace(resolvedWorkspacePath);
+  }, [mounted, resolvedWorkspacePath]);
 
   // Auto-create C:\TitanWorkspace if no folder is loaded (Electron only)
   useEffect(() => {
