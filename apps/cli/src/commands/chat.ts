@@ -85,5 +85,5 @@ function generateMockResponse(input: string): string {
     return 'Refactoring is a great way to improve code quality. Let me analyze the code structure and suggest improvements.';
   }
   
-  return responses[Math.floor(Math.random() * responses.length)];
+  return responses[Math.floor(Math.random() * responses.length)]!;
 }

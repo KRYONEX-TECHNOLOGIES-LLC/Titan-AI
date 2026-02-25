@@ -11,7 +11,7 @@ export const agentCommand = new Command('agent')
   .option('--dry-run', 'Show what would be done without making changes')
   .option('--auto-approve', 'Automatically approve all changes')
   .option('-v, --verbose', 'Verbose output')
-  .action(async (task, options) => {
+  .action(async (task: string, options: { type: string; dryRun?: boolean; autoApprove?: boolean; verbose?: boolean }) => {
     const chalk = (await import('chalk')).default;
     const ora = (await import('ora')).default;
     

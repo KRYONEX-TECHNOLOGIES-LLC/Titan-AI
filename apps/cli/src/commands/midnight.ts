@@ -100,7 +100,7 @@ function displayBanner(trustLevel: number): void {
   const trustColors = [chalk.yellow, chalk.blue, chalk.magenta];
   const trustNames = ['SUPERVISED', 'ASSISTANT', 'FULL AUTONOMY'];
   
-  console.log(chalk.gray('  Trust Level: ') + trustColors[trustLevel - 1](trustNames[trustLevel - 1]));
+  console.log(chalk.gray('  Trust Level: ') + trustColors[trustLevel - 1]!(trustNames[trustLevel - 1]!));
   console.log('');
 }
 

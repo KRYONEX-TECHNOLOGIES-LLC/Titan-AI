@@ -27,7 +27,7 @@ configCommand
 configCommand
   .command('set <key> <value>')
   .description('Set a configuration value')
-  .action(async (key, value) => {
+  .action(async (key: string, value: string) => {
     const chalk = (await import('chalk')).default;
     
     try {
@@ -38,19 +38,19 @@ configCommand
       let current: any = config;
       
       for (let i = 0; i < keys.length - 1; i++) {
-        if (!(keys[i] in current)) {
-          current[keys[i]] = {};
+        const k = keys[i]!;
+        if (!(k in current)) {
+          current[k] = {};
         }
-        current = current[keys[i]];
+        current = current[k];
       }
       
-      // Parse value
       let parsedValue: any = value;
       if (value === 'true') parsedValue = true;
       else if (value === 'false') parsedValue = false;
       else if (!isNaN(Number(value))) parsedValue = Number(value);
       
-      current[keys[keys.length - 1]] = parsedValue;
+      current[keys[keys.length - 1]!] = parsedValue;
       
       await saveConfig(config);
       console.log(chalk.green(`✓ Set ${key} = ${parsedValue}`));
@@ -62,7 +62,7 @@ configCommand
 configCommand
   .command('get <key>')
   .description('Get a configuration value')
-  .action(async (key) => {
+  .action(async (key: string) => {
     const chalk = (await import('chalk')).default;
     
     try {
