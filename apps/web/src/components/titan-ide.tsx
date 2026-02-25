@@ -206,6 +206,17 @@ export default function TitanIDE() {
     fileState.refreshFileTree();
   }, [mounted, isLikelyWorkspacePath, setWorkspacePath]);
 
+  // Auto-create C:\TitanWorkspace if no folder is loaded (Electron only)
+  useEffect(() => {
+    if (!mounted) return;
+    if (fileSystem.workspacePath) return;
+    const fileState = useFileStore.getState();
+    if (fileState.workspaceOpen && fileState.workspacePath) return;
+    if (isElectron && electronAPI) {
+      void fileSystem.ensureDefaultWorkspace();
+    }
+  }, [mounted, fileSystem]);
+
   // Debounced file tree refresh
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncedRefreshTree = useCallback(() => {
@@ -835,9 +846,23 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   const chatMode = usePlanStore((s) => s.chatMode);
   const setChatMode = usePlanStore((s) => s.setChatMode);
 
-  const voice = useVoiceInput(useCallback((text: string) => {
-    setChatInput(chatInputRef.current + text);
-  }, [setChatInput]));
+  const voiceAutoSend = useCallback(() => {
+    if (chatInputRef.current.trim()) {
+      const chatModeNow = usePlanStore.getState().chatMode;
+      if (chatModeNow === 'plan') {
+        // handlePlanSend is not in scope here, but effectiveSend will be
+      } else {
+        onSend();
+      }
+    }
+  }, [onSend]);
+
+  const voice = useVoiceInput(
+    useCallback((text: string) => {
+      setChatInput(chatInputRef.current + text);
+    }, [setChatInput]),
+    { onAutoSend: voiceAutoSend, autoSendDelayMs: 2500 },
+  );
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -917,7 +942,6 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       const tasks = data.tasks as Array<{ title: string; description: string; phase: number; priority: 'critical' | 'high' | 'medium' | 'low'; tags: string[] }>;
 
       if (Array.isArray(tasks) && tasks.length > 0) {
-        planStore.clearPlan();
         planStore.bulkAddTasks(tasks.map(t => ({
           title: t.title || 'Untitled task',
           description: t.description || '',
@@ -1076,6 +1100,12 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
             {voice.interimText && (
               <div className="px-3 pb-1 text-[12px] text-[#666] italic">{voice.interimText}</div>
             )}
+            {voice.errorMessage && (
+              <div className="mx-3 mb-1 px-2 py-1 text-[11px] rounded bg-[#f851491a] text-[#f85149] flex items-center justify-between">
+                <span>{voice.errorMessage}</span>
+                <button onClick={voice.clearError} className="ml-2 opacity-60 hover:opacity-100">&times;</button>
+              </div>
+            )}
             <div className="flex items-center justify-between px-2 pb-1.5">
               <div className="flex items-center gap-2">
                 <div className="mode-toggle">
@@ -1128,7 +1158,6 @@ function ExtensionsPanel() {
     { name: 'Language Packs', desc: 'Additional language support and grammars' },
     { name: 'Custom Protocols', desc: 'Create and share your own AI protocols' },
     { name: 'Plugin Marketplace', desc: 'Community extensions and integrations' },
-    { name: 'Voice Commands', desc: 'Full voice-driven code editing' },
   ];
   const toneColors: Record<string, string> = {
     cyan: 'border-cyan-500/40 text-cyan-300',

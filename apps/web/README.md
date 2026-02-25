@@ -48,7 +48,36 @@ pnpm build
 - **Chat continue (tool-calling + system prompt + tool definitions)**: `src/app/api/chat/continue/route.ts`
 - **Models list**: `src/app/api/models/route.ts`
 - **Omega orchestrator (SSE)**: `src/app/api/titan/omega/route.ts`
+- **Plan Sniper (SSE)**: `src/app/api/titan/sniper/route.ts`
 - **Midnight API**: `src/app/api/midnight/route.ts`
+- **Plan generate**: `src/app/api/plan/generate/route.ts`
+- **Plan scan (codebase indexer)**: `src/app/api/plan/scan/route.ts`
+- **Plan subtasks**: `src/app/api/plan/subtasks/route.ts`
+- **Plan checklist**: `src/app/api/plan/checklist/route.ts`
+- **Plan pseudo-code**: `src/app/api/plan/pseudo-code/route.ts`
+
+### Stores
+
+- **Plan Mode state**: `src/stores/plan-store.ts`
+- **Code directory**: `src/stores/code-directory.ts`
+- **Persistent memory (7-layer)**: `src/stores/titan-memory.ts`
+- **File system state**: `src/stores/file-store.ts`
+- **Voice state**: `src/stores/voice.store.ts`
+
+### Lib modules
+
+- **Plan Brain Protocol**: `src/lib/plan/plan-brain.ts`
+- **Code scanner**: `src/lib/plan/code-scanner.ts`
+- **Subtask generator**: `src/lib/plan/subtask-generator.ts`
+- **Design templates (15)**: `src/lib/plan/design-templates.ts`
+- **Pseudo-code protocol**: `src/lib/plan/pseudo-code-protocol.ts`
+- **Phoenix orchestrator**: `src/lib/phoenix/phoenix-orchestrator.ts`
+- **Plan Sniper engine**: `src/lib/sniper/`
+
+### Hooks
+
+- **Voice input (Web Speech API)**: `src/hooks/useVoiceInput.ts`
+- **File system + auto-workspace**: `src/hooks/useFileSystem.ts`
 
 ### Models
 

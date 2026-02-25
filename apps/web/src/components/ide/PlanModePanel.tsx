@@ -3,7 +3,26 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { usePlanStore, type PlanTask, type TaskStatus, type MemoryEntry, type ManagerReport, type FinalChecklist, type ExecutionStatus } from '@/stores/plan-store';
 import { useCodeDirectory } from '@/stores/code-directory';
+import { useFileStore } from '@/stores/file-store';
 import { DESIGN_TEMPLATES, type DesignTemplate } from '@/lib/plan/design-templates';
+import type { FileNode } from '@/stores/file-store';
+
+function serializeFileTree(nodes: FileNode[], prefix = '', maxDepth = 4, depth = 0): string {
+  if (depth >= maxDepth) return '';
+  const lines: string[] = [];
+  for (const node of nodes) {
+    const indent = '  '.repeat(depth);
+    if (node.type === 'folder') {
+      lines.push(`${indent}${node.name}/`);
+      if (node.children) {
+        lines.push(serializeFileTree(node.children, prefix ? `${prefix}/${node.name}` : node.name, maxDepth, depth + 1));
+      }
+    } else {
+      lines.push(`${indent}${node.name}`);
+    }
+  }
+  return lines.filter(Boolean).join('\n');
+}
 
 const STATUS_ICONS: Record<TaskStatus, { icon: string; color: string }> = {
   pending: { icon: '○', color: '#808080' },
@@ -81,15 +100,21 @@ export function PlanModePanel() {
     });
   }, []);
 
+  const executionRef = useRef(false);
+
   const handleStartPlan = useCallback(async () => {
-    if (totalTasks === 0) return;
+    if (totalTasks === 0 || executionRef.current) return;
+    executionRef.current = true;
     store.startExecution();
 
+    // Phase 1: Scan real file tree
     try {
+      const fileTree = useFileStore.getState().fileTree;
+      const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
       const res = await fetch('/api/plan/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileTree: '(scanning via API)' }),
+        body: JSON.stringify({ fileTree: treeStr }),
       });
       if (res.ok) {
         const { directory } = await res.json();
@@ -101,58 +126,71 @@ export function PlanModePanel() {
     }
 
     store.setExecutionStatus('executing');
-    const tasks = Object.values(store.tasks)
+
+    // Phase 2: Execute tasks via the real agent API (non-blocking via setTimeout chain)
+    const pendingTasks = Object.values(store.tasks)
       .filter(t => t.parentId === null && t.status === 'pending')
       .sort((a, b) => a.phase - b.phase || a.order - b.order);
 
-    for (const task of tasks) {
-      if (usePlanStore.getState().execution.status === 'paused') {
-        await new Promise<void>(resolve => {
-          const interval = setInterval(() => {
-            if (usePlanStore.getState().execution.status !== 'paused') {
-              clearInterval(interval);
-              resolve();
-            }
-          }, 500);
-        });
+    const executeNext = async (index: number) => {
+      if (index >= pendingTasks.length) {
+        usePlanStore.getState().setExecutionStatus('done');
+        usePlanStore.getState().setCurrentTask(null);
+        executionRef.current = false;
+        return;
       }
-      if (usePlanStore.getState().execution.status === 'idle') break;
 
-      store.setCurrentTask(task.id);
-      store.updateTask(task.id, { status: 'in_progress' });
+      const currentExec = usePlanStore.getState().execution;
+      if (currentExec.status === 'idle') {
+        executionRef.current = false;
+        return;
+      }
+      if (currentExec.status === 'paused') {
+        setTimeout(() => void executeNext(index), 500);
+        return;
+      }
+
+      const task = pendingTasks[index];
+      const ps = usePlanStore.getState();
+      ps.setCurrentTask(task.id);
+      ps.updateTask(task.id, { status: 'in_progress' });
 
       try {
-        const chatRes = await fetch('/api/plan/generate', {
+        const chatRes = await fetch('/api/chat/continue', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            prompt: `Execute this specific task for the project "${store.planName}":\n\nTask: ${task.title}\nDescription: ${task.description}\nPriority: ${task.priority}\nTags: ${task.tags.join(', ')}\n\nGenerate the exact code changes needed. Be thorough and complete.`,
+            messages: [
+              { role: 'user', content: `[Plan Mode Task ${index + 1}/${pendingTasks.length}] Execute this task for "${ps.planName || 'the project'}":\n\nTask: ${task.title}\nDescription: ${task.description}\nPriority: ${task.priority}\nTags: ${task.tags.join(', ')}\n\nImplement this task now. Read the relevant files, make the changes, and verify they work.` },
+            ],
+            model: 'google/gemini-2.0-flash-001',
+            workspacePath: useFileStore.getState().workspacePath || undefined,
           }),
         });
 
         if (chatRes.ok) {
-          store.updateTask(task.id, { status: 'completed', completedAt: Date.now() });
-          store.markTaskExecuted(task.id, true);
+          usePlanStore.getState().updateTask(task.id, { status: 'completed', completedAt: Date.now() });
+          usePlanStore.getState().markTaskExecuted(task.id, true);
         } else {
-          store.updateTask(task.id, { status: 'failed' });
-          store.markTaskExecuted(task.id, false);
-          store.addReport({
-            type: 'error',
-            severity: 'warning',
+          usePlanStore.getState().updateTask(task.id, { status: 'failed' });
+          usePlanStore.getState().markTaskExecuted(task.id, false);
+          usePlanStore.getState().addReport({
+            type: 'error', severity: 'warning',
             title: `Task failed: ${task.title}`,
             details: `HTTP ${chatRes.status}`,
-            taskId: task.id,
-            resolved: false,
+            taskId: task.id, resolved: false,
           });
         }
-      } catch (err) {
-        store.updateTask(task.id, { status: 'failed' });
-        store.markTaskExecuted(task.id, false);
+      } catch {
+        usePlanStore.getState().updateTask(task.id, { status: 'failed' });
+        usePlanStore.getState().markTaskExecuted(task.id, false);
       }
-    }
 
-    store.setExecutionStatus('done');
-    store.setCurrentTask(null);
+      // Yield to UI thread, then continue with next task
+      setTimeout(() => void executeNext(index + 1), 50);
+    };
+
+    void executeNext(0);
   }, [store, totalTasks]);
 
   const handlePausePlan = useCallback(() => {

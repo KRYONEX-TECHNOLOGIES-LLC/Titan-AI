@@ -32,13 +32,20 @@ declare global {
   }
 }
 
-export function useVoiceInput(onTranscript: (text: string) => void) {
+export function useVoiceInput(
+  onTranscript: (text: string) => void,
+  options?: { onAutoSend?: () => void; autoSendDelayMs?: number },
+) {
   const [isListening, setIsListening] = useState(false);
   const [interimText, setInterimText] = useState('');
   const [isSupported, setIsSupported] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const restartCountRef = useRef(0);
+  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onAutoSendRef = useRef(options?.onAutoSend);
+  const autoSendDelay = options?.autoSendDelayMs ?? 2000;
+  onAutoSendRef.current = options?.onAutoSend;
 
   useEffect(() => {
     const SpeechRecognition = typeof window !== 'undefined'
@@ -53,6 +60,10 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch { /* ignore */ }
         recognitionRef.current = null;
+      }
+      if (autoSendTimerRef.current) {
+        clearTimeout(autoSendTimerRef.current);
+        autoSendTimerRef.current = null;
       }
     };
   }, []);
@@ -95,6 +106,15 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
       if (final) {
         onTranscript(final);
         restartCountRef.current = 0;
+
+        // Reset auto-send timer: fires after silence following last final transcript
+        if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
+        if (onAutoSendRef.current) {
+          autoSendTimerRef.current = setTimeout(() => {
+            onAutoSendRef.current?.();
+            autoSendTimerRef.current = null;
+          }, autoSendDelay);
+        }
       }
       setInterimText(interim);
     };
@@ -163,6 +183,10 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     if (rec) {
       try { rec.stop(); } catch { /* ignore */ }
     }
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current);
+      autoSendTimerRef.current = null;
+    }
     setIsListening(false);
     setInterimText('');
   }, []);
@@ -175,11 +199,14 @@ export function useVoiceInput(onTranscript: (text: string) => void) {
     }
   }, [isListening, startListening, stopListening]);
 
+  const clearError = useCallback(() => setErrorMessage(null), []);
+
   return {
     isListening,
     interimText,
     isSupported,
     errorMessage,
+    clearError,
     startListening,
     stopListening,
     toggleListening,

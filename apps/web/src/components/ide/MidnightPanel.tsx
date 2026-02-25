@@ -308,27 +308,8 @@ export default function MidnightPanel({
 
   const generatePlan = useCallback(async () => {
     if (!instruction.trim()) return;
-    setIsGenerating(true);
-    setPlanError('');
-    try {
-      const res = await fetch('/api/midnight/generate-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction, projectName: projectName || 'Untitled Project' }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setPlanError(data.error || 'Failed to generate plan');
-        return;
-      }
-      setGeneratedPlan(data);
-      setPlanTasks(data.tasks.map((t: string) => ({ text: t, status: 'pending' as const })));
-    } catch (err: unknown) {
-      setPlanError(err instanceof Error ? err.message : 'Network error');
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [instruction, projectName]);
+    void generatePlanFromChat(instruction.trim());
+  }, [instruction, generatePlanFromChat]);
 
   const removeTask = useCallback((idx: number) => {
     setPlanTasks((prev) => prev.filter((_, i) => i !== idx));

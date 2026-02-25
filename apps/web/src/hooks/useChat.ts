@@ -17,6 +17,8 @@ import { ContextNavigator } from '@/lib/autonomy/context-navigator';
 import { MemoryManager } from '@/lib/autonomy/memory-manager';
 import { useTitanMemory } from '@/stores/titan-memory';
 import { useCodeDirectory } from '@/stores/code-directory';
+import { usePlanStore } from '@/stores/plan-store';
+import { DESIGN_TEMPLATES, templateToPromptDirective } from '@/lib/plan/design-templates';
 import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
 import { playBellSound } from '@/utils/notification-sound';
 
@@ -658,6 +660,17 @@ export function useChat({
     const codeDir = useCodeDirectory.getState().serialize(2000);
     if (codeDir) {
       memoryPrefix += `${codeDir}\n\n`;
+    }
+
+    // Design template injection — if a template is selected, inject its directive
+    const planMemories = usePlanStore.getState().memories;
+    const templateMemory = Object.values(planMemories).find(m => m.title?.startsWith('Design Template:') && m.pinned);
+    if (templateMemory) {
+      const templateName = templateMemory.title.replace('Design Template: ', '');
+      const template = DESIGN_TEMPLATES.find(t => t.name === templateName);
+      if (template) {
+        memoryPrefix += `[Active Design Template]\n${templateToPromptDirective(template)}\n\n`;
+      }
     }
 
     // Also include file-based architectural memory when relevant

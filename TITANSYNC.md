@@ -261,6 +261,41 @@ Midnight Mode is the autonomous build system that executes projects end-to-end.
 
 ---
 
+## Auto-Workspace (Desktop)
+
+On launch, if no folder is loaded, the desktop app automatically creates `C:\TitanWorkspace` and opens it as the default workspace. New projects created by Midnight Mode or Plan Mode are placed as subfolders (e.g., `C:\TitanWorkspace\my-app`).
+
+Implementation: `useFileSystem.ensureDefaultWorkspace()` in `apps/web/src/hooks/useFileSystem.ts`, triggered on mount from `titan-ide.tsx`.
+
+---
+
+## Localhost & Dev Server Rules
+
+When running dev servers, the AI must:
+
+1. **Announce URL immediately** — "Server running at http://localhost:3000"
+2. **Kill old servers first** — Before starting a new server, kill any existing one on the same port
+3. **Handle port conflicts** — If port is in use, either kill the process or use an alternative port
+4. **Remind on cleanup** — After finishing, remind user the server is still running
+5. **Never leave servers running silently** — Always reference running servers in the summary
+
+These rules are enforced in the system prompt (Section 21).
+
+---
+
+## Voice Input
+
+Voice input uses the Web Speech API (built into Chromium/Electron):
+
+- Mic button in chat input toggles speech-to-text
+- Auto-sends message after 2.5s of silence following speech
+- Error messages displayed inline (permission denied, no network, etc.)
+- Interim transcript shown while speaking
+
+Implementation: `useVoiceInput` hook in `apps/web/src/hooks/useVoiceInput.ts`.
+
+---
+
 ## Environment Variables
 
 Required for local development: copy `apps/web/.env.example` to `apps/web/.env` and fill in values.

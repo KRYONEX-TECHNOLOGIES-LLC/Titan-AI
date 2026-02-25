@@ -77,6 +77,57 @@ Titan AI/
 
 ---
 
+## Features
+
+### Plan Mode
+- Start/Pause/Stop execution lifecycle with visual task checklist
+- Pseudo-code intake: paste rough ideas, AI converts to structured plans (30-200+ tasks)
+- Code scanner indexes the entire codebase for precise subtask generation
+- Smart subtasks: each checklist item gets project-specific verification tasks from the code directory
+- Dynamic checklist auto-generated from scanning the actual project
+- 15 design templates (Basic, Modern, Elite/Iron Man) with color customization
+- Plan Brain Protocol: 4-role orchestrator (Scanner -> Planner -> Verifier -> Corrector)
+
+### Midnight Mode (Autonomous Build)
+- Fully autonomous project execution end-to-end
+- In-process fallback (works without sidecar)
+- Chat + image input for describing projects and design references
+- Plan-store integration: tasks sync to Plan Mode's visual checklist
+- 600px wide panel with "Back to IDE" button
+
+### Voice Input
+- Speech-to-text via Web Speech API (Chrome/Electron)
+- Auto-send after 2.5s of silence
+- Error display with dismissible messages
+- Interim text preview while speaking
+
+### 7-Layer Persistent Memory
+1. Core Facts (identity, preferences)
+2. Decisions (architecture, tech stack)
+3. Active Context (current tasks, expires in 7 days)
+4. Conversation Summaries (compressed history)
+5. Error Patterns (anti-patterns to avoid)
+6. Mistake Ledger (exact mistakes + fixes, never repeated)
+7. Learned Skills (auto-extracted how-to knowledge)
+
+### AI Protocols
+- **Titan Plan Sniper**: 7-role multi-model orchestra (Scanner, Architect, Coder, Executor, Sentinel, Judge) using cost-effective models
+- **Phoenix Protocol**: Multi-agent orchestration with parallel workers
+- **Supreme Protocol**: Specialized 3-worker pipeline with oversight
+- **Omega Protocol**: Deep-research multi-specialist engine
+
+### Forge Harvester
+- 100 parallel workers scraping 15+ sources
+- 5-pass quality pipeline with AI judge
+- Continuous harvest targeting 10,000+ samples for model training
+- Email notification on completion
+
+### Auto-Workspace
+- Desktop app automatically creates `C:\TitanWorkspace` if no folder is loaded
+- Fully autonomous operation from first launch
+
+---
+
 ## Where to change things (high-signal pointers)
 
 - **IDE UI root**: `apps/web/src/components/titan-ide.tsx`
@@ -89,7 +140,14 @@ Titan AI/
 - **Plan Sniper protocol**: `apps/web/src/lib/sniper/` + `apps/web/src/app/api/titan/sniper/route.ts`
 - **Plan Mode store**: `apps/web/src/stores/plan-store.ts`
 - **Persistent memory**: `apps/web/src/stores/titan-memory.ts`
+- **Code directory**: `apps/web/src/stores/code-directory.ts`
 - **Plan task generation API**: `apps/web/src/app/api/plan/generate/route.ts`
+- **Plan Brain Protocol**: `apps/web/src/lib/plan/plan-brain.ts`
+- **Code scanner**: `apps/web/src/lib/plan/code-scanner.ts`
+- **Subtask generator**: `apps/web/src/lib/plan/subtask-generator.ts`
+- **Design templates**: `apps/web/src/lib/plan/design-templates.ts`
+- **Pseudo-code protocol**: `apps/web/src/lib/plan/pseudo-code-protocol.ts`
+- **Voice input**: `apps/web/src/hooks/useVoiceInput.ts`
 - **Forge harvester**: `packages/forge/src/` (CLI: `harvest.ts`, continuous: `harvest-continuous.ts`)
 - **Brain Observatory**: `apps/web/src/components/ide/BrainObservatoryPanel.tsx`
 - **Desktop IPC tool implementations**: `apps/desktop/src/ipc/tools.ts`

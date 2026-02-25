@@ -331,6 +331,67 @@ export function useFileSystem(
     }
   }, [directoryHandle]);
 
+  const ensureDefaultWorkspace = useCallback(async (): Promise<string | null> => {
+    if (workspacePath) return workspacePath;
+
+    if (!isElectron || !electronAPI) return null;
+
+    const defaultPath = 'C:\\TitanWorkspace';
+    try {
+      try {
+        await electronAPI.fs.readDir(defaultPath, { recursive: false });
+      } catch {
+        await electronAPI.fs.mkdir(defaultPath);
+      }
+
+      setIsLoadingFiles(true);
+      setLoadingMessage('Setting up default workspace...');
+
+      const nativeTree = await electronAPI.fs.readDir(defaultPath, { recursive: true });
+      const newFiles: Record<string, string> = {};
+
+      async function loadFilesFromTree(nodes: typeof nativeTree, prefix: string): Promise<void> {
+        let count = 0;
+        for (const node of nodes) {
+          if (count >= MAX_FILES) break;
+          if (node.type === 'file') {
+            const ext = node.name.split('.').pop()?.toLowerCase() || '';
+            if (SKIP_EXTENSIONS.has(ext)) continue;
+            try {
+              const content = await electronAPI!.fs.readFile(node.path);
+              const relPath = prefix ? `${prefix}/${node.name}` : node.name;
+              newFiles[relPath] = content;
+              count++;
+            } catch { /* skip */ }
+          } else if (node.type === 'directory' && (node as { children?: unknown[] }).children) {
+            const relPath = prefix ? `${prefix}/${node.name}` : node.name;
+            await loadFilesFromTree((node as { children: typeof nativeTree }).children, relPath);
+          }
+        }
+      }
+      await loadFilesFromTree(nativeTree, '');
+
+      const fileTree = convertNativeTree(nativeTree, '');
+      const { openFolder: openFolderStore } = useFileStore.getState();
+      openFolderStore(defaultPath, 'TitanWorkspace', fileTree);
+      setWorkspacePath(defaultPath);
+
+      onFilesLoaded(newFiles, { replace: true });
+      useEditorStore.getState().loadFileContents(newFiles);
+
+      await electronAPI.recentFolders.add(defaultPath);
+
+      setIsLoadingFiles(false);
+      setLoadingMessage('');
+      return defaultPath;
+    } catch (e) {
+      console.error('[useFileSystem] Failed to create default workspace:', e);
+      setIsLoadingFiles(false);
+      setLoadingMessage('');
+      return null;
+    }
+  }, [workspacePath, onFilesLoaded]);
+
   return {
     isLoadingFiles,
     loadingMessage,
@@ -339,5 +400,6 @@ export function useFileSystem(
     openFolder,
     openFile,
     writeFile,
+    ensureDefaultWorkspace,
   };
 }
