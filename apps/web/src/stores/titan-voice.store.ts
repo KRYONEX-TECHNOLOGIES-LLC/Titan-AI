@@ -1,119 +1,100 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { getTTSEngine } from '@/lib/voice/tts-engine';
+import { persist } from 'zustand/middleware';
 
 interface TitanVoiceState {
   voiceEnabled: boolean;
   autoSpeak: boolean;
   isSpeaking: boolean;
-  isInitialized: boolean;
   rate: number;
   pitch: number;
   volume: number;
-  snoozedUntil: number | null;
+  initialized: boolean;
+  greeting: string;
 
-  initEngine: () => Promise<void>;
-  speak: (text: string, priority?: number) => void;
-  stopSpeaking: () => void;
   toggleVoice: () => void;
   toggleAutoSpeak: () => void;
   setRate: (rate: number) => void;
   setPitch: (pitch: number) => void;
   setVolume: (volume: number) => void;
-  snoozeThoughts: (durationMs: number) => void;
-  isThoughtsSnoozed: () => boolean;
+  speak: (text: string, priority?: number) => void;
+  stopSpeaking: () => void;
+  markInitialized: () => void;
+}
+
+let ttsEngine: ReturnType<typeof import('@/lib/voice/tts-engine').getTTSEngine> | null = null;
+
+async function getEngine() {
+  if (ttsEngine) return ttsEngine;
+  try {
+    const mod = await import('@/lib/voice/tts-engine');
+    ttsEngine = mod.getTTSEngine();
+    return ttsEngine;
+  } catch {
+    return null;
+  }
 }
 
 export const useTitanVoice = create<TitanVoiceState>()(
   persist(
     (set, get) => ({
-      voiceEnabled: false,
-      autoSpeak: false,
+      voiceEnabled: true,
+      autoSpeak: true,
       isSpeaking: false,
-      isInitialized: false,
       rate: 1.0,
       pitch: 0.95,
       volume: 0.9,
-      snoozedUntil: null,
+      initialized: false,
+      greeting: '',
 
-      initEngine: async () => {
-        if (get().isInitialized) return;
-        const engine = getTTSEngine();
-        await engine.init((speaking) => set({ isSpeaking: speaking }));
-        const s = get();
-        engine.setRate(s.rate);
-        engine.setPitch(s.pitch);
-        engine.setVolume(s.volume);
-        set({ isInitialized: true });
+      toggleVoice: () => set((s) => ({ voiceEnabled: !s.voiceEnabled })),
+      toggleAutoSpeak: () => set((s) => ({ autoSpeak: !s.autoSpeak })),
+
+      setRate: (rate) => {
+        set({ rate });
+        getEngine().then((e) => e?.setRate(rate));
+      },
+      setPitch: (pitch) => {
+        set({ pitch });
+        getEngine().then((e) => e?.setPitch(pitch));
+      },
+      setVolume: (volume) => {
+        set({ volume });
+        getEngine().then((e) => e?.setVolume(volume));
       },
 
       speak: (text: string, priority = 5) => {
-        const s = get();
-        if (!s.voiceEnabled) return;
-        if (!s.isInitialized) {
-          void get().initEngine().then(() => {
-            getTTSEngine().speak(text, priority);
-          });
-          return;
-        }
-        void getTTSEngine().speak(text, priority);
+        const state = get();
+        if (!state.voiceEnabled) return;
+
+        getEngine().then(async (engine) => {
+          if (!engine) return;
+          await engine.init((speaking) => set({ isSpeaking: speaking }));
+          engine.setRate(state.rate);
+          engine.setPitch(state.pitch);
+          engine.setVolume(state.volume);
+          void engine.speak(text, priority);
+        });
       },
 
       stopSpeaking: () => {
-        getTTSEngine().stop();
-        set({ isSpeaking: false });
+        getEngine().then((engine) => {
+          engine?.stop();
+          set({ isSpeaking: false });
+        });
       },
 
-      toggleVoice: () => {
-        const next = !get().voiceEnabled;
-        set({ voiceEnabled: next });
-        if (next && !get().isInitialized) {
-          void get().initEngine();
-        }
-        if (!next) getTTSEngine().stop();
-      },
-
-      toggleAutoSpeak: () => set({ autoSpeak: !get().autoSpeak }),
-
-      setRate: (rate: number) => {
-        set({ rate });
-        getTTSEngine().setRate(rate);
-      },
-      setPitch: (pitch: number) => {
-        set({ pitch });
-        getTTSEngine().setPitch(pitch);
-      },
-      setVolume: (volume: number) => {
-        set({ volume });
-        getTTSEngine().setVolume(volume);
-      },
-
-      snoozeThoughts: (durationMs: number) => {
-        set({ snoozedUntil: Date.now() + durationMs });
-      },
-
-      isThoughtsSnoozed: () => {
-        const until = get().snoozedUntil;
-        if (!until) return false;
-        if (Date.now() > until) {
-          set({ snoozedUntil: null });
-          return false;
-        }
-        return true;
-      },
+      markInitialized: () => set({ initialized: true }),
     }),
     {
       name: 'titan-voice-settings',
-      storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({
         voiceEnabled: s.voiceEnabled,
         autoSpeak: s.autoSpeak,
         rate: s.rate,
         pitch: s.pitch,
         volume: s.volume,
-        snoozedUntil: s.snoozedUntil,
       }),
     },
   ),

@@ -1511,32 +1511,153 @@ function SettingsPanel({ fontSize, setFontSize, tabSize, setTabSize, wordWrap, s
   );
 }
 
+/* ─── WAVEFORM VISUALIZER ─── */
+function WaveformVisualizer({ active, speaking }: { active: boolean; speaking: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animFrameRef = useRef<number>(0);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (!active || typeof window === 'undefined') return;
+    let cleanup = false;
+
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cleanup) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        const ctx = new AudioContext();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 128;
+        src.connect(analyser);
+        analyserRef.current = analyser;
+
+        const draw = () => {
+          if (cleanup) return;
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const c = canvas.getContext('2d');
+          if (!c) return;
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(data);
+          const w = canvas.width;
+          const h = canvas.height;
+          c.clearRect(0, 0, w, h);
+          const barW = Math.max(2, (w / data.length) - 1);
+          for (let i = 0; i < data.length; i++) {
+            const v = data[i]! / 255;
+            const barH = Math.max(2, v * h * 0.9);
+            const x = i * (barW + 1);
+            const gradient = c.createLinearGradient(x, h, x, h - barH);
+            gradient.addColorStop(0, speaking ? '#3b82f6' : '#06b6d4');
+            gradient.addColorStop(1, speaking ? '#8b5cf6' : '#22d3ee');
+            c.fillStyle = gradient;
+            c.fillRect(x, h - barH, barW, barH);
+          }
+          animFrameRef.current = requestAnimationFrame(draw);
+        };
+        draw();
+      } catch { /* mic access denied */ }
+    })();
+
+    return () => {
+      cleanup = true;
+      cancelAnimationFrame(animFrameRef.current);
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+      analyserRef.current = null;
+    };
+  }, [active, speaking]);
+
+  if (!active) return null;
+
+  return (
+    <div className="rounded-lg bg-[#1a1a2e] border border-cyan-900/40 p-2">
+      <canvas
+        ref={canvasRef}
+        width={280}
+        height={40}
+        className="w-full rounded"
+        style={{ imageRendering: 'pixelated' }}
+      />
+      <div className="text-center text-[10px] text-cyan-400/70 mt-1">
+        {speaking ? '🔊 Alfred Speaking...' : '🎤 Listening...'}
+      </div>
+    </div>
+  );
+}
+
+/* ─── ALFRED GREETINGS ─── */
+const ALFRED_GREETINGS = [
+  "Good to see you, sir. Systems are online and ready. What shall we build today?",
+  "Welcome back, sir. I've been keeping watch. All systems nominal — let's make something great.",
+  "Ah, there you are. I was just reviewing our project status. Ready when you are, sir.",
+  "Sir, good to have you. I've got a few ideas brewing — say the word and I'll share them.",
+  "All systems green, sir. The forge is warm, the codebase is clean. Let's get to work.",
+];
+
+function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 6) return "Burning the midnight oil, sir? I'm right here with you. Let's make it count.";
+  if (hour < 12) return "Good morning, sir. Fresh start, fresh opportunities. What's on the agenda?";
+  if (hour < 17) return "Good afternoon, sir. We're making solid progress. What's next?";
+  if (hour < 21) return "Good evening, sir. Still going strong. I'm here whenever you need me.";
+  return "Late session, sir? I never sleep — let's keep pushing.";
+}
+
 /* ─── ALFRED PANEL ─── */
 function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
   const titanVoice = useTitanVoice();
   const [alfredListening, setAlfredListening] = useState(true);
+  const [greetingText, setGreetingText] = useState('');
+  const [hasGreeted, setHasGreeted] = useState(false);
 
   const voice = useVoiceInput(
     useCallback((text: string) => {
-      // Alfred always-listening: process voice commands
-      const { parseVoiceCommand } = require('@/lib/voice/voice-commands');
-      const { executeVoiceAction } = require('@/lib/voice/system-control');
-      const result = parseVoiceCommand(text);
-      if (result.matched) {
-        executeVoiceAction(result.action, result.params);
-        titanVoice.speak(`Executing: ${result.description}`, 8);
-      } else if (text.trim().length > 5) {
-        titanVoice.speak(`I heard: ${text.slice(0, 80)}`, 3);
-      }
+      try {
+        const { parseVoiceCommand } = require('@/lib/voice/voice-commands');
+        const { executeVoiceAction } = require('@/lib/voice/system-control');
+        const result = parseVoiceCommand(text);
+        if (result.matched) {
+          executeVoiceAction(result.action, result.params);
+          titanVoice.speak(`Executing: ${result.description}`, 8);
+        } else if (text.trim().length > 5) {
+          titanVoice.speak(`I heard: ${text.slice(0, 80)}`, 3);
+        }
+      } catch { /* voice commands module may not be loaded */ }
     }, [titanVoice]),
     { onAutoSend: undefined, autoSendDelayMs: 3000 },
   );
 
+  // Auto-start listening
   useEffect(() => {
     if (alfredListening && voice.isSupported && !voice.isListening) {
       voice.toggleListening();
     }
   }, [alfredListening]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Alfred greeting on first open
+  useEffect(() => {
+    if (hasGreeted) return;
+    setHasGreeted(true);
+
+    const isReturning = localStorage.getItem('alfred-last-visit');
+    localStorage.setItem('alfred-last-visit', new Date().toISOString());
+
+    const greeting = isReturning
+      ? getTimeBasedGreeting()
+      : "Sir, I'm Alfred — your AI companion. I'll be watching over everything: code quality, project health, new ideas. Just speak or type, and I'm on it. Welcome to Titan.";
+
+    setGreetingText(greeting);
+
+    const timer = setTimeout(() => {
+      titanVoice.speak(greeting, 9);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [hasGreeted, titanVoice]);
 
   return (
     <div className="flex flex-col h-full">
@@ -1556,6 +1677,29 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {/* Greeting Bubble */}
+        {greetingText && (
+          <div className="rounded-lg bg-gradient-to-r from-cyan-900/30 to-blue-900/30 border border-cyan-700/40 p-3">
+            <div className="flex items-start gap-2">
+              <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-white text-[10px] font-bold">A</span>
+              </div>
+              <p className="text-[12px] text-cyan-100 leading-relaxed">{greetingText}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Waveform Visualizer */}
+        <WaveformVisualizer active={alfredListening && voice.isListening} speaking={titanVoice.isSpeaking} />
+
+        {/* Interim transcript display */}
+        {voice.interimText && (
+          <div className="rounded-lg bg-[#252526] border border-cyan-800/40 p-2">
+            <div className="text-[10px] text-cyan-400 mb-1">Hearing...</div>
+            <div className="text-[12px] text-white/80 italic">&ldquo;{voice.interimText}&rdquo;</div>
+          </div>
+        )}
+
         {/* Status Section */}
         <div className="rounded-lg bg-[#252526] border border-[#3c3c3c] p-3">
           <div className="text-[11px] text-[#808080] uppercase tracking-wider mb-2">Status</div>
@@ -1564,8 +1708,8 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
             <span className="text-[12px] text-[#ccc]">Voice {titanVoice.voiceEnabled ? 'Active' : 'Inactive'}</span>
           </div>
           <div className="flex items-center gap-2 mb-2">
-            <div className={`w-2 h-2 rounded-full ${alfredListening ? 'bg-cyan-400 animate-pulse' : 'bg-[#555]'}`} />
-            <span className="text-[12px] text-[#ccc]">Listening {alfredListening ? 'ON' : 'OFF'}</span>
+            <div className={`w-2 h-2 rounded-full ${alfredListening && voice.isListening ? 'bg-cyan-400 animate-pulse' : 'bg-[#555]'}`} />
+            <span className="text-[12px] text-[#ccc]">Listening {alfredListening && voice.isListening ? 'ON' : 'OFF'}</span>
           </div>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${titanVoice.isSpeaking ? 'bg-blue-500 animate-pulse' : 'bg-[#555]'}`} />
@@ -1577,13 +1721,14 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
         <div className="rounded-lg bg-[#252526] border border-[#3c3c3c] p-3">
           <div className="text-[11px] text-[#808080] uppercase tracking-wider mb-3">Controls</div>
 
-          {/* Listening Toggle */}
           <div className="flex items-center justify-between mb-3">
             <span className="text-[12px] text-[#ccc]">Always Listening</span>
             <button
               onClick={() => {
-                setAlfredListening(!alfredListening);
-                if (alfredListening && voice.isListening) voice.toggleListening();
+                const next = !alfredListening;
+                setAlfredListening(next);
+                if (!next && voice.isListening) voice.stopListening();
+                if (next && !voice.isListening) voice.startListening();
               }}
               className={`w-9 h-5 rounded-full relative transition-colors ${alfredListening ? 'bg-cyan-600' : 'bg-[#555]'}`}
             >
@@ -1591,7 +1736,6 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
             </button>
           </div>
 
-          {/* Voice Enabled Toggle */}
           <div className="flex items-center justify-between mb-3">
             <span className="text-[12px] text-[#ccc]">Voice Output (TTS)</span>
             <button
@@ -1602,7 +1746,6 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
             </button>
           </div>
 
-          {/* Auto-speak Toggle */}
           <div className="flex items-center justify-between mb-3">
             <span className="text-[12px] text-[#ccc]">Auto-Speak Responses</span>
             <button
@@ -1613,7 +1756,6 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
             </button>
           </div>
 
-          {/* Stop Speaking */}
           {titanVoice.isSpeaking && (
             <button
               onClick={() => titanVoice.stopSpeaking()}
