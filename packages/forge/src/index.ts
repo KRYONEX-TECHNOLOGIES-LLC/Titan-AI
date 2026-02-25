@@ -9,7 +9,7 @@ export { ForgeSignals, forgeSignals } from './signals.js';
 export { ForgeExporter } from './exporter.js';
 export { ForgeEvaluator } from './eval.js';
 export { ForgeVault } from './vault.js';
-export { ForgeHarvester, forgeHarvester } from './harvester.js';
+export { ForgeHarvester, forgeHarvester, scrapeTechNews, scrapeBestPractices, scrapeAIResearch, scrapeInnovations } from './harvester.js';
 export { runFilterPipeline } from './harvester-filter.js';
 export { runParallelHarvest } from './harvest-workers.js';
 export { scrapeNewSources } from './harvester-new-sources.js';

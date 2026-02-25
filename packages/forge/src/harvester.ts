@@ -11,27 +11,27 @@ import type { HarvestSource, HarvestSample } from './types.js';
 const db = new ForgeDB();
 
 const RATE_LIMIT_MS: Record<HarvestSource, number> = {
-  github: 2000,
-  stackoverflow: 1500,
-  docs: 1000,
-  blog: 1500,
-  dataset: 600,
-  reddit: 2000,
-  devto: 1000,
-  mdn: 1500,
-  wikipedia: 1000,
-  hackernews: 1500,
-  'github-issues': 1500,
-  arxiv: 3000,
-  gitlab: 1000,
-  'npm-docs': 500,
-  competitive: 800,
-  'evol-instruct': 500,
-  'tech-news': 2000,
-  'patents': 3000,
-  'best-practices': 1500,
-  'ai-research': 3000,
-  'innovations': 2000,
+  github: 1200,
+  stackoverflow: 800,
+  docs: 500,
+  blog: 800,
+  dataset: 300,
+  reddit: 1000,
+  devto: 500,
+  mdn: 700,
+  wikipedia: 500,
+  hackernews: 700,
+  'github-issues': 800,
+  arxiv: 1500,
+  gitlab: 600,
+  'npm-docs': 300,
+  competitive: 400,
+  'evol-instruct': 300,
+  'tech-news': 800,
+  'patents': 1500,
+  'best-practices': 700,
+  'ai-research': 1500,
+  'innovations': 1000,
 };
 
 function sleep(ms: number): Promise<void> {
@@ -584,7 +584,7 @@ async function scrapeHackerNews(topic: string, limit: number): Promise<ScrapedIt
 
 // ── Tech News Adapter: TechCrunch, Ars Technica via HN search ──
 
-async function scrapeTechNews(topic: string, limit: number): Promise<ScrapedItem[]> {
+export async function scrapeTechNews(topic: string, limit: number): Promise<ScrapedItem[]> {
   const items: ScrapedItem[] = [];
   try {
     const queries = ['AI breakthrough', 'tech startup', 'software engineering', topic].filter(Boolean);
@@ -616,7 +616,7 @@ async function scrapeTechNews(topic: string, limit: number): Promise<ScrapedItem
 
 // ── Best Practices Adapter: GitHub repos + dev.to best practice articles ──
 
-async function scrapeBestPractices(topic: string, limit: number): Promise<ScrapedItem[]> {
+export async function scrapeBestPractices(topic: string, limit: number): Promise<ScrapedItem[]> {
   const items: ScrapedItem[] = [];
   try {
     const queries = ['best practices', 'design patterns', 'clean code', 'architecture patterns'];
@@ -645,7 +645,7 @@ async function scrapeBestPractices(topic: string, limit: number): Promise<Scrape
 
 // ── AI Research Adapter: ArXiv AI papers ──
 
-async function scrapeAIResearch(topic: string, limit: number): Promise<ScrapedItem[]> {
+export async function scrapeAIResearch(topic: string, limit: number): Promise<ScrapedItem[]> {
   const items: ScrapedItem[] = [];
   try {
     const query = topic !== 'all' ? topic : 'artificial+intelligence+OR+machine+learning+OR+large+language+model';
@@ -682,7 +682,7 @@ async function scrapeAIResearch(topic: string, limit: number): Promise<ScrapedIt
 
 // ── Innovations/Patents Adapter: Google Patents + GitHub trending ──
 
-async function scrapeInnovations(topic: string, limit: number): Promise<ScrapedItem[]> {
+export async function scrapeInnovations(topic: string, limit: number): Promise<ScrapedItem[]> {
   const items: ScrapedItem[] = [];
   try {
     const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(topic !== 'all' ? topic : 'innovative tool')}&sort=updated&order=desc&per_page=${Math.min(limit, 10)}`;

@@ -54,10 +54,13 @@ async function pollAndIngest(): Promise<number> {
         if (!sample.content) continue;
 
         let brainCategory: BrainCategory = 'knowledge';
-        if (sample.category === 'best-practices' || sample.category === 'patterns') {
+        const cat = sample.category || '';
+        if (cat === 'best-practices' || cat === 'patterns') {
           brainCategory = 'skill';
-        } else if (sample.category === 'innovation' || sample.category === 'ideas') {
+        } else if (cat === 'innovations' || cat === 'ideas' || cat === 'tech-news') {
           brainCategory = 'idea';
+        } else if (cat === 'ai-research') {
+          brainCategory = 'knowledge';
         }
 
         if ((sample.quality_score ?? 5) >= 4) {

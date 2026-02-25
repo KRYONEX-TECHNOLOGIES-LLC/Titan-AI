@@ -3,6 +3,7 @@
 
 import type { HarvestSource } from './types.js';
 import type { ScrapedItem } from './harvester.js';
+import { scrapeTechNews, scrapeBestPractices, scrapeAIResearch, scrapeInnovations } from './harvester.js';
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
@@ -42,7 +43,7 @@ async function scrapeGitHubIssues(topic: string, limit: number): Promise<Scraped
 
     for (const issue of (data.items || []).slice(0, limit)) {
       if (!issue.body || issue.body.length < 100) continue;
-      await sleep(1500);
+      await sleep(800);
 
       let prContent = '';
       if (issue.pull_request?.html_url) {
@@ -88,7 +89,7 @@ async function scrapeArxiv(topic: string, limit: number): Promise<ScrapedItem[]>
   const url = `https://export.arxiv.org/api/query?search_query=(${cats})+AND+all:${query}&start=0&max_results=${Math.min(limit, 50)}&sortBy=submittedDate&sortOrder=descending`;
 
   try {
-    await sleep(3000);
+    await sleep(1500);
     const res = await fetch(url, {
       headers: { 'User-Agent': 'TitanForge-Harvester/2.0' },
     });
@@ -150,7 +151,7 @@ async function scrapeGitLab(topic: string, limit: number): Promise<ScrapedItem[]
 
     for (const proj of projects.slice(0, limit)) {
       if (proj.star_count < 10) continue;
-      await sleep(1000);
+      await sleep(600);
 
       try {
         const readmeUrl = `https://gitlab.com/api/v4/projects/${proj.id}/repository/files/README.md/raw?ref=main`;
@@ -201,7 +202,7 @@ async function scrapeNpmDocs(topic: string, limit: number): Promise<ScrapedItem[
   const targets = packages.length > 0 ? packages : TOP_NPM_PACKAGES.slice(0, Math.min(limit, 20));
 
   for (const pkg of targets) {
-    await sleep(500);
+    await sleep(300);
     try {
       const res = await fetch(`https://registry.npmjs.org/${pkg}`, {
         headers: { 'Accept': 'application/json' },
@@ -265,7 +266,7 @@ async function scrapeCompetitive(topic: string, limit: number): Promise<ScrapedI
       .slice(0, limit);
 
     for (const prob of problems) {
-      await sleep(800);
+      await sleep(400);
 
       const problemUrl = `https://codeforces.com/problemset/problem/${prob.contestId}/${prob.index}`;
       const content = `PROBLEM: ${prob.name}\nDifficulty: ${prob.rating}\nTags: ${prob.tags.join(', ')}\n\nSolve this competitive programming problem. Think about time complexity and edge cases.`;
@@ -304,6 +305,15 @@ export async function scrapeNewSources(
       return scrapeNpmDocs(topic, limit);
     case 'competitive':
       return scrapeCompetitive(topic, limit);
+    case 'tech-news':
+      return scrapeTechNews(topic, limit);
+    case 'best-practices':
+      return scrapeBestPractices(topic, limit);
+    case 'ai-research':
+      return scrapeAIResearch(topic, limit);
+    case 'innovations':
+    case 'patents':
+      return scrapeInnovations(topic, limit);
     default:
       return [];
   }

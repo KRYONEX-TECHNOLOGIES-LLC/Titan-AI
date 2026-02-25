@@ -56,7 +56,7 @@ const TARGET_SAMPLES = parseInt(process.env.FORGE_TARGET || '10000', 10);
 const WORKERS = parseInt(process.env.FORGE_WORKERS || '100', 10);
 const PER_SOURCE_LIMIT = parseInt(process.env.FORGE_LIMIT || '30', 10);
 const MIN_SCORE = parseInt(process.env.FORGE_MIN_SCORE || '6', 10);
-const COOLDOWN_MS = parseInt(process.env.FORGE_COOLDOWN || '30000', 10);
+const COOLDOWN_MS = parseInt(process.env.FORGE_COOLDOWN || '15000', 10);
 const EVOL_INSTRUCT = process.env.FORGE_EVOL !== '0';
 
 const TOPIC_ROTATION: string[] = [

@@ -1,5 +1,5 @@
 // ── Titan Forge — Parallel Harvest Workers ──
-// Runs up to 4 concurrent scraper workers pulling from a shared source queue.
+// Runs up to 100 concurrent scraper workers pulling from a shared source queue.
 // Each worker scrapes independently; results merge into a single filter pipeline.
 
 import { createHash } from 'crypto';
@@ -19,6 +19,7 @@ const ALL_SOURCES: HarvestSource[] = [
   'github', 'stackoverflow', 'docs', 'blog', 'dataset',
   'reddit', 'devto', 'mdn', 'wikipedia', 'hackernews',
   'github-issues', 'arxiv', 'gitlab', 'npm-docs', 'competitive',
+  'tech-news', 'best-practices', 'ai-research', 'innovations',
 ];
 
 const LEGACY_SOURCES: HarvestSource[] = [
@@ -28,6 +29,7 @@ const LEGACY_SOURCES: HarvestSource[] = [
 
 const NEW_SOURCES: HarvestSource[] = [
   'github-issues', 'arxiv', 'gitlab', 'npm-docs', 'competitive',
+  'tech-news', 'best-practices', 'ai-research', 'innovations',
 ];
 
 export interface ParallelHarvestOptions {
