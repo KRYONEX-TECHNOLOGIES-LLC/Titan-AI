@@ -101,6 +101,17 @@ Titan AI/
 - Error display with dismissible messages
 - Interim text preview while speaking
 
+### Alfred (Titan Voice Protocol)
+- 4-role multi-model orchestrator: PERCEIVER (vision), THINKER (reasoning), RESPONDER (conversation), SCANNER (code analysis)
+- Text-to-speech via Web Speech API with auto-speak toggle
+- Voice commands: "Titan, start midnight", "Titan, scan the project", "Titan, what's the status?"
+- Proactive thought engine: AI-generated suggestions at human-cognition timing intervals
+- Persistent brain: Supabase + localStorage for knowledge, skills, ideas, conversations
+- Evolution tracking: level system, milestones, growth stats
+- Full system control: can operate Plan Mode, Midnight Mode, Forge, file system
+- Knowledge ingestion: feeds from Forge harvester data into the brain
+- Cost: ~$0.001-0.005 per interaction
+
 ### 7-Layer Persistent Memory
 1. Core Facts (identity, preferences)
 2. Decisions (architecture, tech stack)
@@ -111,6 +122,7 @@ Titan AI/
 7. Learned Skills (auto-extracted how-to knowledge)
 
 ### AI Protocols
+- **Alfred (Titan Voice)**: 4-role voice companion (PERCEIVER, THINKER, RESPONDER, SCANNER) with TTS, proactive thoughts, and brain
 - **Titan Plan Sniper**: 7-role multi-model orchestra (Scanner, Architect, Coder, Executor, Sentinel, Judge) using cost-effective models
 - **Phoenix Protocol**: Multi-agent orchestration with parallel workers
 - **Supreme Protocol**: Specialized 3-worker pipeline with oversight
@@ -147,6 +159,10 @@ Titan AI/
 - **Subtask generator**: `apps/web/src/lib/plan/subtask-generator.ts`
 - **Design templates**: `apps/web/src/lib/plan/design-templates.ts`
 - **Pseudo-code protocol**: `apps/web/src/lib/plan/pseudo-code-protocol.ts`
+- **Titan Voice protocol**: `apps/web/src/lib/voice/` (TTS, personality, brain, thought engine, vision, commands)
+- **Titan Voice API**: `apps/web/src/app/api/titan/voice/route.ts`
+- **Titan Voice store**: `apps/web/src/stores/titan-voice.store.ts`
+- **Titan Voice chat hook**: `apps/web/src/hooks/useTitanVoiceChat.ts`
 - **Voice input**: `apps/web/src/hooks/useVoiceInput.ts`
 - **Forge harvester**: `packages/forge/src/` (CLI: `harvest.ts`, continuous: `harvest-continuous.ts`)
 - **Brain Observatory**: `apps/web/src/components/ide/BrainObservatoryPanel.tsx`

@@ -199,7 +199,7 @@ export interface ExportStats {
 
 // ── Harvest types (web scraper) ──
 
-export type HarvestSource = 'github' | 'stackoverflow' | 'docs' | 'blog' | 'dataset' | 'reddit' | 'devto' | 'mdn' | 'wikipedia' | 'hackernews' | 'github-issues' | 'arxiv' | 'gitlab' | 'npm-docs' | 'competitive' | 'evol-instruct';
+export type HarvestSource = 'github' | 'stackoverflow' | 'docs' | 'blog' | 'dataset' | 'reddit' | 'devto' | 'mdn' | 'wikipedia' | 'hackernews' | 'github-issues' | 'arxiv' | 'gitlab' | 'npm-docs' | 'competitive' | 'evol-instruct' | 'tech-news' | 'patents' | 'best-practices' | 'ai-research' | 'innovations';
 export type HarvestStatus = 'pending' | 'approved' | 'rejected' | 'migrated';
 
 export interface HarvestSample {

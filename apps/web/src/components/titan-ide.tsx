@@ -54,9 +54,14 @@ import { useFileStore } from '@/stores/file-store';
 import { useTerminalStore } from '@/stores/terminal-store';
 import { useDebugStore } from '@/stores/debug-store';
 import { usePlanStore } from '@/stores/plan-store';
+import { useTitanVoice } from '@/stores/titan-voice.store';
+import { getThoughtEngine } from '@/lib/voice/thought-engine';
+import { startKnowledgeIngestion } from '@/lib/voice/knowledge-ingest';
+import type { ProactiveThought } from '@/lib/voice/thought-engine';
 import { initCommandRegistry } from '@/lib/ide/command-registry';
 
 const PlanModePanel = dynamic(() => import('@/components/ide/PlanModePanel').then(m => ({ default: m.PlanModePanel })), { ssr: false });
+const TitanVoicePopup = dynamic(() => import('@/components/ide/TitanVoicePopup'), { ssr: false });
 
 /* ═══ MAIN IDE COMPONENT ═══ */
 export default function TitanIDE() {
@@ -548,18 +553,7 @@ export default function TitanIDE() {
     return () => document.removeEventListener('click', handleClick);
   }, [settings]);
 
-  // Chat scroll — throttled to 300ms with rAF so it doesn't block input rendering
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [currentSession?.messages]);
-  useEffect(() => {
-    if (!chat.isThinking && !chat.isStreaming) return;
-    let timeoutId: ReturnType<typeof setTimeout>;
-    const scroll = () => {
-      chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
-      timeoutId = setTimeout(scroll, 300);
-    };
-    scroll();
-    return () => clearTimeout(timeoutId);
-  }, [chat.isThinking, chat.isStreaming]);
+  // Chat scroll logic is in TitanAgentPanel where the DOM container lives.
 
   // Persist tabs/editor state — debounced so JSON.stringify doesn't block typing
   const persistTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -645,6 +639,7 @@ export default function TitanIDE() {
           <ActivityIcon active={activeView === 'titan-agent'} onClick={() => handleActivityClick('titan-agent')} title="Titan Agent"><TitanAgentIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'forge'} onClick={() => handleActivityClick('forge')} title="Forge Dashboard"><ForgeIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'midnight'} onClick={() => handleActivityClick('midnight')} title="Project Midnight"><MoonIcon /></ActivityIcon>
+          <ActivityIcon active={activeView === 'alfred'} onClick={() => handleActivityClick('alfred')} title="Alfred — AI Companion"><AlfredIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'training-lab'} onClick={() => handleActivityClick('training-lab')} title="LLM Training Lab"><FlaskIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'brain'} onClick={() => handleActivityClick('brain')} title="Titan Brain Observatory"><BrainIcon /></ActivityIcon>
           <div className="flex-1" />
@@ -654,7 +649,7 @@ export default function TitanIDE() {
 
         {/* LEFT PANEL */}
         {activeView && activeView !== 'explorer' && (
-          <div className={`${activeView === 'midnight' ? 'w-[600px]' : 'w-[420px]'} bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden transition-all duration-300`}>
+          <div className={`${activeView === 'midnight' || activeView === 'alfred' ? 'w-[600px]' : 'w-[420px]'} bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden transition-all duration-300`}>
             {activeView === 'search' && <IDESemanticSearch />}
             {activeView === 'git' && <IDEGitPanel workspacePath={fileSystem.workspacePath} />}
             {activeView === 'debug' && <IDEDebugPanel />}
@@ -716,6 +711,7 @@ export default function TitanIDE() {
                 onBackToIDE={() => setActiveView('explorer')}
               />
             )}
+            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} />}
             {activeView === 'training-lab' && <TrainingLabPanel />}
             {activeView === 'brain' && <BrainObservatoryPanel />}
             {activeView === 'accounts' && <AccountsPanel />}
@@ -863,6 +859,71 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
     }, [setChatInput]),
     { onAutoSend: voiceAutoSend, autoSendDelayMs: 2500 },
   );
+
+  // ═══ Chat Scroll — respects user scroll position ═══
+  const userScrolledUpRef = useRef(false);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const checkIfNearBottom = useCallback(() => {
+    const el = chatContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+  }, []);
+
+  useEffect(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const onScroll = () => { userScrolledUpRef.current = !checkIfNearBottom(); };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [checkIfNearBottom]);
+
+  useEffect(() => {
+    if (!userScrolledUpRef.current) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [currentSession?.messages, chatEndRef]);
+
+  useEffect(() => {
+    if (!isThinking && !isStreaming) return;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const scroll = () => {
+      if (!userScrolledUpRef.current) {
+        chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      }
+      timeoutId = setTimeout(scroll, 300);
+    };
+    scroll();
+    return () => clearTimeout(timeoutId);
+  }, [isThinking, isStreaming, chatEndRef]);
+
+  // ═══ Titan Voice (TTS + Proactive Thoughts) ═══
+  const titanVoice = useTitanVoice();
+  const [activeThought, setActiveThought] = useState<ProactiveThought | null>(null);
+
+  useEffect(() => {
+    if (!titanVoice.voiceEnabled) return;
+    const engine = getThoughtEngine();
+    engine.start(
+      (thought) => setActiveThought(thought),
+      () => {
+        const plan = usePlanStore.getState();
+        const tasks = Object.values(plan.tasks);
+        return tasks.length > 0 ? `Working on "${plan.planName}" — ${tasks.filter(t => t.status === 'completed').length}/${tasks.length} done` : 'General session';
+      },
+    );
+    startKnowledgeIngestion();
+    return () => { engine.stop(); };
+  }, [titanVoice.voiceEnabled]);
+
+  const handleDismissThought = useCallback(() => setActiveThought(null), []);
+  const handleTellMoreThought = useCallback((thought: ProactiveThought) => {
+    setChatInput(`Tell me more about: ${thought.text.slice(0, 100)}`);
+  }, [setChatInput]);
+  const handleSnoozeThoughts = useCallback((durationMs: number) => {
+    titanVoice.snoozeThoughts(durationMs);
+    setActiveThought(null);
+  }, [titanVoice]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -1015,7 +1076,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           <PlanModePanel />
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 titan-chat-scroll">
+        <div ref={chatContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 titan-chat-scroll">
           <div className="px-3 py-3 max-w-full">
             {(currentSession?.messages || []).map((msg, i) => (
               <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} attachments={msg.attachments} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} generatedImages={msg.generatedImages} onRetry={onRetry} onApplyCode={onApplyCode} />
@@ -1127,6 +1188,9 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                   </button>
                 )}
+                <button onClick={() => { titanVoice.voiceEnabled ? (titanVoice.isSpeaking ? titanVoice.stopSpeaking() : titanVoice.toggleAutoSpeak()) : titanVoice.toggleVoice(); }} className={`w-[26px] h-[26px] flex items-center justify-center rounded-md transition-colors ${titanVoice.isSpeaking ? 'bg-[#3b82f6] text-white animate-pulse' : titanVoice.voiceEnabled ? (titanVoice.autoSpeak ? 'bg-[#3b82f620] text-[#3b82f6]' : 'text-[#3b82f6] hover:bg-[#3c3c3c]') : 'hover:bg-[#3c3c3c] text-[#808080] hover:text-[#cccccc]'}`} title={titanVoice.isSpeaking ? 'Stop speaking' : titanVoice.voiceEnabled ? (titanVoice.autoSpeak ? 'Auto-speak ON (click to toggle)' : 'Auto-speak OFF (click to toggle)') : 'Enable Titan Voice'}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>{titanVoice.voiceEnabled && <><line x1="15.54" y1="8.46" x2="19.07" y2="12"/><line x1="15.54" y1="15.54" x2="19.07" y2="12"/></>}</svg>
+                </button>
                 {effectiveThinking || effectiveStreaming ? (
                   <button onClick={onStop} className="w-[26px] h-[26px] flex items-center justify-center rounded-md bg-[#f85149] hover:bg-[#da3633] text-white transition-colors" title="Stop">
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
@@ -1141,6 +1205,25 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           </div>
         </div>
       </div>
+      {/* Titan Voice Proactive Thought Popup */}
+      <TitanVoicePopup
+        thought={activeThought}
+        onDismiss={handleDismissThought}
+        onTellMore={handleTellMoreThought}
+        onSnooze={handleSnoozeThoughts}
+      />
+      {/* TTS Speaking Indicator */}
+      {titanVoice.isSpeaking && (
+        <div className="fixed bottom-[72px] right-5 z-[9998] flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#3b82f620] border border-[#3b82f640]">
+          <div className="flex items-center gap-0.5">
+            {[1,2,3,4,5].map(i => (
+              <div key={i} className="w-[3px] bg-[#3b82f6] rounded-full animate-pulse" style={{ height: `${8 + Math.random() * 10}px`, animationDelay: `${i * 0.1}s` }} />
+            ))}
+          </div>
+          <span className="text-[11px] text-[#3b82f6]">Speaking...</span>
+          <button onClick={() => titanVoice.stopSpeaking()} className="text-[#3b82f6] opacity-60 hover:opacity-100 text-sm">✕</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1152,6 +1235,8 @@ function ExtensionsPanel() {
     { name: 'Supreme Protocol', version: '1.0.0', desc: 'Specialized 3-worker pipeline with oversight', tone: 'purple' },
     { name: 'Omega Protocol', version: '1.0.0', desc: 'Deep-research multi-specialist engine', tone: 'green' },
     { name: 'Project Midnight', version: '1.0.0', desc: 'Autonomous build engine with trust levels', tone: 'red' },
+    { name: 'Alfred (Titan Voice)', version: '1.0.0', desc: 'AI companion with TTS, proactive thoughts, and system control', tone: 'cyan' },
+    { name: 'Plan Sniper', version: '1.0.0', desc: '7-role model orchestra for ultimate plan execution', tone: 'amber' },
   ];
   const upcoming = [
     { name: 'Theme Studio', desc: 'Custom UI themes and color schemes' },
@@ -1417,6 +1502,169 @@ function SettingsPanel({ fontSize, setFontSize, tabSize, setTabSize, wordWrap, s
   );
 }
 
+/* ─── ALFRED PANEL ─── */
+function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
+  const titanVoice = useTitanVoice();
+  const [alfredListening, setAlfredListening] = useState(true);
+
+  const voice = useVoiceInput(
+    useCallback((text: string) => {
+      // Alfred always-listening: process voice commands
+      const { parseVoiceCommand } = require('@/lib/voice/voice-commands');
+      const { executeVoiceAction } = require('@/lib/voice/system-control');
+      const result = parseVoiceCommand(text);
+      if (result.matched) {
+        executeVoiceAction(result.action, result.params);
+        titanVoice.speak(`Executing: ${result.description}`, 8);
+      } else if (text.trim().length > 5) {
+        titanVoice.speak(`I heard: ${text.slice(0, 80)}`, 3);
+      }
+    }, [titanVoice]),
+    { onAutoSend: undefined, autoSendDelayMs: 3000 },
+  );
+
+  useEffect(() => {
+    if (alfredListening && voice.isSupported && !voice.isListening) {
+      voice.toggleListening();
+    }
+  }, [alfredListening]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#3c3c3c]">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+            <span className="text-white text-xs font-bold">A</span>
+          </div>
+          <div>
+            <span className="text-[13px] font-semibold text-white">Alfred</span>
+            <span className="text-[10px] text-[#808080] ml-2">AI Companion</span>
+          </div>
+        </div>
+        <button onClick={onBackToIDE} className="text-[11px] text-[#808080] hover:text-white px-2 py-1 rounded hover:bg-[#3c3c3c] transition-colors">
+          Back to IDE
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {/* Status Section */}
+        <div className="rounded-lg bg-[#252526] border border-[#3c3c3c] p-3">
+          <div className="text-[11px] text-[#808080] uppercase tracking-wider mb-2">Status</div>
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${titanVoice.voiceEnabled ? 'bg-green-500' : 'bg-[#555]'}`} />
+            <span className="text-[12px] text-[#ccc]">Voice {titanVoice.voiceEnabled ? 'Active' : 'Inactive'}</span>
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <div className={`w-2 h-2 rounded-full ${alfredListening ? 'bg-cyan-400 animate-pulse' : 'bg-[#555]'}`} />
+            <span className="text-[12px] text-[#ccc]">Listening {alfredListening ? 'ON' : 'OFF'}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${titanVoice.isSpeaking ? 'bg-blue-500 animate-pulse' : 'bg-[#555]'}`} />
+            <span className="text-[12px] text-[#ccc]">Speaking {titanVoice.isSpeaking ? 'Active' : 'Idle'}</span>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="rounded-lg bg-[#252526] border border-[#3c3c3c] p-3">
+          <div className="text-[11px] text-[#808080] uppercase tracking-wider mb-3">Controls</div>
+
+          {/* Listening Toggle */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[12px] text-[#ccc]">Always Listening</span>
+            <button
+              onClick={() => {
+                setAlfredListening(!alfredListening);
+                if (alfredListening && voice.isListening) voice.toggleListening();
+              }}
+              className={`w-9 h-5 rounded-full relative transition-colors ${alfredListening ? 'bg-cyan-600' : 'bg-[#555]'}`}
+            >
+              <span className={`absolute top-0.5 ${alfredListening ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all`} />
+            </button>
+          </div>
+
+          {/* Voice Enabled Toggle */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[12px] text-[#ccc]">Voice Output (TTS)</span>
+            <button
+              onClick={() => titanVoice.toggleVoice()}
+              className={`w-9 h-5 rounded-full relative transition-colors ${titanVoice.voiceEnabled ? 'bg-blue-600' : 'bg-[#555]'}`}
+            >
+              <span className={`absolute top-0.5 ${titanVoice.voiceEnabled ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all`} />
+            </button>
+          </div>
+
+          {/* Auto-speak Toggle */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[12px] text-[#ccc]">Auto-Speak Responses</span>
+            <button
+              onClick={() => titanVoice.toggleAutoSpeak()}
+              className={`w-9 h-5 rounded-full relative transition-colors ${titanVoice.autoSpeak ? 'bg-blue-600' : 'bg-[#555]'}`}
+            >
+              <span className={`absolute top-0.5 ${titanVoice.autoSpeak ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full transition-all`} />
+            </button>
+          </div>
+
+          {/* Stop Speaking */}
+          {titanVoice.isSpeaking && (
+            <button
+              onClick={() => titanVoice.stopSpeaking()}
+              className="w-full py-1.5 rounded bg-red-600/20 text-red-400 text-[12px] hover:bg-red-600/30 transition-colors"
+            >
+              Stop Speaking
+            </button>
+          )}
+        </div>
+
+        {/* Voice Settings */}
+        <div className="rounded-lg bg-[#252526] border border-[#3c3c3c] p-3">
+          <div className="text-[11px] text-[#808080] uppercase tracking-wider mb-3">Voice Settings</div>
+          <div className="space-y-2">
+            <div>
+              <div className="flex justify-between text-[11px] text-[#808080] mb-1">
+                <span>Speed</span><span>{titanVoice.rate.toFixed(1)}x</span>
+              </div>
+              <input type="range" min="0.5" max="2" step="0.1" value={titanVoice.rate} onChange={e => titanVoice.setRate(parseFloat(e.target.value))} className="w-full h-1 bg-[#3c3c3c] rounded appearance-none cursor-pointer accent-cyan-500" />
+            </div>
+            <div>
+              <div className="flex justify-between text-[11px] text-[#808080] mb-1">
+                <span>Pitch</span><span>{titanVoice.pitch.toFixed(2)}</span>
+              </div>
+              <input type="range" min="0.5" max="1.5" step="0.05" value={titanVoice.pitch} onChange={e => titanVoice.setPitch(parseFloat(e.target.value))} className="w-full h-1 bg-[#3c3c3c] rounded appearance-none cursor-pointer accent-cyan-500" />
+            </div>
+            <div>
+              <div className="flex justify-between text-[11px] text-[#808080] mb-1">
+                <span>Volume</span><span>{Math.round(titanVoice.volume * 100)}%</span>
+              </div>
+              <input type="range" min="0" max="1" step="0.05" value={titanVoice.volume} onChange={e => titanVoice.setVolume(parseFloat(e.target.value))} className="w-full h-1 bg-[#3c3c3c] rounded appearance-none cursor-pointer accent-cyan-500" />
+            </div>
+          </div>
+        </div>
+
+        {/* Voice Commands Reference */}
+        <div className="rounded-lg bg-[#252526] border border-[#3c3c3c] p-3">
+          <div className="text-[11px] text-[#808080] uppercase tracking-wider mb-2">Voice Commands</div>
+          <div className="space-y-1 text-[11px]">
+            {[
+              { cmd: '"Alfred, start midnight mode"', desc: 'Start autonomous build' },
+              { cmd: '"Alfred, scan the project"', desc: 'Scan codebase' },
+              { cmd: '"Alfred, status"', desc: 'Check plan progress' },
+              { cmd: '"Alfred, start harvester"', desc: 'Start Forge scraping' },
+              { cmd: '"Alfred, take a screenshot"', desc: 'Capture viewport' },
+              { cmd: '"Alfred, be quiet"', desc: 'Mute voice' },
+              { cmd: '"Alfred, show ideas"', desc: 'Show latest ideas' },
+            ].map(({ cmd, desc }) => (
+              <div key={cmd} className="flex justify-between">
+                <span className="text-cyan-400 font-mono">{cmd}</span>
+                <span className="text-[#808080]">{desc}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── ICONS ─── */
 function ExplorerIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>; }
 function SearchIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>; }
@@ -1426,6 +1674,7 @@ function ExtensionsIcon() { return <svg width="22" height="22" viewBox="0 0 24 2
 function TitanAgentIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>; }
 function ForgeIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>; }
 function MoonIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>; }
+function AlfredIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="5"/><path d="M3 21v-2a7 7 0 0 1 7-7h4a7 7 0 0 1 7 7v2"/><circle cx="12" cy="8" r="2" fill="currentColor" opacity="0.4"/></svg>; }
 function FlaskIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M10 2v7l-5 8a3 3 0 0 0 2.56 4.5h8.88A3 3 0 0 0 19 17l-5-8V2"/><path d="M8 2h8"/><path d="M7 16h10"/></svg>; }
 function BrainIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 3a3 3 0 0 0-3 3v1a3 3 0 0 0-2 2.83V11a3 3 0 0 0 2 2.83V15a3 3 0 0 0 3 3"/><path d="M15 3a3 3 0 0 1 3 3v1a3 3 0 0 1 2 2.83V11a3 3 0 0 1-2 2.83V15a3 3 0 0 1-3 3"/><path d="M9 18a3 3 0 0 0 3 3 3 3 0 0 0 3-3"/><path d="M9 6a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0z"/></svg>; }
 function AccountIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }

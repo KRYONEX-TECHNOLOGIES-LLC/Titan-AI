@@ -27,6 +27,11 @@ const RATE_LIMIT_MS: Record<HarvestSource, number> = {
   'npm-docs': 500,
   competitive: 800,
   'evol-instruct': 500,
+  'tech-news': 2000,
+  'patents': 3000,
+  'best-practices': 1500,
+  'ai-research': 3000,
+  'innovations': 2000,
 };
 
 function sleep(ms: number): Promise<void> {
@@ -577,6 +582,136 @@ async function scrapeHackerNews(topic: string, limit: number): Promise<ScrapedIt
   return items;
 }
 
+// ── Tech News Adapter: TechCrunch, Ars Technica via HN search ──
+
+async function scrapeTechNews(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  try {
+    const queries = ['AI breakthrough', 'tech startup', 'software engineering', topic].filter(Boolean);
+    for (const q of queries) {
+      const url = `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(q)}&tags=story&hitsPerPage=${Math.min(limit, 10)}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const data = await res.json() as { hits?: Array<{ title: string; url: string; story_text: string; points: number; objectID: string }> };
+      for (const hit of (data.hits || []).slice(0, limit)) {
+        await sleep(RATE_LIMIT_MS['tech-news']);
+        const content = hit.story_text || `${hit.title}\nURL: ${hit.url || ''}\nPoints: ${hit.points}`;
+        if (content.length < 50) continue;
+        items.push({
+          source: 'tech-news',
+          source_url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
+          title: `Tech: ${hit.title}`,
+          raw_content: stripHtml(content),
+          language: 'general',
+          tags: ['tech-news', 'titan-voice-knowledge'],
+        });
+      }
+      if (items.length >= limit) break;
+    }
+  } catch (err) {
+    console.error('[harvester/tech-news] Error:', (err as Error).message);
+  }
+  return items.slice(0, limit);
+}
+
+// ── Best Practices Adapter: GitHub repos + dev.to best practice articles ──
+
+async function scrapeBestPractices(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  try {
+    const queries = ['best practices', 'design patterns', 'clean code', 'architecture patterns'];
+    const combinedTopic = topic !== 'all' ? `${topic} ${queries[0]}` : queries[0];
+    const url = `https://dev.to/api/articles?tag=bestpractices&per_page=${Math.min(limit, 10)}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/1.0' } });
+    if (res.ok) {
+      const articles = await res.json() as Array<{ title: string; url: string; description: string; tag_list: string[]; readable_publish_date: string }>;
+      for (const art of articles.slice(0, limit)) {
+        await sleep(RATE_LIMIT_MS['best-practices']);
+        items.push({
+          source: 'best-practices',
+          source_url: art.url,
+          title: `BP: ${art.title}`,
+          raw_content: `${art.title}\n\n${art.description}\n\nTags: ${art.tag_list.join(', ')}`,
+          language: 'general',
+          tags: ['best-practices', 'titan-voice-knowledge', ...art.tag_list],
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[harvester/best-practices] Error:', (err as Error).message);
+  }
+  return items.slice(0, limit);
+}
+
+// ── AI Research Adapter: ArXiv AI papers ──
+
+async function scrapeAIResearch(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  try {
+    const query = topic !== 'all' ? topic : 'artificial+intelligence+OR+machine+learning+OR+large+language+model';
+    const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&sortBy=submittedDate&sortOrder=descending&max_results=${Math.min(limit, 15)}`;
+    const res = await fetch(url);
+    if (!res.ok) return items;
+    const xml = await res.text();
+
+    const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+    let match;
+    while ((match = entryRegex.exec(xml)) !== null) {
+      const entry = match[1];
+      const titleMatch = entry.match(/<title>([\s\S]*?)<\/title>/);
+      const summaryMatch = entry.match(/<summary>([\s\S]*?)<\/summary>/);
+      const linkMatch = entry.match(/<id>([\s\S]*?)<\/id>/);
+
+      if (titleMatch && summaryMatch) {
+        await sleep(RATE_LIMIT_MS['ai-research']);
+        items.push({
+          source: 'arxiv',
+          source_url: linkMatch ? linkMatch[1].trim() : '',
+          title: `AI: ${titleMatch[1].trim().replace(/\n/g, ' ')}`,
+          raw_content: `${titleMatch[1].trim()}\n\n${summaryMatch[1].trim()}`,
+          language: 'general',
+          tags: ['ai-research', 'arxiv', 'titan-voice-knowledge'],
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[harvester/ai-research] Error:', (err as Error).message);
+  }
+  return items.slice(0, limit);
+}
+
+// ── Innovations/Patents Adapter: Google Patents + GitHub trending ──
+
+async function scrapeInnovations(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  try {
+    const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(topic !== 'all' ? topic : 'innovative tool')}&sort=updated&order=desc&per_page=${Math.min(limit, 10)}`;
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'TitanForge-Harvester/1.0',
+    };
+    if (process.env.GITHUB_TOKEN) headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+    const res = await fetch(url, { headers });
+    if (res.ok) {
+      const data = await res.json() as { items?: Array<{ full_name: string; html_url: string; description: string; language: string; topics: string[]; stargazers_count: number }> };
+      for (const repo of (data.items || []).slice(0, limit)) {
+        await sleep(RATE_LIMIT_MS.innovations);
+        items.push({
+          source: 'innovations',
+          source_url: repo.html_url,
+          title: `Innovation: ${repo.full_name}`,
+          raw_content: `${repo.full_name}\n${repo.description || ''}\nLanguage: ${repo.language || 'N/A'}\nStars: ${repo.stargazers_count}\nTopics: ${(repo.topics || []).join(', ')}`,
+          language: repo.language?.toLowerCase() || 'general',
+          tags: ['innovations', 'titan-voice-knowledge', ...(repo.topics || [])],
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[harvester/innovations] Error:', (err as Error).message);
+  }
+  return items.slice(0, limit);
+}
+
 // ── Utilities ──
 
 function stripHtml(html: string): string {
@@ -676,6 +811,30 @@ export class ForgeHarvester {
       const hn = await scrapeHackerNews(topic, limit);
       scraped.push(...hn);
       console.log(`[harvester] Hacker News: ${hn.length} items`);
+    }
+
+    if (source === 'all' || source === 'tech-news') {
+      const tn = await scrapeTechNews(topic, limit);
+      scraped.push(...tn);
+      console.log(`[harvester] Tech News: ${tn.length} items`);
+    }
+
+    if (source === 'all' || source === 'best-practices') {
+      const bp = await scrapeBestPractices(topic, limit);
+      scraped.push(...bp);
+      console.log(`[harvester] Best Practices: ${bp.length} items`);
+    }
+
+    if (source === 'all' || source === 'ai-research') {
+      const ai = await scrapeAIResearch(topic, limit);
+      scraped.push(...ai);
+      console.log(`[harvester] AI Research: ${ai.length} items`);
+    }
+
+    if (source === 'all' || source === 'innovations' || source === 'patents') {
+      const inn = await scrapeInnovations(topic, limit);
+      scraped.push(...inn);
+      console.log(`[harvester] Innovations/Patents: ${inn.length} items`);
     }
 
     console.log(`[harvester] Total scraped: ${scraped.length} items`);

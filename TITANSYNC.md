@@ -296,6 +296,73 @@ Implementation: `useVoiceInput` hook in `apps/web/src/hooks/useVoiceInput.ts`.
 
 ---
 
+## Alfred (Titan Voice Protocol)
+
+Alfred is the Titan AI voice companion — an always-on, proactive AI with text-to-speech, persistent brain, proactive thought engine, and full system control.
+
+### Architecture
+
+4-role multi-model protocol:
+- **PERCEIVER** (Qwen3 VL 235B): Vision, multimodal understanding
+- **THINKER** (Qwen3.5 397B MoE): Deep reasoning, idea generation
+- **RESPONDER** (Gemini 2.0 Flash): Fast conversational responses
+- **SCANNER** (Devstral 2): Codebase scanning, project health
+
+Complexity-based routing: simple → RESPONDER, code → SCANNER → RESPONDER, complex → THINKER → RESPONDER, vision → PERCEIVER → RESPONDER.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `apps/web/src/lib/voice/tts-engine.ts` | TTS engine (SpeechSynthesis) |
+| `apps/web/src/lib/voice/titan-voice-protocol.ts` | 4-role model orchestrator |
+| `apps/web/src/lib/voice/titan-personality.ts` | Alfred personality prompt |
+| `apps/web/src/lib/voice/voice-commands.ts` | Voice command parser |
+| `apps/web/src/lib/voice/brain-storage.ts` | Supabase brain service + SQL |
+| `apps/web/src/lib/voice/thought-engine.ts` | Proactive thought system |
+| `apps/web/src/lib/voice/vision.ts` | Screenshot/viewport capture |
+| `apps/web/src/lib/voice/system-control.ts` | System control (Midnight, Plan, Forge) |
+| `apps/web/src/lib/voice/knowledge-ingest.ts` | Harvest data → brain pipeline |
+| `apps/web/src/lib/voice/evolution-tracker.ts` | Growth & evolution tracking |
+| `apps/web/src/stores/titan-voice.store.ts` | TTS state (Zustand) |
+| `apps/web/src/hooks/useTitanVoiceChat.ts` | Voice protocol chat hook |
+| `apps/web/src/app/api/titan/voice/route.ts` | SSE API endpoint |
+| `apps/web/src/components/ide/TitanVoicePopup.tsx` | Proactive thought popup |
+
+### Voice commands
+
+- "Titan, start midnight mode" — Start Midnight
+- "Titan, stop midnight mode" — Stop Midnight
+- "Titan, scan the project" — Code scan
+- "Titan, what's the status?" — Plan progress
+- "Titan, start the harvest" — Forge harvester
+- "Titan, take a screenshot" — Viewport capture
+- "Titan, switch to plan/chat/agent mode" — Mode switch
+- "Titan, be quiet" — Mute voice
+- "Titan, snooze thoughts" — Snooze proactive thoughts
+
+### Supabase tables
+
+Run the SQL in `brain-storage.ts` (exported as `SUPABASE_MIGRATION_SQL`) to create:
+- `titan_voice_brain` — Knowledge, skills, ideas, observations, mistakes
+- `titan_voice_conversations` — Conversation summaries
+- `titan_voice_ideas` — Project ideas and inventions
+
+### Proactive Thought Engine
+
+Timer-based with human cognition timing:
+- Idle: 45s–2min intervals
+- Active: 2–5min intervals
+- Coding: 3–8min intervals
+
+6 categories (weighted): project improvement (30%), new idea (20%), check-in (15%), knowledge share (15%), warning (10%), motivation (10%).
+
+### Knowledge Ingestion
+
+Polls Forge harvester data every 5 minutes, extracts insights, stores in brain. New harvest categories added: `tech-news`, `patents`, `best-practices`, `ai-research`, `innovations`.
+
+---
+
 ## Environment Variables
 
 Required for local development: copy `apps/web/.env.example` to `apps/web/.env` and fill in values.

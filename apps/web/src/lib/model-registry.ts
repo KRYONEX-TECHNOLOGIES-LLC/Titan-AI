@@ -62,6 +62,11 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   { id: 'titan-supreme-protocol', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Supreme Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.33, costPer1MOutput: 1.51, description: 'Supreme 4-role governance with Qwen3.5-Plus overseer, DeepSeek Reasoner operator, Qwen3 Coder Next primary worker, and Gemini 2.0 Flash secondary worker.' },
   { id: 'titan-omega-protocol', providerModelId: 'anthropic/claude-opus-4.6', name: 'Titan Omega Protocol', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 32000, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.4, costPer1MOutput: 1.83, description: 'Long-horizon governance using Qwen3.5-Plus architect/high-risk specialist, DeepSeek Reasoner sentinel/operator, Qwen3 Coder Next medium-risk specialist, and Gemini 2.0 Flash low-risk specialist.' },
 
+  // ═══ TITAN VOICE / ALFRED (4-Role AI Companion Protocol) ═══
+  // PERCEIVER (Qwen3 VL 235B) + THINKER (Qwen3.5 397B MoE) + RESPONDER (Gemini 2.0 Flash) + SCANNER (Devstral 2).
+  // Voice-enabled, proactive thoughts, persistent brain, vision, system control. Virtually free.
+  { id: 'titan-voice', providerModelId: 'google/gemini-2.0-flash-001', name: 'Alfred (Titan Voice)', provider: 'Titan AI', tier: 'frontier', contextWindow: 1000000, maxOutputTokens: 8192, supportsThinking: true, supportsVision: true, supportsTools: true, costPer1MInput: 0.10, costPer1MOutput: 0.40, description: '4-role Alfred protocol: PERCEIVER (Qwen3 VL 235B, vision), THINKER (Qwen3.5 397B MoE, reasoning), RESPONDER (Gemini 2.0 Flash, conversation), SCANNER (Devstral 2, code analysis). Voice-enabled proactive AI companion with persistent brain, ~$0.001 per interaction.' },
+
   // ═══ TITAN PLAN SNIPER (7-Role Model Orchestra — Ultimate Execution Protocol) ═══
   // SCANNER (Devstral 2, FREE) → ARCHITECT (MiMo-V2, FREE) → CODER (MiniMax M2.1/DeepSeek V3.2)
   // → EXECUTOR (Qwen3 Coder Next) → SENTINEL (Seed 1.6) → JUDGE (Qwen3.5 Plus).

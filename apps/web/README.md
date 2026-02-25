@@ -55,6 +55,7 @@ pnpm build
 - **Plan subtasks**: `src/app/api/plan/subtasks/route.ts`
 - **Plan checklist**: `src/app/api/plan/checklist/route.ts`
 - **Plan pseudo-code**: `src/app/api/plan/pseudo-code/route.ts`
+- **Titan Voice (SSE)**: `src/app/api/titan/voice/route.ts`
 
 ### Stores
 
@@ -63,6 +64,7 @@ pnpm build
 - **Persistent memory (7-layer)**: `src/stores/titan-memory.ts`
 - **File system state**: `src/stores/file-store.ts`
 - **Voice state**: `src/stores/voice.store.ts`
+- **Titan Voice TTS state**: `src/stores/titan-voice.store.ts`
 
 ### Lib modules
 
@@ -73,10 +75,21 @@ pnpm build
 - **Pseudo-code protocol**: `src/lib/plan/pseudo-code-protocol.ts`
 - **Phoenix orchestrator**: `src/lib/phoenix/phoenix-orchestrator.ts`
 - **Plan Sniper engine**: `src/lib/sniper/`
+- **Titan Voice protocol**: `src/lib/voice/titan-voice-protocol.ts`
+- **Titan Voice personality**: `src/lib/voice/titan-personality.ts`
+- **Titan Voice commands**: `src/lib/voice/voice-commands.ts`
+- **Titan Voice brain storage**: `src/lib/voice/brain-storage.ts`
+- **Titan Voice thought engine**: `src/lib/voice/thought-engine.ts`
+- **Titan Voice vision**: `src/lib/voice/vision.ts`
+- **Titan Voice system control**: `src/lib/voice/system-control.ts`
+- **Titan Voice knowledge ingestion**: `src/lib/voice/knowledge-ingest.ts`
+- **Titan Voice evolution tracker**: `src/lib/voice/evolution-tracker.ts`
+- **TTS engine**: `src/lib/voice/tts-engine.ts`
 
 ### Hooks
 
 - **Voice input (Web Speech API)**: `src/hooks/useVoiceInput.ts`
+- **Titan Voice chat hook**: `src/hooks/useTitanVoiceChat.ts`
 - **File system + auto-workspace**: `src/hooks/useFileSystem.ts`
 
 ### Models

@@ -10,6 +10,7 @@ import { useOmegaChat } from './useOmegaChat';
 import { usePhoenixChat } from './usePhoenixChat';
 import { useTitanChat } from './useTitanChat';
 import { useSniperChat } from './useSniperChat';
+import { useTitanVoiceChat } from './useTitanVoiceChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
@@ -688,7 +689,7 @@ export function useChat({
 
     const userMessage: ChatMessage = {
       role: 'user',
-      content: finalUserContent,
+      content: userContent,
       attachments: readyAttachments.length > 0 ? readyAttachments : undefined,
       time: 'just now',
     };
@@ -1233,6 +1234,14 @@ export function useChat({
     openTabs,
   });
 
+  const voiceChat = useTitanVoiceChat({
+    sessions,
+    setSessions,
+    activeSessionId,
+    workspacePath,
+    openTabs,
+  });
+
   const setChatInputWithRef = useCallback((v: string | ((prev: string) => string)) => {
     setChatInput(prev => {
       const next = typeof v === 'function' ? v(prev) : v;
@@ -1247,6 +1256,7 @@ export function useChat({
   const isOmegaMode = activeModel === 'titan-omega-protocol';
   const isTitanChatMode = activeModel === 'titan-chat';
   const isSniperMode = activeModel === 'titan-plan-sniper';
+  const isTitanVoiceMode = activeModel === 'titan-voice';
 
   const sharedProps = {
     attachments: attachments || [],
@@ -1331,6 +1341,19 @@ export function useChat({
       handleSend: sniperChat.handleSend,
       handleStop: sniperChat.handleStop,
       handleKeyDown: sniperChat.handleKeyDown,
+      ...sharedProps,
+    };
+  }
+
+  if (isTitanVoiceMode) {
+    return {
+      chatInput: voiceChat.chatInput,
+      setChatInput: voiceChat.setChatInput,
+      isThinking: voiceChat.isThinking,
+      isStreaming: voiceChat.isStreaming,
+      handleSend: voiceChat.handleSend,
+      handleStop: voiceChat.handleStop,
+      handleKeyDown: voiceChat.handleKeyDown,
       ...sharedProps,
     };
   }

@@ -43,6 +43,10 @@ Specifically: ensure spawned processes inherit `process.env` and resolve an abso
 
 Voice input uses the Web Speech API (available in Chromium/Electron). The mic button in the chat input toggles speech-to-text. Transcribed text is appended to the chat input and auto-sends after 2.5s of silence. Error messages (permission denied, no network) display inline below the input.
 
+### Alfred (Titan Voice Protocol)
+
+Alfred is the Titan AI voice companion — always-on, proactive, and accessible via the Alfred icon in the left activity bar or the model dropdown ("Alfred (Titan Voice)"). It provides text-to-speech output, proactive thought suggestions, voice commands for system control, and a persistent brain that learns over time. Alfred listens continuously and can be toggled via its dedicated panel. Voice commands like "Alfred, start midnight mode" or "Alfred, scan the project" trigger system actions.
+
 ### Auto-Workspace
 
 On launch, if no workspace folder is loaded, the desktop app automatically creates `C:\TitanWorkspace` and opens it. This enables fully autonomous operation from first launch without requiring the user to manually select a folder.
