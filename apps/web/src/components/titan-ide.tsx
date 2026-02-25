@@ -1692,6 +1692,14 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
         {/* Waveform Visualizer */}
         <WaveformVisualizer active={alfredListening && voice.isListening} speaking={titanVoice.isSpeaking} />
 
+        {/* Voice error display */}
+        {voice.errorMessage && (
+          <div className="rounded-lg bg-red-900/20 border border-red-800/40 p-2 flex items-center justify-between">
+            <span className="text-[11px] text-red-300">{voice.errorMessage}</span>
+            <button onClick={voice.clearError} className="text-red-400 text-[14px] hover:text-red-300 ml-2">×</button>
+          </div>
+        )}
+
         {/* Interim transcript display */}
         {voice.interimText && (
           <div className="rounded-lg bg-[#252526] border border-cyan-800/40 p-2">
@@ -1709,7 +1717,10 @@ function AlfredPanel({ onBackToIDE }: { onBackToIDE: () => void }) {
           </div>
           <div className="flex items-center gap-2 mb-2">
             <div className={`w-2 h-2 rounded-full ${alfredListening && voice.isListening ? 'bg-cyan-400 animate-pulse' : 'bg-[#555]'}`} />
-            <span className="text-[12px] text-[#ccc]">Listening {alfredListening && voice.isListening ? 'ON' : 'OFF'}</span>
+            <span className="text-[12px] text-[#ccc]">
+              Listening {alfredListening && voice.isListening ? 'ON' : 'OFF'}
+              {voice.voiceMode === 'whisper' && <span className="text-amber-400 ml-1">(Whisper)</span>}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-full ${titanVoice.isSpeaking ? 'bg-blue-500 animate-pulse' : 'bg-[#555]'}`} />

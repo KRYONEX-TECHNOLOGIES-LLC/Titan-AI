@@ -50,6 +50,13 @@ export function createMainWindow(state: WindowState): BrowserWindow {
     },
   });
 
+  // Override Electron's default UA so Google's Web Speech API works.
+  // Without this, webkitSpeechRecognition fails with "network" error.
+  const chromeVersion = process.versions.chrome || '120.0.0.0';
+  win.webContents.setUserAgent(
+    `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`,
+  );
+
   if (state.isMaximized) {
     win.maximize();
   }

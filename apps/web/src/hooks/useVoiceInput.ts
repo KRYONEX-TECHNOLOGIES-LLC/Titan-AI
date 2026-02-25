@@ -32,6 +32,8 @@ declare global {
   }
 }
 
+type VoiceMode = 'native' | 'whisper' | 'off';
+
 export function useVoiceInput(
   onTranscript: (text: string) => void,
   options?: { onAutoSend?: () => void; autoSendDelayMs?: number },
@@ -40,21 +42,28 @@ export function useVoiceInput(
   const [interimText, setInterimText] = useState('');
   const [isSupported, setIsSupported] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>('off');
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const restartCountRef = useRef(0);
+  const networkRetryRef = useRef(0);
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onAutoSendRef = useRef(options?.onAutoSend);
   const autoSendDelay = options?.autoSendDelayMs ?? 2000;
   onAutoSendRef.current = options?.onAutoSend;
 
+  // Whisper fallback refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const whisperIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
   useEffect(() => {
     const SpeechRecognition = typeof window !== 'undefined'
       ? window.SpeechRecognition || window.webkitSpeechRecognition
       : null;
-    setIsSupported(!!SpeechRecognition);
+    setIsSupported(!!SpeechRecognition || typeof navigator?.mediaDevices?.getUserMedia === 'function');
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (recognitionRef.current) {
@@ -65,18 +74,122 @@ export function useVoiceInput(
         clearTimeout(autoSendTimerRef.current);
         autoSendTimerRef.current = null;
       }
+      stopWhisperRecording();
     };
   }, []);
 
-  const startListening = useCallback(() => {
+  // ═══ WHISPER FALLBACK ═══
+
+  async function transcribeChunk(blob: Blob): Promise<string> {
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
+      );
+      const res = await fetch('/api/speech/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64 }),
+      });
+      if (!res.ok) return '';
+      const data = (await res.json()) as { text?: string };
+      return data.text?.trim() || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function startWhisperRecording() {
+    setVoiceMode('whisper');
+    setErrorMessage(null);
+    setInterimText('');
+
+    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+      streamRef.current = stream;
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        // Process final chunk
+        if (audioChunksRef.current.length > 0) {
+          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          audioChunksRef.current = [];
+          if (blob.size > 1000) {
+            setInterimText('Transcribing...');
+            transcribeChunk(blob).then((text) => {
+              setInterimText('');
+              if (text) onTranscript(text);
+            });
+          }
+        }
+      };
+
+      recorder.start();
+      setIsListening(true);
+
+      // Every 4 seconds, stop and restart recording to get chunks for transcription
+      whisperIntervalRef.current = setInterval(() => {
+        if (recorder.state === 'recording') {
+          recorder.stop();
+          setTimeout(() => {
+            if (streamRef.current && mediaRecorderRef.current) {
+              try {
+                const newRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+                newRecorder.ondataavailable = (e) => {
+                  if (e.data.size > 0) audioChunksRef.current.push(e.data);
+                };
+                newRecorder.onstop = recorder.onstop;
+                mediaRecorderRef.current = newRecorder;
+                audioChunksRef.current = [];
+                newRecorder.start();
+              } catch { /* stream may have ended */ }
+            }
+          }, 100);
+        }
+      }, 4000);
+    }).catch((err) => {
+      console.error('[voice] Mic access failed:', err);
+      setIsListening(false);
+      setErrorMessage('Microphone access denied.');
+    });
+  }
+
+  function stopWhisperRecording() {
+    if (whisperIntervalRef.current) {
+      clearInterval(whisperIntervalRef.current);
+      whisperIntervalRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try { mediaRecorderRef.current.stop(); } catch { /* ignore */ }
+    }
+    mediaRecorderRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    audioChunksRef.current = [];
+  }
+
+  // ═══ NATIVE WEB SPEECH API ═══
+
+  const startNativeListening = useCallback(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      startWhisperRecording();
+      return;
+    }
 
     if (recognitionRef.current) {
       try { recognitionRef.current.abort(); } catch { /* ignore */ }
     }
 
     setErrorMessage(null);
+    setVoiceMode('native');
     restartCountRef.current = 0;
 
     const recognition = new SpeechRecognition();
@@ -88,6 +201,7 @@ export function useVoiceInput(
       setIsListening(true);
       setInterimText('');
       setErrorMessage(null);
+      networkRetryRef.current = 0;
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -107,7 +221,6 @@ export function useVoiceInput(
         onTranscript(final);
         restartCountRef.current = 0;
 
-        // Reset auto-send timer: fires after silence following last final transcript
         if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
         if (onAutoSendRef.current) {
           autoSendTimerRef.current = setTimeout(() => {
@@ -130,13 +243,29 @@ export function useVoiceInput(
           setErrorMessage('Microphone access denied. Check your system permissions.');
           break;
         case 'network':
-          setIsListening(false);
+          // Auto-retry up to 3 times before falling back to Whisper
+          if (networkRetryRef.current < 3) {
+            networkRetryRef.current++;
+            console.log(`[voice] Network error, retrying (${networkRetryRef.current}/3)...`);
+            setTimeout(() => {
+              if (recognitionRef.current) {
+                try {
+                  recognitionRef.current.abort();
+                } catch { /* ignore */ }
+              }
+              startNativeListening();
+            }, 1000 * networkRetryRef.current);
+            return;
+          }
+          // Fallback to Whisper after 3 failures
+          console.log('[voice] Native speech failed, switching to Whisper fallback');
+          recognitionRef.current = null;
           setInterimText('');
-          setErrorMessage('Network error. Speech recognition requires an internet connection.');
-          break;
+          setErrorMessage(null);
+          startWhisperRecording();
+          return;
         case 'no-speech':
-          // Auto-restart if user just hasn't spoken yet
-          if (restartCountRef.current < 3) {
+          if (restartCountRef.current < 5) {
             restartCountRef.current++;
           } else {
             setIsListening(false);
@@ -153,8 +282,7 @@ export function useVoiceInput(
     };
 
     recognition.onend = () => {
-      // Auto-restart for continuous listening (unless manually stopped)
-      if (recognitionRef.current === recognition && restartCountRef.current < 3) {
+      if (recognitionRef.current === recognition && restartCountRef.current < 5) {
         try {
           recognition.start();
           return;
@@ -171,24 +299,32 @@ export function useVoiceInput(
     try {
       recognition.start();
     } catch (err) {
-      console.error('[voice] Failed to start recognition:', err);
-      setIsListening(false);
-      setErrorMessage('Failed to start speech recognition.');
+      console.error('[voice] Failed to start native recognition:', err);
+      startWhisperRecording();
     }
-  }, [onTranscript]);
+  }, [onTranscript, autoSendDelay]);
+
+  const startListening = useCallback(() => {
+    startNativeListening();
+  }, [startNativeListening]);
 
   const stopListening = useCallback(() => {
+    // Stop native
     const rec = recognitionRef.current;
     recognitionRef.current = null;
     if (rec) {
       try { rec.stop(); } catch { /* ignore */ }
     }
+    // Stop whisper
+    stopWhisperRecording();
+
     if (autoSendTimerRef.current) {
       clearTimeout(autoSendTimerRef.current);
       autoSendTimerRef.current = null;
     }
     setIsListening(false);
     setInterimText('');
+    setVoiceMode('off');
   }, []);
 
   const toggleListening = useCallback(() => {
@@ -206,6 +342,7 @@ export function useVoiceInput(
     interimText,
     isSupported,
     errorMessage,
+    voiceMode,
     clearError,
     startListening,
     stopListening,

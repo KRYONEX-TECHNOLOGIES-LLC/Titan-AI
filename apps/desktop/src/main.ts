@@ -8,8 +8,10 @@ app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('disable-software-rasterization');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// Web Speech API: Google's speech service rejects non-Chrome user agents.
+// Spoof a standard Chrome UA so webkitSpeechRecognition works in Electron.
+app.commandLine.appendSwitch('enable-features', 'WebSpeechAPI');
 if (process.platform === 'win32') {
-  // Removes the Windows occlusion-detection overhead that throttles hidden windows
   app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 }
 import Store from 'electron-store';
