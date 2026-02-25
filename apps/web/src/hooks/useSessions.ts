@@ -77,7 +77,7 @@ export function useSessions(mounted: boolean, workspacePath?: string) {
         id: s.id,
         name: s.name,
         time: s.time,
-        messages: (s.messages || []).slice(-MAX_PERSISTED_MESSAGES).map(m => ({
+        messages: sanitizeMessages((s.messages || []).slice(-MAX_PERSISTED_MESSAGES)).map(m => ({
           ...m,
           content: (m.content || '').length > MAX_MESSAGE_LENGTH ? (m.content || '').slice(0, MAX_MESSAGE_LENGTH) + '\n\n…(truncated)' : (m.content || ''),
           thinking: undefined,
@@ -126,7 +126,7 @@ export function useSessions(mounted: boolean, workspacePath?: string) {
       if (state.sessions?.length > 0) {
         const sanitized = state.sessions.map((s: any) => ({
           ...s,
-          messages: Array.isArray(s.messages) ? s.messages : [],
+          messages: sanitizeMessages(Array.isArray(s.messages) ? s.messages : []),
           changedFiles: Array.isArray(s.changedFiles) ? s.changedFiles : [],
         }));
         return { sessions: sanitized, activeId: state.activeSessionId };

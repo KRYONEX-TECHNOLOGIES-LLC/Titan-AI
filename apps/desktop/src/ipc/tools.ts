@@ -31,6 +31,35 @@ function looksLikeServer(command: string): boolean {
   return SERVER_PATTERNS.some(p => p.test(command));
 }
 
+function resolveEnhancedPath(): string {
+  const basePath = process.env.PATH || process.env.Path || '';
+  if (process.platform !== 'win32') return basePath;
+
+  const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
+  const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || 'C:\\Users\\Default', 'AppData', 'Local');
+
+  const extraDirs = [
+    path.join(programFiles, 'Git', 'cmd'),
+    path.join(programFiles, 'Git', 'bin'),
+    path.join(programFiles, 'Git', 'usr', 'bin'),
+    path.join(programFilesX86, 'Git', 'cmd'),
+    path.join(programFiles, 'GitHub CLI'),
+    path.join(programFilesX86, 'GitHub CLI'),
+    path.join(localAppData, 'Programs', 'Git', 'cmd'),
+    path.join(localAppData, 'GitHub CLI'),
+    path.join(programFiles, 'nodejs'),
+    path.join(localAppData, 'Programs', 'Microsoft VS Code', 'bin'),
+  ];
+
+  const existing = extraDirs.filter(d => {
+    try { return fs.existsSync(d); } catch { return false; }
+  });
+
+  if (existing.length === 0) return basePath;
+  return basePath + ';' + existing.join(';');
+}
+
 function resolveWindowsShell(): { shellPath: string; isPowerShell: boolean } {
   const systemRoot = process.env.SystemRoot || process.env.windir || 'C:\\Windows';
 
@@ -256,9 +285,14 @@ export function registerToolHandlers(ipcMain: IpcMain, win?: BrowserWindow): voi
           : ['/d', '/s', '/c', cmd]
         : ['-c', cmd];
 
+      const enhancedEnv: Record<string, string | undefined> = { ...process.env, FORCE_COLOR: '0' };
+      if (isWindows) {
+        enhancedEnv.PATH = resolveEnhancedPath();
+      }
+
       const proc = spawn(shellPath, args, {
         cwd: resolved,
-        env: { ...process.env, FORCE_COLOR: '0' },
+        env: enhancedEnv,
         windowsHide: true,
       });
 

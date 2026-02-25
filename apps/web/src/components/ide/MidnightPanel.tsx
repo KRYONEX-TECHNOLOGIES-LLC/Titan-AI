@@ -232,46 +232,53 @@ export default function MidnightPanel({
   const queueProgress = Math.round((tasksCompleted / Math.max(1, tasksTotal)) * 100);
   const uptimeText = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${uptime % 60}s`;
 
+  const logError = useCallback((msg: string) => {
+    setActorLines((prev) => [...prev.slice(-99), { ts: new Date().toLocaleTimeString(), text: msg, level: 'error' as const }]);
+  }, []);
+
   const handlePauseResume = async () => {
     const action = isPaused ? 'resume' : 'pause';
     try {
-      await fetch('/api/midnight', {
+      const res = await fetch('/api/midnight', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
+      if (!res.ok) { logError(`Failed to ${action}: ${res.status} ${res.statusText}`); return; }
       setIsPaused((p) => !p);
-    } catch {
-      // best effort
+    } catch (err: unknown) {
+      logError(`${action} failed: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 
   const addProject = async () => {
     try {
-      const path = isElectron && electronAPI ? await electronAPI.dialog.openFolder() : null;
-      if (!path) return;
-      await fetch('/api/midnight/queue', {
+      const folderPath = isElectron && electronAPI ? await electronAPI.dialog.openFolder() : null;
+      if (!folderPath) return;
+      const addRes = await fetch('/api/midnight/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectPath: path }),
+        body: JSON.stringify({ projectPath: folderPath }),
       });
+      if (!addRes.ok) { logError(`Failed to add project: ${addRes.status}`); return; }
       const queueRes = await fetch('/api/midnight/queue', { cache: 'no-store' });
       if (queueRes.ok) {
         const q = await queueRes.json();
         setQueue(Array.isArray(q.projects) ? q.projects : []);
       }
-    } catch {
-      // best effort
+    } catch (err: unknown) {
+      logError(`Add project failed: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 
   const reorderProject = async (projectId: string, newIndex: number) => {
     try {
-      await fetch('/api/midnight/queue', {
+      const res = await fetch('/api/midnight/queue', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, newPriority: newIndex }),
       });
+      if (!res.ok) { logError(`Reorder failed: ${res.status}`); return; }
       setQueue((prev) => {
         const idx = prev.findIndex((p) => p.id === projectId);
         if (idx < 0) return prev;
@@ -280,29 +287,32 @@ export default function MidnightPanel({
         next.splice(Math.max(0, Math.min(newIndex, next.length)), 0, moved);
         return next;
       });
-    } catch {
-      // best effort
+    } catch (err: unknown) {
+      logError(`Reorder failed: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 
   const removeProject = async (projectId: string) => {
     try {
-      await fetch(`/api/midnight/queue?id=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+      const res = await fetch(`/api/midnight/queue?id=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+      if (!res.ok) { logError(`Remove failed: ${res.status}`); return; }
       setQueue((prev) => prev.filter((p) => p.id !== projectId));
-    } catch {
-      // best effort
+    } catch (err: unknown) {
+      logError(`Remove failed: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 
   const recoverSnapshot = async (snapshotId: string) => {
     try {
-      await fetch('/api/midnight/recover', {
+      const res = await fetch('/api/midnight/recover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ snapshotId }),
       });
-    } catch {
-      // best effort
+      if (!res.ok) { logError(`Snapshot rollback failed: ${res.status}`); return; }
+      setActorLines((prev) => [...prev.slice(-99), { ts: new Date().toLocaleTimeString(), text: `Rolled back to snapshot ${snapshotId}`, level: 'success' as const }]);
+    } catch (err: unknown) {
+      logError(`Snapshot rollback failed: ${err instanceof Error ? err.message : 'Network error'}`);
     }
   };
 
@@ -324,7 +334,8 @@ export default function MidnightPanel({
   }, []);
 
   const startBuilding = useCallback(async () => {
-    if (!generatedPlan || planTasks.length === 0) return;
+    if (!generatedPlan) { setPlanError('Generate a plan first before starting the build.'); return; }
+    if (planTasks.filter(t => t.text.trim()).length === 0) { setPlanError('Add at least one task to the plan.'); return; }
 
     const planStore = usePlanStore.getState();
     planStore.setPlanName(generatedPlan.projectName);
