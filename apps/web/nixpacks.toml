@@ -8,4 +8,4 @@ cmds = ["node -e \"const p=JSON.parse(require('fs').readFileSync('package.json',
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm run start"
+cmd = "node .next/standalone/apps/web/server.js"

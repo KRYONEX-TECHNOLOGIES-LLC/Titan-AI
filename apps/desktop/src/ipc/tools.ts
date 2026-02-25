@@ -58,9 +58,9 @@ function adaptCommandForWindows(cmd: string): string {
   const braceRegex = /([^\s{]*)\{([^}]+)\}([^\s}]*)/g;
   let match;
   while ((match = braceRegex.exec(result)) !== null) {
-    const prefix = match[1];
-    const items = match[2].split(',').map((s: string) => s.trim());
-    const suffix = match[3];
+    const prefix = match[1] ?? '';
+    const items = (match[2] ?? '').split(',').map((s: string) => s.trim());
+    const suffix = match[3] ?? '';
     const expanded = items.map((item: string) => `${prefix}${item}${suffix}`).join(' ');
     result = result.slice(0, match.index) + expanded + result.slice(match.index + match[0].length);
     braceRegex.lastIndex = 0;
