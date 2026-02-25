@@ -888,6 +888,65 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
     e.target.value = '';
   }, [onAddAttachments]);
 
+  const [planGenerating, setPlanGenerating] = useState(false);
+
+  const handlePlanSend = useCallback(async () => {
+    const input = chatInput.trim();
+    if (!input || planGenerating) return;
+    setChatInput('');
+    setPlanGenerating(true);
+
+    const planStore = usePlanStore.getState();
+    planStore.addMemory({ type: 'reminder', title: 'Plan Goal', content: `User request: ${input}`, linkedTaskIds: [], pinned: true, expiresAt: null });
+
+    try {
+      const res = await fetch('/api/plan/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: input }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        planStore.addReport({ type: 'error', severity: 'critical', title: 'Plan Generation Failed', details: data.error, taskId: null, resolved: false });
+        return;
+      }
+
+      const tasks = data.tasks as Array<{ title: string; description: string; phase: number; priority: 'critical' | 'high' | 'medium' | 'low'; tags: string[] }>;
+
+      if (Array.isArray(tasks) && tasks.length > 0) {
+        planStore.clearPlan();
+        planStore.bulkAddTasks(tasks.map(t => ({
+          title: t.title || 'Untitled task',
+          description: t.description || '',
+          phase: t.phase || 1,
+          priority: t.priority || 'medium',
+          tags: Array.isArray(t.tags) ? t.tags : [],
+        })));
+        planStore.addReport({ type: 'progress', severity: 'info', title: 'Plan Generated', details: `Created ${tasks.length} tasks from: "${input}"`, taskId: null, resolved: false });
+      } else {
+        planStore.addReport({ type: 'error', severity: 'warning', title: 'Plan Generation Failed', details: 'Could not parse tasks from AI response. Try being more specific.', taskId: null, resolved: false });
+      }
+    } catch (err) {
+      usePlanStore.getState().addReport({ type: 'error', severity: 'critical', title: 'Plan Generation Error', details: (err as Error).message, taskId: null, resolved: false });
+    } finally {
+      setPlanGenerating(false);
+    }
+  }, [chatInput, setChatInput, planGenerating]);
+
+  const handlePlanKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void handlePlanSend();
+    }
+  }, [handlePlanSend]);
+
+  const effectiveSend = chatMode === 'plan' ? handlePlanSend : onSend;
+  const effectiveKeyDown = chatMode === 'plan' ? handlePlanKeyDown : onKeyDown;
+  const effectiveThinking = chatMode === 'plan' ? planGenerating : isThinking;
+  const effectiveStreaming = chatMode === 'plan' ? planGenerating : isStreaming;
+
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
       <div className="px-3 pt-3 pb-2 shrink-0 border-b border-[#2d2d2d]">
@@ -922,6 +981,12 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       </div>
       {chatMode === 'plan' ? (
         <div className="flex-1 overflow-hidden min-h-0">
+          {planGenerating && (
+            <div className="px-4 py-3 flex items-center gap-2 text-[12px] text-[#a78bfa] border-b border-[#2d2d2d] bg-[#1a1a2e]">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
+              Generating plan tasks...
+            </div>
+          )}
           <PlanModePanel />
         </div>
       ) : (
@@ -1006,7 +1071,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                 ))}
               </div>
             )}
-            <textarea ref={textareaRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} onPaste={handlePaste} placeholder={voice.isListening ? 'Listening...' : chatMode === 'chat' ? 'Chat with Titan...' : chatMode === 'plan' ? 'Describe what you want to build...' : 'Ask Titan to edit code, fix bugs, run commands...'} rows={1} className="w-full bg-transparent px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none resize-none leading-5 max-h-[120px]" />
+            <textarea ref={textareaRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={effectiveKeyDown} onPaste={handlePaste} placeholder={voice.isListening ? 'Listening...' : chatMode === 'chat' ? 'Chat with Titan...' : chatMode === 'plan' ? 'Describe what you want to build...' : 'Ask Titan to edit code, fix bugs, run commands...'} rows={1} className="w-full bg-transparent px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none resize-none leading-5 max-h-[120px]" />
             {voice.interimText && (
               <div className="px-3 pb-1 text-[12px] text-[#666] italic">{voice.interimText}</div>
             )}
@@ -1018,7 +1083,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                   <button onClick={() => setChatMode('plan')} className={`mode-toggle-btn ${chatMode === 'plan' ? 'active-plan' : ''}`}>Plan</button>
                 </div>
                 <span className="text-[10px] text-[#555] flex items-center gap-1">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isThinking || isStreaming ? 'bg-[#f9826c] animate-pulse' : chatMode === 'chat' ? 'bg-[#22c55e]' : chatMode === 'plan' ? 'bg-[#a855f7]' : 'bg-[#3fb950]'}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${effectiveThinking || effectiveStreaming ? 'bg-[#f9826c] animate-pulse' : chatMode === 'chat' ? 'bg-[#22c55e]' : chatMode === 'plan' ? 'bg-[#a855f7]' : 'bg-[#3fb950]'}`} />
                   {activeModel}
                 </span>
               </div>
@@ -1031,12 +1096,12 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                   </button>
                 )}
-                {isThinking || isStreaming ? (
+                {effectiveThinking || effectiveStreaming ? (
                   <button onClick={onStop} className="w-[26px] h-[26px] flex items-center justify-center rounded-md bg-[#f85149] hover:bg-[#da3633] text-white transition-colors" title="Stop">
                     <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>
                   </button>
                 ) : (
-                  <button onClick={onSend} disabled={!chatInput.trim() && (!attachments || attachments.length === 0)} className={`w-[26px] h-[26px] flex items-center justify-center rounded-md transition-colors ${chatInput.trim() || (attachments && attachments.length > 0) ? 'bg-[#569cd6] hover:bg-[#6eb0e6] text-white' : 'bg-[#2d2d2d] text-[#555]'}`} title="Send (Enter)">
+                  <button onClick={effectiveSend} disabled={!chatInput.trim() && (!attachments || attachments.length === 0)} className={`w-[26px] h-[26px] flex items-center justify-center rounded-md transition-colors ${chatInput.trim() || (attachments && attachments.length > 0) ? 'bg-[#569cd6] hover:bg-[#6eb0e6] text-white' : 'bg-[#2d2d2d] text-[#555]'}`} title="Send (Enter)">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                   </button>
                 )}

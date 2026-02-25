@@ -9,6 +9,7 @@ import { useSupremeChat } from './useSupremeChat';
 import { useOmegaChat } from './useOmegaChat';
 import { usePhoenixChat } from './usePhoenixChat';
 import { useTitanChat } from './useTitanChat';
+import { useSniperChat } from './useSniperChat';
 import { useFileStore } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/agent-capabilities';
@@ -1165,6 +1166,14 @@ export function useChat({
     activeSessionId,
   });
 
+  const sniperChat = useSniperChat({
+    sessions,
+    setSessions,
+    activeSessionId,
+    workspacePath,
+    openTabs,
+  });
+
   const setChatInputWithRef = useCallback((v: string | ((prev: string) => string)) => {
     setChatInput(prev => {
       const next = typeof v === 'function' ? v(prev) : v;
@@ -1178,6 +1187,7 @@ export function useChat({
   const isSupremeMode = activeModel === 'titan-supreme-protocol';
   const isOmegaMode = activeModel === 'titan-omega-protocol';
   const isTitanChatMode = activeModel === 'titan-chat';
+  const isSniperMode = activeModel === 'titan-plan-sniper';
 
   const sharedProps = {
     attachments: attachments || [],
@@ -1249,6 +1259,19 @@ export function useChat({
       handleSend: titanChat.handleSend,
       handleStop: titanChat.handleStop,
       handleKeyDown: titanChat.handleKeyDown,
+      ...sharedProps,
+    };
+  }
+
+  if (isSniperMode) {
+    return {
+      chatInput: sniperChat.chatInput,
+      setChatInput: sniperChat.setChatInput,
+      isThinking: sniperChat.isThinking,
+      isStreaming: sniperChat.isStreaming,
+      handleSend: sniperChat.handleSend,
+      handleStop: sniperChat.handleStop,
+      handleKeyDown: sniperChat.handleKeyDown,
       ...sharedProps,
     };
   }
