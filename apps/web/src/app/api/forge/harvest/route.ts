@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   let ForgeHarvester: any, runFilterPipeline: any, runParallelHarvest: any;
   try {
-    const forge = await import('@titan/forge');
+    const forge: any = await import('@titan/forge');
     ForgeHarvester = forge.ForgeHarvester;
     runFilterPipeline = forge.runFilterPipeline;
     runParallelHarvest = forge.runParallelHarvest;
