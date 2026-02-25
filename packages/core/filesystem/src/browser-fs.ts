@@ -48,10 +48,10 @@ export class BrowserFileSystemProvider extends BaseFileSystemProvider {
     let current: FileSystemDirectoryHandle = this.rootHandle;
 
     for (let i = 0; i < parts.length - 1; i++) {
-      current = await current.getDirectoryHandle(parts[i], { create });
+      current = await current.getDirectoryHandle(parts[i]!, { create });
     }
 
-    const lastName = parts[parts.length - 1];
+    const lastName = parts[parts.length - 1]!;
     if (!lastName) return current;
 
     try {
@@ -109,7 +109,7 @@ export class BrowserFileSystemProvider extends BaseFileSystemProvider {
     for (const key of this.storage.keys()) {
       if (key.startsWith(prefix)) {
         const remainder = key.slice(prefix.length);
-        const firstPart = remainder.split('/')[0];
+        const firstPart = remainder.split('/')[0]!;
         
         if (!seen.has(firstPart)) {
           seen.add(firstPart);
@@ -218,10 +218,10 @@ export class BrowserFileSystemProvider extends BaseFileSystemProvider {
       let parent = this.rootHandle;
 
       for (let i = 0; i < parts.length - 1; i++) {
-        parent = await parent.getDirectoryHandle(parts[i]);
+        parent = await parent.getDirectoryHandle(parts[i]!);
       }
 
-      await parent.removeEntry(parts[parts.length - 1], { recursive: _recursive });
+      await parent.removeEntry(parts[parts.length - 1]!, { recursive: _recursive });
       this.notifyWatchers(filePath, 'unlink');
       return;
     }

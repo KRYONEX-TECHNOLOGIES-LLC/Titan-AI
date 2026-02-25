@@ -35,7 +35,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         
       - name: Build packages
-        run: pnpm build --filter=!@titan/security --filter=!@titan/performance --filter=!@titan/terminal --filter=!@titan/filesystem --filter=!@titan/vectordb
+        run: pnpm exec turbo run build --filter='!@titan/security' --filter='!@titan/performance' --filter='!@titan/terminal' --filter='!@titan/filesystem' --filter='!@titan/vectordb'
         
       - name: Build web app
         run: pnpm --filter @titan/web build
@@ -77,7 +77,7 @@ jobs:
         run: pnpm install --frozen-lockfile
         
       - name: Build packages
-        run: pnpm build --filter=!@titan/security --filter=!@titan/performance --filter=!@titan/terminal --filter=!@titan/filesystem --filter=!@titan/vectordb
+        run: pnpm exec turbo run build --filter='!@titan/security' --filter='!@titan/performance' --filter='!@titan/terminal' --filter='!@titan/filesystem' --filter='!@titan/vectordb'
         
       - name: Build web app
         run: pnpm --filter @titan/web build
