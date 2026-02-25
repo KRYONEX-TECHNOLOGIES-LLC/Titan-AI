@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ForgeDB } from '@titan/forge';
 
 export async function POST(request: NextRequest) {
+  let ForgeDB: any;
+  try {
+    const forge = await import('@titan/forge');
+    ForgeDB = forge.ForgeDB;
+  } catch {
+    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+  }
+
   try {
     const body = await request.json();
     const baseModel = String(body.baseModel || 'openai/gpt-oss-120b');

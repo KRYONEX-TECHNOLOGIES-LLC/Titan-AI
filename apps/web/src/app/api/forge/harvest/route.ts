@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ForgeHarvester, runFilterPipeline } from '@titan/forge';
 
 export async function POST(request: NextRequest) {
+  let ForgeHarvester: any, runFilterPipeline: any;
+  try {
+    const forge = await import('@titan/forge');
+    ForgeHarvester = forge.ForgeHarvester;
+    runFilterPipeline = forge.runFilterPipeline;
+  } catch {
+    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+  }
+
   try {
     const body = await request.json();
     const { source = 'all', topic = 'all', limit = 20 } = body;

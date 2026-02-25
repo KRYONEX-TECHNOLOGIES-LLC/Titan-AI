@@ -46,6 +46,7 @@ const nextConfig = {
 
     return config;
   },
+  serverExternalPackages: ['@titan/forge'],
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { ForgeExporter, ForgeDB } from '@titan/forge';
 
 type ExportFormat = 'sharegpt' | 'jsonl' | 'alpaca';
 
@@ -10,6 +9,15 @@ function ensureDir(path: string) {
 }
 
 export async function POST(request: NextRequest) {
+  let ForgeExporter: any, ForgeDB: any;
+  try {
+    const forge = await import('@titan/forge');
+    ForgeExporter = forge.ForgeExporter;
+    ForgeDB = forge.ForgeDB;
+  } catch {
+    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+  }
+
   try {
     const body = await request.json();
     const format = String(body.format || 'sharegpt') as ExportFormat;

@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/lib/supabase/server';
-import { ForgeEvaluator, ForgeDB } from '@titan/forge';
 
 export async function POST(request: NextRequest) {
+  let ForgeEvaluator: any, ForgeDB: any;
+  try {
+    const forge = await import('@titan/forge');
+    ForgeEvaluator = forge.ForgeEvaluator;
+    ForgeDB = forge.ForgeDB;
+  } catch {
+    return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
+  }
+
   try {
     const body = await request.json();
     const runId = String(body.runId || '');
