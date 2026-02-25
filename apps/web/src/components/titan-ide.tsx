@@ -697,6 +697,8 @@ export default function TitanIDE() {
                 startMidnight={midnight.startMidnight}
                 stopMidnight={midnight.stopMidnight}
                 activeModel={settings.activeModel}
+                startError={midnight.startError}
+                isStarting={midnight.isStarting}
               />
             )}
             {activeView === 'training-lab' && <TrainingLabPanel />}

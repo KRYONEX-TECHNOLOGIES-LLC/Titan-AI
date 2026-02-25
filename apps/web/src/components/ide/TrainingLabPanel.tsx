@@ -116,8 +116,12 @@ export default function TrainingLabPanel() {
     }
   };
 
+  const [trainResult, setTrainResult] = useState('');
+  const [evalResult, setEvalResult] = useState('');
+
   const startTraining = async () => {
     setTrainLoading(true);
+    setTrainResult('');
     try {
       const res = await fetch('/api/forge/train', {
         method: 'POST',
@@ -134,10 +138,15 @@ export default function TrainingLabPanel() {
           },
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setSelectedRunId(data.run?.id || '');
+      const data = await res.json();
+      if (!res.ok) {
+        setTrainResult(`Failed: ${data?.error || res.statusText}`);
+        return;
       }
+      setSelectedRunId(data.run?.id || '');
+      setTrainResult(data.note || `Run ${data.run?.id} created — ${data.run?.samples_used || 0} samples queued`);
+    } catch (err: unknown) {
+      setTrainResult(`Failed: ${err instanceof Error ? err.message : 'network error'}`);
     } finally {
       setTrainLoading(false);
       void refresh();
@@ -147,12 +156,21 @@ export default function TrainingLabPanel() {
   const runEval = async () => {
     if (!selectedRunId) return;
     setEvalLoading(true);
+    setEvalResult('');
     try {
-      await fetch('/api/forge/eval', {
+      const res = await fetch('/api/forge/eval', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ runId: selectedRunId }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setEvalResult(`Eval failed: ${data?.error || res.statusText}`);
+      } else {
+        setEvalResult(`Eval complete — win rate: ${((data.metrics?.student_win_rate || 0) * 100).toFixed(1)}%`);
+      }
+    } catch (err: unknown) {
+      setEvalResult(`Eval failed: ${err instanceof Error ? err.message : 'network error'}`);
     } finally {
       setEvalLoading(false);
       void refresh();
@@ -292,6 +310,16 @@ export default function TrainingLabPanel() {
           <HudButton tone="purple" onClick={() => void startTraining()} disabled={trainLoading}>{trainLoading ? 'Starting...' : 'Start Training'}</HudButton>
           <HudButton tone="green" onClick={() => void runEval()} disabled={!selectedRunId || evalLoading}>{evalLoading ? 'Running Eval...' : 'Run Evaluation'}</HudButton>
         </div>
+        {trainResult && (
+          <div className={`mt-2 text-[11px] px-3 py-2 rounded-md border ${trainResult.startsWith('Failed') ? 'text-red-400 bg-red-900/20 border-red-500/30' : 'text-emerald-300 bg-emerald-900/20 border-emerald-500/30'}`}>
+            {trainResult}
+          </div>
+        )}
+        {evalResult && (
+          <div className={`mt-2 text-[11px] px-3 py-2 rounded-md border ${evalResult.startsWith('Eval failed') ? 'text-red-400 bg-red-900/20 border-red-500/30' : 'text-emerald-300 bg-emerald-900/20 border-emerald-500/30'}`}>
+            {evalResult}
+          </div>
+        )}
       </HudCard>
 
       <HudCard title="Evaluation Dashboard" tone="amber">

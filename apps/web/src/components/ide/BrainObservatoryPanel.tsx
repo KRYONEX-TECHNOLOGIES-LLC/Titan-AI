@@ -89,23 +89,29 @@ export default function BrainObservatoryPanel() {
     return () => source.close();
   }, [loadData]);
 
-  const readinessCount = useMemo(
-    () => samples.filter((s) => !s.exported && Number(s.quality_score) >= 7).length,
-    [samples],
-  );
+  const readinessCount = useMemo(() => {
+    const totalHighValue = stats?.distillation?.high_value || 0;
+    const totalExported = stats?.distillation?.exported || 0;
+    return Math.max(0, totalHighValue - totalExported);
+  }, [stats]);
 
   const startHarvest = async () => {
     setHarvestState('Harvesting...');
     try {
-      await fetch('/api/forge/harvest', {
+      const res = await fetch('/api/forge/harvest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ source, topic: topic || 'all', limit }),
       });
-      setHarvestState('Harvest complete');
+      const data = await res.json();
+      if (!res.ok) {
+        setHarvestState(`Error: ${data?.error || res.statusText}`);
+        return;
+      }
+      setHarvestState(`Complete — ${data.saved || 0} samples saved`);
       await loadData();
-    } catch {
-      setHarvestState('Harvest failed');
+    } catch (err: unknown) {
+      setHarvestState(`Failed: ${err instanceof Error ? err.message : 'network error'}`);
     }
   };
 

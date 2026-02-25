@@ -73,15 +73,16 @@ export function ForgeDashboard() {
         }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        setHarvestJob({ status: 'error', message: `API error: ${res.status}` });
+        setHarvestJob({ status: 'error', message: data?.error || `API error: ${res.status}` });
         return;
       }
 
-      const data = await res.json();
       setHarvestJob({
         status: 'complete',
-        message: `Harvest complete!`,
+        message: `Harvest complete! ${data.saved || 0} samples saved.`,
         progress: {
           scraped: data.total_input,
           filtered: data.after_pass4,

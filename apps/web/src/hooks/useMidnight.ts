@@ -9,6 +9,8 @@ export function useMidnight(mounted: boolean, activeModel: string) {
   const [confidenceScore, setConfidenceScore] = useState(100);
   const [confidenceStatus, setConfidenceStatus] = useState<'healthy' | 'warning' | 'error'>('healthy');
   const [protocolMode, setProtocolMode] = useState(true);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
 
   useEffect(() => {
     if (!mounted) return;
@@ -33,17 +35,39 @@ export function useMidnight(mounted: boolean, activeModel: string) {
       if (saved) {
         const state = JSON.parse(saved);
         if (state.trustLevel) setTrustLevel(state.trustLevel);
-        if (state.midnightActive !== undefined) setMidnightActive(state.midnightActive);
         if (state.protocolMode !== undefined) setProtocolMode(state.protocolMode);
       }
     } catch { /* ignore */ }
   }, [mounted]);
+
+  // Poll backend status and sync midnightActive with reality
+  useEffect(() => {
+    if (!mounted) return;
+    const syncStatus = async () => {
+      try {
+        const res = await fetch('/api/midnight', { cache: 'no-store' });
+        if (res.ok) {
+          const status = await res.json();
+          const backendRunning = !!status.running;
+          setMidnightActive(backendRunning);
+          if (!backendRunning && showFactoryView) {
+            setShowFactoryView(false);
+          }
+        }
+      } catch { /* ignore */ }
+    };
+    void syncStatus();
+    const interval = setInterval(syncStatus, 8000);
+    return () => clearInterval(interval);
+  }, [mounted, showFactoryView]);
 
   const startMidnight = useCallback(async () => {
     if (midnightActive) {
       setShowFactoryView(true);
       return;
     }
+    setIsStarting(true);
+    setStartError(null);
     try {
       const res = await fetch('/api/midnight', {
         method: 'POST',
@@ -56,13 +80,20 @@ export function useMidnight(mounted: boolean, activeModel: string) {
         }),
       });
       const data = await res.json();
-      if (data.success) {
-        setMidnightActive(true);
-        setShowFactoryView(true);
+      if (!res.ok || !data.success) {
+        setStartError(data.error || data.message || `Start failed (HTTP ${res.status})`);
+        setMidnightActive(false);
+        return;
       }
-    } catch {
       setMidnightActive(true);
       setShowFactoryView(true);
+      setStartError(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error — is the server running?';
+      setStartError(msg);
+      setMidnightActive(false);
+    } finally {
+      setIsStarting(false);
     }
   }, [midnightActive, trustLevel, activeModel, protocolMode]);
 
@@ -76,6 +107,7 @@ export function useMidnight(mounted: boolean, activeModel: string) {
     } catch { /* best effort */ }
     setMidnightActive(false);
     setShowFactoryView(false);
+    setStartError(null);
   }, []);
 
   return {
@@ -87,5 +119,7 @@ export function useMidnight(mounted: boolean, activeModel: string) {
     protocolMode, setProtocolMode,
     startMidnight,
     stopMidnight,
+    startError,
+    isStarting,
   };
 }

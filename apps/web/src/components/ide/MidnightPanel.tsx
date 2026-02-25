@@ -51,6 +51,8 @@ type MidnightProps = {
   startMidnight: () => Promise<void>;
   stopMidnight: () => Promise<void>;
   activeModel: string;
+  startError?: string | null;
+  isStarting?: boolean;
 };
 
 export default function MidnightPanel({
@@ -62,6 +64,8 @@ export default function MidnightPanel({
   startMidnight,
   stopMidnight,
   activeModel,
+  startError,
+  isStarting,
 }: MidnightProps) {
   const [queue, setQueue] = useState<QueueProject[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -502,10 +506,17 @@ export default function MidnightPanel({
             <input type="checkbox" checked={protocolMode} onChange={(e) => setProtocolMode(e.target.checked)} />
           </label>
           <div className="flex flex-wrap gap-2">
-            <HudButton tone="green" onClick={() => void startMidnight()}>Start</HudButton>
+            <HudButton tone="green" onClick={() => void startMidnight()} disabled={isStarting}>
+              {isStarting ? 'Starting...' : midnightActive ? 'Open Factory' : 'Start'}
+            </HudButton>
             <HudButton tone="amber" onClick={() => void handlePauseResume()}>{isPaused ? 'Resume' : 'Pause'}</HudButton>
             <HudButton tone="red" onClick={() => void stopMidnight()}>Stop</HudButton>
           </div>
+          {startError && (
+            <div className="text-[12px] text-red-400 bg-red-900/20 border border-red-500/30 rounded-md px-3 py-2 mt-2">
+              {startError}
+            </div>
+          )}
         </div>
       </HudCard>
 
