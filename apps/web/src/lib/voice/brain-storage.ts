@@ -74,7 +74,10 @@ async function getSupabaseClient(): Promise<{ from: (table: string) => Record<st
 
 // ═══ Brain Entries ═══
 
-export async function saveBrainEntry(entry: Omit<BrainEntry, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>): Promise<BrainEntry> {
+export async function saveBrainEntry(
+  entry: Omit<BrainEntry, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>,
+  supabaseOnly = false,
+): Promise<BrainEntry> {
   const full: BrainEntry = {
     ...entry,
     id: genId(),
@@ -83,14 +86,15 @@ export async function saveBrainEntry(entry: Omit<BrainEntry, 'id' | 'createdAt' 
     updatedAt: new Date().toISOString(),
   };
 
-  const entries = loadFromLS<BrainEntry>(BRAIN_LS_KEY);
-  entries.push(full);
-  saveToLS(BRAIN_LS_KEY, entries);
+  if (!supabaseOnly) {
+    const entries = loadFromLS<BrainEntry>(BRAIN_LS_KEY);
+    entries.push(full);
+    saveToLS(BRAIN_LS_KEY, entries);
+  }
 
   try {
     const sb = await getSupabaseClient();
     if (sb) {
-      (sb as Record<string, unknown>).from = sb.from;
       await (sb.from('titan_voice_brain') as unknown as { insert: (d: unknown) => Promise<unknown> }).insert({
         category: full.category,
         content: full.content,
@@ -103,6 +107,28 @@ export async function saveBrainEntry(entry: Omit<BrainEntry, 'id' | 'createdAt' 
   } catch { /* Supabase unavailable, localStorage is primary */ }
 
   return full;
+}
+
+/**
+ * Batch save to localStorage in a single write — avoids N sequential read/write cycles.
+ */
+export function saveBrainEntryBatch(
+  entries: Array<Omit<BrainEntry, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>>,
+): BrainEntry[] {
+  const now = new Date().toISOString();
+  const fullEntries: BrainEntry[] = entries.map(entry => ({
+    ...entry,
+    id: genId(),
+    usageCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  }));
+
+  const existing = loadFromLS<BrainEntry>(BRAIN_LS_KEY);
+  existing.push(...fullEntries);
+  saveToLS(BRAIN_LS_KEY, existing);
+
+  return fullEntries;
 }
 
 export function queryBrain(category?: BrainCategory, searchTerm?: string): BrainEntry[] {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useTitanVoice } from '@/stores/titan-voice.store';
+import { recordThoughtShared } from './evolution-tracker';
 
 export type ThoughtCategory =
   | 'project_improvement'
@@ -61,6 +62,9 @@ export class TitanThoughtEngine {
   private onThought: ((thought: ProactiveThought) => void) | null = null;
   private running = false;
   private contextProvider: (() => string) | null = null;
+  // Dedup: track recent thought text hashes to prevent repeats
+  private recentThoughtHashes = new Set<string>();
+  private consecutiveFailures = 0;
 
   start(onThought: (thought: ProactiveThought) => void, contextProvider?: () => string) {
     if (this.running) return;
@@ -88,11 +92,11 @@ export class TitanThoughtEngine {
   private getIntervalRange(): [number, number] {
     switch (this.activityLevel) {
       case 'idle':
-        return [45_000, 120_000];
+        return [60_000, 180_000];
       case 'active':
-        return [120_000, 300_000];
+        return [180_000, 360_000];
       case 'coding':
-        return [180_000, 480_000];
+        return [240_000, 600_000];
     }
   }
 
@@ -100,11 +104,18 @@ export class TitanThoughtEngine {
     if (!this.running) return;
 
     const [min, max] = this.getIntervalRange();
-    const delay = randomInterval(min, max);
+    // Back off on consecutive failures
+    const backoff = Math.min(this.consecutiveFailures * 30_000, 300_000);
+    const delay = randomInterval(min, max) + backoff;
 
     this.timer = setTimeout(() => {
       void this.generateThought();
     }, delay);
+  }
+
+  private hashText(text: string): string {
+    // Simple hash for dedup — first 60 chars lowercase, trimmed
+    return text.slice(0, 60).toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
   private async generateThought() {
@@ -122,11 +133,38 @@ export class TitanThoughtEngine {
     try {
       const thought = await this.buildThought(category, context);
       if (thought && this.running) {
+        // Dedup check: don't show same/similar thought
+        const hash = this.hashText(thought.text);
+        if (this.recentThoughtHashes.has(hash)) {
+          this.consecutiveFailures++;
+          this.scheduleNext();
+          return;
+        }
+
+        // Check store-level dedup
+        if (voiceState.wasThoughtShown(hash)) {
+          this.consecutiveFailures++;
+          this.scheduleNext();
+          return;
+        }
+
+        this.recentThoughtHashes.add(hash);
+        // Keep set manageable
+        if (this.recentThoughtHashes.size > 100) {
+          const arr = [...this.recentThoughtHashes];
+          this.recentThoughtHashes = new Set(arr.slice(-50));
+        }
+
+        voiceState.markThoughtShown(hash);
         this.thoughtCount++;
+        this.consecutiveFailures = 0;
         this.onThought(thought);
+        recordThoughtShared();
+      } else {
+        this.consecutiveFailures++;
       }
     } catch {
-      // generation failed, schedule next
+      this.consecutiveFailures++;
     }
 
     this.scheduleNext();
@@ -140,7 +178,7 @@ export class TitanThoughtEngine {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `[PROACTIVE THOUGHT - ${category.toUpperCase()}]\n${prompt}\n\nContext: ${context || 'General session, user has been working for ' + Math.round((Date.now() - this.sessionStart) / 60000) + ' minutes.'}`,
+          message: `[PROACTIVE THOUGHT - ${category.toUpperCase()}]\n${prompt}\n\nContext: ${context || 'General session, user has been working for ' + Math.round((Date.now() - this.sessionStart) / 60000) + ' minutes.'}\n\nIMPORTANT: Give a UNIQUE insight. Do not repeat generic advice. Be specific to this moment.`,
           conversationHistory: [],
         }),
       });
