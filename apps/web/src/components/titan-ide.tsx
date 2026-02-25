@@ -53,7 +53,10 @@ import { useEditorStore } from '@/stores/editor-store';
 import { useFileStore } from '@/stores/file-store';
 import { useTerminalStore } from '@/stores/terminal-store';
 import { useDebugStore } from '@/stores/debug-store';
+import { usePlanStore } from '@/stores/plan-store';
 import { initCommandRegistry } from '@/lib/ide/command-registry';
+
+const PlanModePanel = dynamic(() => import('@/components/ide/PlanModePanel').then(m => ({ default: m.PlanModePanel })), { ssr: false });
 
 /* ═══ MAIN IDE COMPONENT ═══ */
 export default function TitanIDE() {
@@ -640,7 +643,7 @@ export default function TitanIDE() {
 
         {/* LEFT PANEL */}
         {activeView && activeView !== 'explorer' && (
-          <div className="w-[320px] bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
+          <div className="w-[420px] bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
             {activeView === 'search' && <IDESemanticSearch />}
             {activeView === 'git' && <IDEGitPanel workspacePath={fileSystem.workspacePath} />}
             {activeView === 'debug' && <IDEDebugPanel />}
@@ -828,6 +831,9 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   const chatInputRef = useRef(chatInput);
   chatInputRef.current = chatInput;
 
+  const chatMode = usePlanStore((s) => s.chatMode);
+  const setChatMode = usePlanStore((s) => s.setChatMode);
+
   const voice = useVoiceInput(useCallback((text: string) => {
     setChatInput(chatInputRef.current + text);
   }, [setChatInput]));
@@ -914,22 +920,28 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           </div>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 titan-chat-scroll">
-        <div className="px-3 py-3 max-w-full">
-          {(currentSession?.messages || []).map((msg, i) => (
-            <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} attachments={msg.attachments} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} generatedImages={msg.generatedImages} onRetry={onRetry} onApplyCode={onApplyCode} />
-          ))}
-          {isThinking && !(currentSession?.messages || []).some(m => m.streaming) && (
-            <div className="mb-4 flex items-center gap-2 px-1">
-              <div className="flex items-center gap-2 text-[12px] text-[#808080]">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#569cd6" strokeWidth="2" className="animate-spin"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
-                <span>Thinking...</span>
-              </div>
-            </div>
-          )}
-          <div ref={(node) => { chatEndRef.current = node; }} />
+      {chatMode === 'plan' ? (
+        <div className="flex-1 overflow-hidden min-h-0">
+          <PlanModePanel />
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 titan-chat-scroll">
+          <div className="px-3 py-3 max-w-full">
+            {(currentSession?.messages || []).map((msg, i) => (
+              <ChatMessage key={i} role={msg.role as 'user' | 'assistant'} content={msg.content} attachments={msg.attachments} thinking={msg.thinking} thinkingTime={msg.thinkingTime} streaming={msg.streaming} streamingModel={msg.streamingModel} streamingProvider={msg.streamingProvider} streamingProviderModel={msg.streamingProviderModel} isError={msg.isError} retryMessage={msg.retryMessage} activeModel={activeModel} toolCalls={msg.toolCalls} codeDiffs={msg.codeDiffs} generatedImages={msg.generatedImages} onRetry={onRetry} onApplyCode={onApplyCode} />
+            ))}
+            {isThinking && !(currentSession?.messages || []).some(m => m.streaming) && (
+              <div className="mb-4 flex items-center gap-2 px-1">
+                <div className="flex items-center gap-2 text-[12px] text-[#808080]">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#569cd6" strokeWidth="2" className="animate-spin"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
+                  <span>Thinking...</span>
+                </div>
+              </div>
+            )}
+            <div ref={(node) => { chatEndRef.current = node; }} />
+          </div>
+        </div>
+      )}
       <div className="shrink-0 border-t border-[#2d2d2d]">
         {hasPendingDiff && (
           <div className="px-3 py-2 bg-[#1a2332] border-b border-[#2d2d2d]">
@@ -970,7 +982,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
         )}
         <div className="p-2" onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave}>
           <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilePickerChange} />
-          <div className={`bg-[#252526] border rounded-lg focus-within:border-[#569cd6] transition-colors ${isDragOver ? 'border-[#569cd6] bg-[#569cd6]/10' : 'border-[#3c3c3c]'}`}>
+            <div className={`bg-[#252526] border rounded-lg transition-colors ${isDragOver ? 'border-[#569cd6] bg-[#569cd6]/10' : chatMode === 'plan' ? 'plan-mode-input' : chatMode === 'chat' ? 'chat-mode-input' : 'border-[#3c3c3c] focus-within:border-[#569cd6]'}`}>
             {isDragOver && (
               <div className="px-3 py-2 text-center text-[12px] text-[#569cd6]">Drop images here</div>
             )}
@@ -994,15 +1006,22 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
                 ))}
               </div>
             )}
-            <textarea ref={textareaRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} onPaste={handlePaste} placeholder={voice.isListening ? 'Listening...' : 'Ask Titan to edit code, fix bugs, run commands...'} rows={1} className="w-full bg-transparent px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none resize-none leading-5 max-h-[120px]" />
+            <textarea ref={textareaRef} value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={onKeyDown} onPaste={handlePaste} placeholder={voice.isListening ? 'Listening...' : chatMode === 'chat' ? 'Chat with Titan...' : chatMode === 'plan' ? 'Describe what you want to build...' : 'Ask Titan to edit code, fix bugs, run commands...'} rows={1} className="w-full bg-transparent px-3 py-2 text-[13px] text-[#e0e0e0] placeholder-[#555] focus:outline-none resize-none leading-5 max-h-[120px]" />
             {voice.interimText && (
               <div className="px-3 pb-1 text-[12px] text-[#666] italic">{voice.interimText}</div>
             )}
             <div className="flex items-center justify-between px-2 pb-1.5">
-              <span className="text-[11px] text-[#555] flex items-center gap-1.5">
-                <span className={`w-1.5 h-1.5 rounded-full ${isThinking || isStreaming ? 'bg-[#f9826c] animate-pulse' : 'bg-[#3fb950]'}`} />
-                {activeModel}
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="mode-toggle">
+                  <button onClick={() => setChatMode('agent')} className={`mode-toggle-btn ${chatMode === 'agent' ? 'active-agent' : ''}`}>Agent</button>
+                  <button onClick={() => setChatMode('chat')} className={`mode-toggle-btn ${chatMode === 'chat' ? 'active-chat' : ''}`}>Chat</button>
+                  <button onClick={() => setChatMode('plan')} className={`mode-toggle-btn ${chatMode === 'plan' ? 'active-plan' : ''}`}>Plan</button>
+                </div>
+                <span className="text-[10px] text-[#555] flex items-center gap-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${isThinking || isStreaming ? 'bg-[#f9826c] animate-pulse' : chatMode === 'chat' ? 'bg-[#22c55e]' : chatMode === 'plan' ? 'bg-[#a855f7]' : 'bg-[#3fb950]'}`} />
+                  {activeModel}
+                </span>
+              </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => fileInputRef.current?.click()} className="w-[26px] h-[26px] flex items-center justify-center rounded-md hover:bg-[#3c3c3c] text-[#808080] hover:text-[#cccccc] transition-colors" title="Attach image">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>

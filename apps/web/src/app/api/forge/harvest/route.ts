@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
           topic,
           limit: Math.min(limit, 500),
           parallel: true,
-          workerCount: Math.min(workerCount, 8),
+          workerCount: Math.min(workerCount, 100),
           minScore,
           evolInstruct,
         });

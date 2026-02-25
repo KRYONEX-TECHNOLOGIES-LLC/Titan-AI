@@ -56,6 +56,8 @@ export default function BrainObservatoryPanel() {
 
   useEffect(() => {
     void loadData();
+    const interval = setInterval(() => void loadData(), 10000);
+    return () => clearInterval(interval);
   }, [loadData]);
 
   useEffect(() => {

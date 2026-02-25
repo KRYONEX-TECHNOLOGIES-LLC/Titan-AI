@@ -13,7 +13,7 @@ import type { ScrapedItem } from './harvester.js';
 
 const db = new ForgeDB();
 
-const WORKER_COUNT = 4;
+const WORKER_COUNT = 100;
 
 const ALL_SOURCES: HarvestSource[] = [
   'github', 'stackoverflow', 'docs', 'blog', 'dataset',
@@ -126,11 +126,26 @@ export async function runParallelHarvest(opts: ParallelHarvestOptions) {
     ? ALL_SOURCES
     : [source];
 
-  const queue: SourceTask[] = sources.map(s => ({
-    source: s,
-    topic,
-    limit,
-  }));
+  const TOPIC_VARIATIONS = [
+    'TypeScript', 'JavaScript', 'Python', 'Rust', 'Go', 'Java', 'C++',
+    'React', 'Next.js', 'Node.js', 'Django', 'FastAPI',
+    'algorithms', 'data structures', 'design patterns', 'testing',
+    'databases', 'API design', 'microservices', 'Docker',
+    'machine learning', 'security', 'performance', 'debugging',
+  ];
+
+  let queue: SourceTask[];
+  if (workerCount > sources.length && topic === 'all') {
+    queue = [];
+    for (const s of sources) {
+      const topicsForSource = TOPIC_VARIATIONS.slice(0, Math.ceil(workerCount / sources.length));
+      for (const t of topicsForSource) {
+        queue.push({ source: s, topic: t, limit: Math.max(5, Math.floor(limit / topicsForSource.length)) });
+      }
+    }
+  } else {
+    queue = sources.map(s => ({ source: s, topic, limit }));
+  }
 
   const allScraped: ScrapedItem[] = [];
   const workerStatuses: WorkerStatus[] = Array.from({ length: workerCount }, (_, i) => ({
