@@ -69,7 +69,9 @@ export default function TitanIDE() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const titanSession = useSession();
+const titanSession = useSession();
+  const { alfredState } = useAlfredAmbient();
+  const chat = useChat();
 
   // Initialize command registry once — use getState directly so we don't
   // subscribe TitanIDE to the entire store (which would re-render on any
@@ -656,8 +658,8 @@ export default function TitanIDE() {
           <ActivityIcon active={activeView === 'accounts'} onClick={() => handleActivityClick('accounts')} title="Accounts"><AccountIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'settings'} onClick={() => handleActivityClick('settings')} title="Settings"><SettingsGearIcon /></ActivityIcon>
           {/* Alfred Ambient Indicator */}
-          <AlfredSidebarIndicator
-            state={alfred.alfredState}
+<AlfredSidebarIndicator
+            state={alfredState}
             onClick={() => handleActivityClick('alfred')}
           />
         </div>
@@ -726,7 +728,7 @@ export default function TitanIDE() {
                 onBackToIDE={() => setActiveView('explorer')}
               />
             )}
-            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} alfred={alfred} />}
+            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} alfred={alfredState} />}
             {activeView === 'training-lab' && <TrainingLabPanel />}
             {activeView === 'brain' && <BrainObservatoryPanel />}
             {activeView === 'accounts' && <AccountsPanel />}
@@ -935,9 +937,9 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   const handleDismissThought = useCallback(() => setActiveThought(null), []);
   const handleTellMoreThought = useCallback((thought: ProactiveThought) => {
     const prompt = `Tell me more about: ${thought.text.slice(0, 200)}`;
-    chat.setChatInput(prompt);
+chat.setChatInput(prompt);
     setActiveThought(null);
-    setTimeout(() => chat.handleSend(), 150);
+    setTimeout(() => chat?.handleSend(), 150);
   }, [chat]);
   const handleSnoozeThoughts = useCallback((durationMs: number) => {
     titanVoice.snoozeThoughts(durationMs);
