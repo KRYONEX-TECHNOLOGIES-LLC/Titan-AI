@@ -8,14 +8,20 @@
 declare module '@titan/forge' {
   export interface ForgeCapture {
     id?: string;
-    model: string;
-    tier: 'frontier' | 'economy' | 'local';
-    messages: Array<{ role: string; content: string }>;
-    response: string;
+    model?: string;
+    modelId?: string;
+    modelTier?: 'frontier' | 'economy' | 'local';
+    tier?: 'frontier' | 'economy' | 'local';
+    sessionId?: string | null;
+    systemPrompt?: string;
+    messages?: Array<{ role: string; content: string | null }>;
+    response?: string;
+    toolCalls?: Array<{ id: string; type: string; function: { name: string; arguments: unknown } }>;
     tokensIn?: number;
     tokensOut?: number;
     latencyMs?: number;
     qualityScore?: number;
+    [key: string]: unknown;
   }
 
   export interface ForgeStats {
@@ -117,6 +123,6 @@ declare module '@titan/forge' {
   }>;
 
   export const forgeCollector: {
-    capture(data: Partial<ForgeCapture>): void;
+    capture(data: ForgeCapture): void;
   };
 }

@@ -1700,7 +1700,7 @@ export async function POST(request: NextRequest) {
             modelId: normalizedModel,
             modelTier: forgeTier,
             systemPrompt: (messages[0]?.role === 'system' ? String(messages[0].content) : ''),
-            messages: messages as Array<{ role: string; content: string | null }>,
+            messages: messages.map(m => ({ role: m.role, content: String(m.content ?? '') })),
             response: fullContent,
             toolCalls: toolCalls.map(tc => ({
               id: tc.id,
