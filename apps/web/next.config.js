@@ -25,6 +25,16 @@ const nextConfig = {
       };
     }
 
+    // @titan/forge is only available in the Electron desktop app (pnpm workspace).
+    // Tell webpack to emit a runtime require() instead of bundling it.
+    // The forge API routes handle the missing module via try/catch at runtime.
+    if (isServer) {
+      config.externals = [
+        ...(Array.isArray(config.externals) ? config.externals : [config.externals].filter(Boolean)),
+        '@titan/forge',
+      ];
+    }
+
     // Enable WASM support for web-tree-sitter
     config.experiments = {
       ...config.experiments,
