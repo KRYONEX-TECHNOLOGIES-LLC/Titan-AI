@@ -110,6 +110,21 @@ const COMMON_SENSE_RULES: FinalChecklist[] = [
   { id: 'cs-a11y-keyboard', category: 'accessibility', label: 'Keyboard navigation works', checked: false, autoCheck: false, notes: '' },
 ];
 
+// ── Execution State ──
+
+export type ExecutionStatus = 'idle' | 'scanning' | 'planning' | 'executing' | 'paused' | 'done' | 'error';
+
+export interface PlanExecution {
+  status: ExecutionStatus;
+  currentTaskId: string | null;
+  startedAt: number | null;
+  pausedAt: number | null;
+  error: string | null;
+  scanProgress: number;
+  completedTaskIds: string[];
+  failedTaskIds: string[];
+}
+
 // ── Store Interface ──
 
 interface PlanState {
@@ -130,6 +145,17 @@ interface PlanState {
   bulkAddTasks: (tasks: Array<{ title: string; description: string; phase: number; priority: TaskPriority; tags: string[] }>) => void;
   clearPlan: () => void;
 
+  // Execution
+  execution: PlanExecution;
+  startExecution: () => void;
+  pauseExecution: () => void;
+  resumeExecution: () => void;
+  stopExecution: () => void;
+  setExecutionStatus: (status: ExecutionStatus) => void;
+  setCurrentTask: (taskId: string | null) => void;
+  markTaskExecuted: (taskId: string, success: boolean) => void;
+  setScanProgress: (pct: number) => void;
+
   // Memory Bank
   memories: MemoryEntry[];
   addMemory: (entry: Omit<MemoryEntry, 'id' | 'createdAt'>) => string;
@@ -147,6 +173,7 @@ interface PlanState {
   finalChecklist: FinalChecklist[];
   toggleChecklistItem: (id: string) => void;
   updateChecklistNotes: (id: string, notes: string) => void;
+  replaceChecklist: (items: FinalChecklist[]) => void;
   resetChecklist: () => void;
 
   // Computed
@@ -319,7 +346,50 @@ export const usePlanStore = create<PlanState>()(
         }));
       },
 
-      clearPlan: () => set({ tasks: {}, phases: [], planName: '', memories: [], reports: [], finalChecklist: [...COMMON_SENSE_RULES] }),
+      clearPlan: () => set({
+        tasks: {}, phases: [], planName: '', memories: [], reports: [],
+        finalChecklist: [...COMMON_SENSE_RULES],
+        execution: { status: 'idle', currentTaskId: null, startedAt: null, pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [] },
+      }),
+
+      // Execution
+      execution: { status: 'idle', currentTaskId: null, startedAt: null, pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [] },
+
+      startExecution: () => set(state => ({
+        execution: { ...state.execution, status: 'scanning', startedAt: Date.now(), pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [] },
+      })),
+
+      pauseExecution: () => set(state => ({
+        execution: { ...state.execution, status: 'paused', pausedAt: Date.now() },
+      })),
+
+      resumeExecution: () => set(state => ({
+        execution: { ...state.execution, status: 'executing', pausedAt: null },
+      })),
+
+      stopExecution: () => set(state => ({
+        execution: { ...state.execution, status: 'idle', currentTaskId: null },
+      })),
+
+      setExecutionStatus: (status) => set(state => ({
+        execution: { ...state.execution, status },
+      })),
+
+      setCurrentTask: (taskId) => set(state => ({
+        execution: { ...state.execution, currentTaskId: taskId },
+      })),
+
+      markTaskExecuted: (taskId, success) => set(state => ({
+        execution: {
+          ...state.execution,
+          completedTaskIds: success ? [...state.execution.completedTaskIds, taskId] : state.execution.completedTaskIds,
+          failedTaskIds: success ? state.execution.failedTaskIds : [...state.execution.failedTaskIds, taskId],
+        },
+      })),
+
+      setScanProgress: (pct) => set(state => ({
+        execution: { ...state.execution, scanProgress: pct },
+      })),
 
       // Memory
       memories: [],
@@ -383,6 +453,7 @@ export const usePlanStore = create<PlanState>()(
           ),
         }));
       },
+      replaceChecklist: (items) => set({ finalChecklist: items }),
       resetChecklist: () => set({ finalChecklist: [...COMMON_SENSE_RULES] }),
 
       // Computed
@@ -419,6 +490,7 @@ export const usePlanStore = create<PlanState>()(
         memories: state.memories,
         reports: state.reports.slice(0, 200),
         finalChecklist: state.finalChecklist,
+        execution: state.execution,
       }),
     },
   ),

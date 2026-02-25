@@ -16,6 +16,7 @@ import { getCapabilities, requiresTools, type ToolsDisabledReason } from '@/lib/
 import { ContextNavigator } from '@/lib/autonomy/context-navigator';
 import { MemoryManager } from '@/lib/autonomy/memory-manager';
 import { useTitanMemory } from '@/stores/titan-memory';
+import { useCodeDirectory } from '@/stores/code-directory';
 import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
 import { playBellSound } from '@/utils/notification-sound';
 
@@ -651,6 +652,12 @@ export function useChat({
     const persistentMemory = useTitanMemory.getState().serialize(3000);
     if (persistentMemory) {
       memoryPrefix = `${persistentMemory}\n\n`;
+    }
+
+    // Code directory injection — gives AI instant knowledge of project structure
+    const codeDir = useCodeDirectory.getState().serialize(2000);
+    if (codeDir) {
+      memoryPrefix += `${codeDir}\n\n`;
     }
 
     // Also include file-based architectural memory when relevant

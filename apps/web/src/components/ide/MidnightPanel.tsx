@@ -13,6 +13,7 @@ import {
   HudTerminal,
   PulsingDot,
 } from '@/components/hud/HudStyles';
+import { usePlanStore } from '@/stores/plan-store';
 
 type QueueProject = {
   id: string;
@@ -53,6 +54,7 @@ type MidnightProps = {
   activeModel: string;
   startError?: string | null;
   isStarting?: boolean;
+  onBackToIDE?: () => void;
 };
 
 export default function MidnightPanel({
@@ -66,6 +68,7 @@ export default function MidnightPanel({
   activeModel,
   startError,
   isStarting,
+  onBackToIDE,
 }: MidnightProps) {
   const [queue, setQueue] = useState<QueueProject[]>([]);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
@@ -89,6 +92,52 @@ export default function MidnightPanel({
   const [planError, setPlanError] = useState('');
   const [planTasks, setPlanTasks] = useState<PlanTask[]>([]);
   const [showSetup, setShowSetup] = useState(true);
+
+  // Chat input for new projects
+  const [chatInput, setChatInput] = useState('');
+  const [droppedImages, setDroppedImages] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleChatDescribe = useCallback(async () => {
+    if (!chatInput.trim()) return;
+    setInstruction(chatInput.trim());
+    setChatInput('');
+    void generatePlanFromChat(chatInput.trim());
+  }, [chatInput]);
+
+  const generatePlanFromChat = useCallback(async (text: string) => {
+    setIsGenerating(true);
+    setPlanError('');
+    try {
+      const res = await fetch('/api/midnight/generate-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction: text, projectName: projectName || 'New Project' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPlanError(data.error || 'Failed to generate plan');
+        return;
+      }
+      setGeneratedPlan(data);
+      setPlanTasks(data.tasks.map((t: string) => ({ text: t, status: 'pending' as const })));
+    } catch (err: unknown) {
+      setPlanError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [projectName]);
+
+  const handleImageDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) setDroppedImages(prev => [...prev, ...files]);
+  }, []);
+
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) setDroppedImages(prev => [...prev, ...files]);
+  }, []);
 
   const statusLabel = useMemo(() => {
     if (isPaused) return 'PAUSED';
@@ -153,6 +202,23 @@ export default function MidnightPanel({
       const payload = JSON.parse((e as MessageEvent).data) as { score?: number; status?: 'healthy' | 'warning' | 'error' };
       setConfidence(Number(payload.score || 100));
       setLastStatus(payload.status || 'healthy');
+    });
+    source.addEventListener('task_started', (e) => {
+      const payload = JSON.parse((e as MessageEvent).data) as { description?: string };
+      const ps = usePlanStore.getState();
+      const tasks = Object.values(ps.tasks).filter(t => t.status === 'pending');
+      const match = tasks.find(t => payload.description && t.title.includes(payload.description));
+      if (match) ps.updateTask(match.id, { status: 'in_progress' });
+    });
+    source.addEventListener('task_completed', (e) => {
+      const payload = JSON.parse((e as MessageEvent).data) as { description?: string };
+      const ps = usePlanStore.getState();
+      const tasks = Object.values(ps.tasks).filter(t => t.status === 'in_progress');
+      const match = tasks.find(t => payload.description && t.title.includes(payload.description));
+      if (match) {
+        ps.updateTask(match.id, { status: 'completed', completedAt: Date.now() });
+        ps.markTaskExecuted(match.id, true);
+      }
     });
     source.addEventListener('error', () => {
       setActorLines((prev) => [...prev.slice(-99), { ts: stamp(), text: 'Stream error — retrying', level: 'warn' }]);
@@ -279,6 +345,21 @@ export default function MidnightPanel({
   const startBuilding = useCallback(async () => {
     if (!generatedPlan || planTasks.length === 0) return;
 
+    const planStore = usePlanStore.getState();
+    planStore.setPlanName(generatedPlan.projectName);
+    planStore.bulkAddTasks(
+      planTasks
+        .filter(t => t.text.trim())
+        .map((t, i) => ({
+          title: t.text,
+          description: '',
+          phase: 1,
+          priority: 'medium' as const,
+          tags: ['midnight'],
+        })),
+    );
+    planStore.startExecution();
+
     const tasksText = planTasks
       .filter((t) => t.text.trim())
       .map((t) => `- [ ] ${t.text}`)
@@ -342,7 +423,19 @@ export default function MidnightPanel({
       <HudHeader
         title="PROJECT MIDNIGHT"
         subtitle="Autonomous build command center with live actor/sentinel streams."
-        right={<div className="flex items-center gap-2 text-[11px] text-slate-200"><PulsingDot tone={midnightActive ? 'green' : 'amber'} />{statusLabel}</div>}
+        right={
+          <div className="flex items-center gap-3 text-[11px] text-slate-200">
+            <PulsingDot tone={midnightActive ? 'green' : 'amber'} />{statusLabel}
+            {onBackToIDE && (
+              <button
+                onClick={onBackToIDE}
+                className="px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-600/50 text-[10px] text-slate-300 transition-colors border border-slate-600/30"
+              >
+                Back to IDE
+              </button>
+            )}
+          </div>
+        }
       />
 
       <div className="grid grid-cols-2 gap-2">
@@ -351,6 +444,47 @@ export default function MidnightPanel({
         <AnimatedCounter label="Tasks" value={`${tasksCompleted}/${tasksTotal}`} />
         <AnimatedCounter label="Queue" value={queue.length} />
       </div>
+
+      {/* Quick Chat — describe what you want */}
+      <HudCard title="Describe Your Project" tone="green">
+        <div className="space-y-2">
+          <div
+            className="relative"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleImageDrop}
+          >
+            <textarea
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleChatDescribe(); } }}
+              placeholder="Describe your project, paste pseudo-code, or drop an image..."
+              rows={3}
+              className="w-full rounded-md border border-white/15 bg-[#0b1120] px-3 py-2 text-[13px] text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400/60 resize-none"
+            />
+            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
+          </div>
+          {droppedImages.length > 0 && (
+            <div className="flex gap-1 flex-wrap">
+              {droppedImages.map((f, i) => (
+                <div key={i} className="relative">
+                  <div className="w-12 h-12 rounded border border-white/10 bg-slate-800 flex items-center justify-center text-[9px] text-slate-400 overflow-hidden">
+                    <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                  </div>
+                  <button onClick={() => setDroppedImages(prev => prev.filter((_, idx) => idx !== i))} className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-[8px] text-white flex items-center justify-center">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <HudButton tone="green" onClick={() => void handleChatDescribe()} disabled={!chatInput.trim()}>
+              Generate Plan
+            </HudButton>
+            <HudButton tone="neutral" onClick={() => fileInputRef.current?.click()}>
+              Add Image
+            </HudButton>
+          </div>
+        </div>
+      </HudCard>
 
       {/* Project Setup — instruction input + plan generation */}
       <HudCard

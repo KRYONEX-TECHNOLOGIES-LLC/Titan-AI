@@ -643,7 +643,7 @@ export default function TitanIDE() {
 
         {/* LEFT PANEL */}
         {activeView && activeView !== 'explorer' && (
-          <div className="w-[420px] bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
+          <div className={`${activeView === 'midnight' ? 'w-[600px]' : 'w-[420px]'} bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden transition-all duration-300`}>
             {activeView === 'search' && <IDESemanticSearch />}
             {activeView === 'git' && <IDEGitPanel workspacePath={fileSystem.workspacePath} />}
             {activeView === 'debug' && <IDEDebugPanel />}
@@ -702,6 +702,7 @@ export default function TitanIDE() {
                 activeModel={settings.activeModel}
                 startError={midnight.startError}
                 isStarting={midnight.isStarting}
+                onBackToIDE={() => setActiveView('explorer')}
               />
             )}
             {activeView === 'training-lab' && <TrainingLabPanel />}

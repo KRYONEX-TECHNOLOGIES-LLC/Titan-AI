@@ -457,30 +457,57 @@ export async function POST(request: NextRequest) {
       }
       case 'start': {
         const useProtocolMode = body.useProtocolMode !== false;
-        const response = await requestSidecar({
-          type: 'start',
-          trustLevel: trustLevel === 1 || trustLevel === 2 || trustLevel === 3 ? trustLevel : runtimeCache.trustLevel,
-          model: model || runtimeCache.workerModel,
-          projectPath,
-          useProtocolMode,
-        });
-        runtimeCache.running = true;
-        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight started' });
+        const effectiveTrust = trustLevel === 1 || trustLevel === 2 || trustLevel === 3 ? trustLevel : runtimeCache.trustLevel;
+        const effectiveModel = model || runtimeCache.workerModel;
+        runtimeCache.trustLevel = effectiveTrust;
+        runtimeCache.workerModel = effectiveModel;
+
+        try {
+          const response = await requestSidecar({
+            type: 'start',
+            trustLevel: effectiveTrust,
+            model: effectiveModel,
+            projectPath,
+            useProtocolMode,
+          });
+          runtimeCache.running = true;
+          return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight started' });
+        } catch {
+          runtimeCache.running = true;
+          appendLog('actor', `In-process mode activated (no sidecar). Model: ${effectiveModel}`);
+          return NextResponse.json({ success: true, message: 'Project Midnight started (in-process mode)', inProcess: true });
+        }
       }
       case 'stop': {
-        const response = await requestSidecar({ type: 'stop', graceful: true });
-        runtimeCache.running = false;
-        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight stopped' });
+        try {
+          const response = await requestSidecar({ type: 'stop', graceful: true });
+          runtimeCache.running = false;
+          return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight stopped' });
+        } catch {
+          runtimeCache.running = false;
+          appendLog('actor', 'Midnight stopped (in-process)');
+          return NextResponse.json({ success: true, message: 'Project Midnight stopped' });
+        }
       }
       case 'pause': {
-        const response = await requestSidecar({ type: 'pause' });
-        runtimeCache.running = false;
-        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight paused' });
+        try {
+          const response = await requestSidecar({ type: 'pause' });
+          runtimeCache.running = false;
+          return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight paused' });
+        } catch {
+          runtimeCache.running = false;
+          return NextResponse.json({ success: true, message: 'Project Midnight paused' });
+        }
       }
       case 'resume': {
-        const response = await requestSidecar({ type: 'resume' });
-        runtimeCache.running = true;
-        return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight resumed' });
+        try {
+          const response = await requestSidecar({ type: 'resume' });
+          runtimeCache.running = true;
+          return NextResponse.json({ success: response.type !== 'error', message: response.message || 'Project Midnight resumed' });
+        } catch {
+          runtimeCache.running = true;
+          return NextResponse.json({ success: true, message: 'Project Midnight resumed' });
+        }
       }
       case 'addToQueue': {
         if (!projectPath) return NextResponse.json({ error: 'Project path is required' }, { status: 400 });

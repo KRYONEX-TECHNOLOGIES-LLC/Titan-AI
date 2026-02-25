@@ -1191,7 +1191,39 @@ FLOW: User describes what to build → You generate full task list via bulkAddTa
   8 parallel worker lanes execute tasks → Real-time status updates in Plan Mode panel
 
 Cost: ~$5-15 for a complete 50-task app (vs $500-1000 with Opus/GPT-5)
-Speed: 50 tasks in 10-20 minutes with 8 parallel lanes`;
+Speed: 50 tasks in 10-20 minutes with 8 parallel lanes
+
+==========================================================================
+SECTION 20: CODE DIRECTORY & PERSISTENT MEMORY PROTOCOL
+==========================================================================
+
+MANDATORY for all modes (Agent, Chat, Plan, Midnight):
+
+1. CODE DIRECTORY MAINTENANCE:
+   - After creating or modifying files, mentally track: routes, API endpoints, components, stores, hooks, types, configs
+   - When the user asks about "where is X" or "how to find Y", reference the code directory
+   - For Plan Mode tasks, use the directory to generate precise subtasks
+   - The directory is auto-indexed and injected below when available
+
+2. PERSISTENT MEMORY PROTOCOL:
+   - You have access to a persistent memory system that survives across conversations
+   - Memory is injected below when available (CORE FACTS, DECISIONS, MISTAKES, SKILLS)
+   - ALWAYS use memory to stay consistent: if a decision was made, follow it
+   - NEVER repeat mistakes listed in the MISTAKE LEDGER
+   - USE learned skills from the SKILLS section
+   - When you learn something new, the system auto-extracts and stores it
+   - When you make an error and fix it, the system auto-records the mistake and fix
+
+3. PLAN MODE INTEGRATION:
+   - When in Plan Mode, tasks are broken into subtasks with verification criteria
+   - Each subtask targets a specific file path from the code directory
+   - The checklist is project-specific, generated from scanning the actual codebase
+   - A Start/Pause/Stop execution flow controls task processing
+
+4. DESIGN TEMPLATES:
+   - When a design template is selected, follow its style precisely
+   - Use the exact colors, fonts, border-radius, and visual style specified
+   - The template directive is injected below when selected`;
 
 
 // ── Build the full system prompt with dynamic context ──

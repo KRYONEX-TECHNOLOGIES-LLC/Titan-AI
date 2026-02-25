@@ -151,25 +151,93 @@ The Plan Sniper is a 7-role multi-model orchestra that executes Plan Mode tasks 
 
 ---
 
-## Titan Persistent Memory
+## Titan Persistent Memory (7-Layer God-Tier System)
 
-Titan has a 5-layer persistent memory system that survives across conversations:
+Titan has a 7-layer persistent memory system that survives across conversations:
 
 1. **Core Facts** — User identity, preferences, project context (importance 8-10)
 2. **Decisions** — Architectural choices, tech stack, conventions (importance 8-9)
 3. **Active Context** — Current tasks, recent changes, WIP (expires in 7 days)
 4. **Conversation Summaries** — Compressed history of past sessions (last 50)
-5. **Error Patterns** — Mistakes, anti-patterns, things to avoid (importance 7-8)
+5. **Error Patterns** — Anti-patterns, things to avoid (importance 7-8)
+6. **Mistake Ledger** — Exact mistakes + their fixes, never repeated (importance 9-10)
+7. **Learned Skills** — How-to knowledge auto-extracted from successful solutions (usage-tracked)
 
-Memory is stored in localStorage (instant) and auto-injected into every message. It auto-extracts important context from each conversation turn (preferences, decisions, file changes, model usage, errors).
+Memory is stored in localStorage (instant) and auto-injected into every message. It auto-extracts important context from each conversation turn.
 
 ### How it works
 
 - `useTitanMemory` Zustand store persisted to localStorage
 - `serialize()` generates a memory prefix injected into every user message
 - `extractAndStore()` runs after each assistant response to capture new facts
+- `addSkill()` / `recordMistake()` for explicit skill/mistake tracking
+- Skills track usage count — most-used skills are prioritized in injection
+- Mistakes include the exact fix — AI reads these and never repeats them
 - Deduplication prevents storing the same fact twice
 - Expiring facts (context layer) auto-clean after 7 days
+
+---
+
+## Code Directory System
+
+Titan maintains a persistent code directory that indexes the entire project structure:
+
+### What it tracks
+
+- **Routes/Pages** — Every page and route with file paths
+- **API Endpoints** — All API routes with methods (GET/POST/etc)
+- **Components** — React/Vue/etc components with descriptions
+- **Stores** — State management stores (Zustand, Redux, etc)
+- **Hooks** — Custom hooks with descriptions
+- **Types** — Type definition files
+- **Configs** — Configuration files (tsconfig, package.json, etc)
+
+### How it works
+
+- `useCodeDirectory` Zustand store persisted to localStorage
+- Populated by scanning via `/api/plan/scan` using Gemini Flash
+- Serialized and injected into every AI message alongside memory
+- Auto-updated when Plan Mode scans the codebase
+- Used by subtask generator to create project-specific verification tasks
+
+---
+
+## Plan Mode (Subzero Protocol)
+
+Plan Mode is a task management and execution system integrated into the Titan IDE chat.
+
+### Features
+
+- **Start/Pause/Stop execution** — Control plan execution flow
+- **Pseudo-code intake** — Paste rough ideas, AI converts to structured plans
+- **Code scanning** — Scans project to understand structure before planning
+- **Smart subtasks** — Each checklist item gets project-specific subtasks from the code scanner
+- **Dynamic checklist** — Auto-generated verification checklist specific to the actual project (not generic)
+- **15 design templates** — Visual presets (Basic, Modern, Elite/Iron Man) with color customization
+- **Plan Brain Protocol** — 4-role orchestrator: Scanner → Planner → Verifier → Corrector
+
+### API Routes
+
+- `POST /api/plan/generate` — Generate tasks from user prompt
+- `POST /api/plan/scan` — Scan codebase for code directory
+- `POST /api/plan/subtasks` — Generate subtasks for a checklist item
+- `POST /api/plan/checklist` — Generate project-specific checklist
+- `POST /api/plan/pseudo-code` — Parse pseudo-code into structured plan
+
+---
+
+## Midnight Mode (Autonomous Factory)
+
+Midnight Mode is the autonomous build system that executes projects end-to-end.
+
+### New Features
+
+- **In-process fallback** — Start button works without sidecar (uses API-based execution)
+- **Chat input** — Describe new projects via chat, drag & drop images for design references
+- **Image support** — Drop images for design mockups or error screenshots
+- **Plan-store integration** — Tasks automatically sync to Plan Mode checklist
+- **Wider panel** — 600px when active (vs 420px for other views)
+- **Back to IDE** — Quick button to return to editor while Midnight runs
 
 ---
 

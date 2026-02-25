@@ -19,7 +19,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 
 export interface MemoryFact {
   id: string;
-  layer: 'core' | 'decision' | 'context' | 'summary' | 'error_pattern';
+  layer: 'core' | 'decision' | 'context' | 'summary' | 'error_pattern' | 'skill' | 'mistake';
   category: string;
   content: string;
   importance: number; // 1-10, higher = always included
@@ -28,6 +28,8 @@ export interface MemoryFact {
   expiresAt: number | null;  // null = permanent
   source: string; // 'user', 'auto', 'system'
   tags: string[];
+  usageCount?: number;
+  lastUsedAt?: number;
 }
 
 export interface ConversationSummary {
@@ -54,6 +56,13 @@ interface TitanMemoryState {
 
   // Summaries
   addSummary: (summary: Omit<ConversationSummary, 'id' | 'timestamp'>) => void;
+
+  // Skills & How-To
+  addSkill: (skill: { category: string; content: string; tags?: string[] }) => string;
+  recordMistake: (mistake: { description: string; fix: string; filesInvolved?: string[] }) => string;
+  getSkills: () => MemoryFact[];
+  getMistakes: () => MemoryFact[];
+  useSkill: (id: string) => void;
 
   // Auto-extraction
   extractAndStore: (userMessage: string, assistantResponse: string, filesChanged?: string[]) => void;
@@ -175,6 +184,64 @@ export const useTitanMemory = create<TitanMemoryState>()(
         }));
       },
 
+      addSkill: (skill) => {
+        const store = get();
+        const existing = Object.values(store.facts).find(
+          f => f.layer === 'skill' && f.category === skill.category && f.content.toLowerCase().includes(skill.content.slice(0, 50).toLowerCase()),
+        );
+        if (existing) {
+          store.updateFact(existing.id, { usageCount: (existing.usageCount || 0) + 1, updatedAt: Date.now() });
+          return existing.id;
+        }
+        return store.addFact({
+          layer: 'skill',
+          category: skill.category,
+          content: skill.content,
+          importance: 8,
+          expiresAt: null,
+          source: 'auto',
+          tags: skill.tags || [skill.category],
+          usageCount: 1,
+          lastUsedAt: Date.now(),
+        });
+      },
+
+      recordMistake: (mistake) => {
+        const store = get();
+        const content = `MISTAKE: ${mistake.description}\nFIX: ${mistake.fix}${mistake.filesInvolved ? `\nFILES: ${mistake.filesInvolved.join(', ')}` : ''}`;
+        const existing = Object.values(store.facts).find(
+          f => f.layer === 'mistake' && f.content.toLowerCase().includes(mistake.description.slice(0, 50).toLowerCase()),
+        );
+        if (existing) {
+          store.updateFact(existing.id, {
+            content,
+            importance: Math.min(10, (existing.importance || 7) + 1),
+            usageCount: (existing.usageCount || 0) + 1,
+          });
+          return existing.id;
+        }
+        return store.addFact({
+          layer: 'mistake',
+          category: 'mistake-ledger',
+          content,
+          importance: 9,
+          expiresAt: null,
+          source: 'auto',
+          tags: ['mistake', ...(mistake.filesInvolved || []).slice(0, 3)],
+        });
+      },
+
+      getSkills: () => Object.values(get().facts).filter(f => f.layer === 'skill').sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0)),
+
+      getMistakes: () => Object.values(get().facts).filter(f => f.layer === 'mistake').sort((a, b) => b.importance - a.importance),
+
+      useSkill: (id) => {
+        const fact = get().facts[id];
+        if (fact) {
+          get().updateFact(id, { usageCount: (fact.usageCount || 0) + 1, lastUsedAt: Date.now() });
+        }
+      },
+
       extractAndStore: (userMessage, assistantResponse, filesChanged) => {
         const store = get();
         const combined = `${userMessage}\n${assistantResponse}`;
@@ -220,6 +287,33 @@ export const useTitanMemory = create<TitanMemoryState>()(
             tags: ['model', 'preference'],
           });
         }
+
+        // Auto-learn skills from successful assistant responses
+        const skillPatterns = [
+          /(?:here's how|the (?:correct|right|proper) way|the fix is|solution:|to solve this) (.{20,200})/gi,
+          /(?:best practice|recommended approach|pattern for) (.{10,150})/gi,
+        ];
+        for (const pat of skillPatterns) {
+          let m;
+          while ((m = pat.exec(assistantResponse)) !== null) {
+            if (m[1]) {
+              store.addSkill({ category: 'learned', content: m[1].trim(), tags: ['auto-learned'] });
+            }
+          }
+        }
+
+        // Auto-record mistakes from error patterns
+        const errorFixPattern = /(?:error|bug|issue|problem|broke).*?(?:fix|solution|resolve|correct).*?:\s*(.{20,200})/gi;
+        let em;
+        while ((em = errorFixPattern.exec(combined)) !== null) {
+          if (em[1]) {
+            store.recordMistake({
+              description: em[1].trim().slice(0, 100),
+              fix: em[1].trim(),
+              filesInvolved: filesChanged?.slice(0, 5),
+            });
+          }
+        }
       },
 
       serialize: (maxTokens = 3000) => {
@@ -256,9 +350,28 @@ export const useTitanMemory = create<TitanMemoryState>()(
         // Layer 5: Error patterns (critical for avoiding repeats)
         const errors = activeFacts.filter(f => f.layer === 'error_pattern');
         if (errors.length > 0) {
-          sections.push('\n[MISTAKES & ANTI-PATTERNS — DO NOT REPEAT]');
+          sections.push('\n[ANTI-PATTERNS — DO NOT REPEAT]');
           for (const f of errors.slice(0, 10)) {
             sections.push(`- ${f.content}`);
+          }
+        }
+
+        // Layer 6: Mistakes Ledger
+        const mistakes = activeFacts.filter(f => f.layer === 'mistake');
+        if (mistakes.length > 0) {
+          sections.push('\n[MISTAKE LEDGER — LEARN FROM THESE, NEVER REPEAT]');
+          for (const f of mistakes.slice(0, 15)) {
+            sections.push(`- ${f.content}`);
+          }
+        }
+
+        // Layer 7: Skills / How-To
+        const skills = activeFacts.filter(f => f.layer === 'skill');
+        if (skills.length > 0) {
+          sections.push('\n[LEARNED SKILLS — USE THESE TECHNIQUES]');
+          for (const f of skills.slice(0, 15)) {
+            const usage = f.usageCount ? ` (used ${f.usageCount}x)` : '';
+            sections.push(`- [${f.category}] ${f.content}${usage}`);
           }
         }
 
