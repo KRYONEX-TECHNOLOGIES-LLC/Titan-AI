@@ -32,6 +32,7 @@ export default function BrainObservatoryPanel() {
   const [topic, setTopic] = useState('');
   const [limit, setLimit] = useState(20);
   const [harvestState, setHarvestState] = useState('Idle');
+  const [parallelMode, setParallelMode] = useState(false);
   const [feedLines, setFeedLines] = useState<Array<{ ts: string; text: string; level?: 'info' | 'warn' | 'error' | 'success' }>>([]);
   const [destination, setDestination] = useState('local');
   const [prepareStatus, setPrepareStatus] = useState('');
@@ -95,20 +96,31 @@ export default function BrainObservatoryPanel() {
     return Math.max(0, totalHighValue - totalExported);
   }, [stats]);
 
-  const startHarvest = async () => {
-    setHarvestState('Harvesting...');
+  const startHarvest = async (scaleMode = false) => {
+    const useParallel = scaleMode || parallelMode;
+    setHarvestState(useParallel ? 'Parallel harvesting (4 workers)...' : 'Harvesting...');
     try {
       const res = await fetch('/api/forge/harvest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, topic: topic || 'all', limit }),
+        body: JSON.stringify({
+          source,
+          topic: topic || 'all',
+          limit: scaleMode ? 100 : limit,
+          parallel: useParallel,
+          workerCount: 4,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         setHarvestState(`Error: ${data?.error || res.statusText}`);
         return;
       }
-      setHarvestState(`Complete — ${data.saved || 0} samples saved`);
+      const parts = [`${data.saved || 0} saved`];
+      if (data.evolved) parts.push(`${data.evolved} evolved`);
+      if (data.near_duplicates) parts.push(`${data.near_duplicates} near-dups removed`);
+      if (data.elapsed) parts.push(`${data.elapsed}s`);
+      setHarvestState(`Complete — ${parts.join(' · ')}`);
       await loadData();
     } catch (err: unknown) {
       setHarvestState(`Failed: ${err instanceof Error ? err.message : 'network error'}`);
@@ -249,22 +261,34 @@ export default function BrainObservatoryPanel() {
         <div className="grid grid-cols-3 gap-2">
           <label className="text-[12px] text-slate-300">Source
             <select className="mt-1 w-full rounded bg-[#0b1120] border border-white/10 px-2 py-1" value={source} onChange={(e) => setSource(e.target.value)}>
-              <option value="all">All</option>
+              <option value="all">All (16 sources)</option>
               <option value="github">GitHub</option>
               <option value="stackoverflow">StackOverflow</option>
               <option value="dataset">HuggingFace Datasets</option>
               <option value="docs">Docs</option>
+              <option value="github-issues">GitHub Issues+PRs</option>
+              <option value="arxiv">ArXiv CS Papers</option>
+              <option value="gitlab">GitLab Repos</option>
+              <option value="npm-docs">npm/PyPI Docs</option>
+              <option value="competitive">Competitive Programming</option>
             </select>
           </label>
           <label className="text-[12px] text-slate-300">Topic
             <input className="mt-1 w-full rounded bg-[#0b1120] border border-white/10 px-2 py-1" value={topic} onChange={(e) => setTopic(e.target.value)} />
           </label>
           <label className="text-[12px] text-slate-300">Limit: {limit}
-            <input className="mt-1 w-full" type="range" min={5} max={100} step={5} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+            <input className="mt-1 w-full" type="range" min={5} max={500} step={5} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
           </label>
         </div>
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2">
+          <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer mb-2">
+            <input type="checkbox" checked={parallelMode} onChange={(e) => setParallelMode(e.target.checked)} className="accent-amber-500" />
+            Parallel Mode (4 workers, 10x faster)
+          </label>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
           <HudButton tone="amber" onClick={() => void startHarvest()}>Start Harvest</HudButton>
+          <HudButton tone="purple" onClick={() => void startHarvest(true)}>Scale Harvest</HudButton>
           <span className="text-[11px] text-slate-400">{harvestState}</span>
         </div>
       </HudCard>
@@ -305,6 +329,23 @@ export default function BrainObservatoryPanel() {
 
       <HudCard title="Training Readiness" tone="green">
         <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2 mb-2">
+            <div className="rounded-md border border-white/10 bg-[#0b1120]/70 p-2 text-center">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">Phase 1</div>
+              <div className="text-[14px] font-bold text-emerald-300">{Math.min(100, Math.round(((stats?.harvest?.total || 0) / 10000) * 100))}%</div>
+              <div className="text-[10px] text-slate-500">10K target</div>
+            </div>
+            <div className="rounded-md border border-white/10 bg-[#0b1120]/70 p-2 text-center">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">Phase 2</div>
+              <div className="text-[14px] font-bold text-cyan-300">{Math.min(100, Math.round(((stats?.harvest?.total || 0) / 50000) * 100))}%</div>
+              <div className="text-[10px] text-slate-500">50K target</div>
+            </div>
+            <div className="rounded-md border border-white/10 bg-[#0b1120]/70 p-2 text-center">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-slate-400">Phase 3</div>
+              <div className="text-[14px] font-bold text-violet-300">{Math.min(100, Math.round(((stats?.harvest?.total || 0) / 150000) * 100))}%</div>
+              <div className="text-[10px] text-slate-500">150K target</div>
+            </div>
+          </div>
           <HudGauge label="Ready Ratio" value={readinessCount} max={Math.max(1, samples.length)} tone="green" />
           <label className="text-[12px] text-slate-300">Destination
             <select className="mt-1 w-full rounded bg-[#0b1120] border border-white/10 px-2 py-1" value={destination} onChange={(e) => setDestination(e.target.value)}>

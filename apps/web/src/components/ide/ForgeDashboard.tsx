@@ -26,10 +26,18 @@ interface ForgeStats {
   };
 }
 
+interface WorkerStatus {
+  id: number;
+  status: 'idle' | 'scraping' | 'done';
+  source: string;
+  itemsScraped: number;
+}
+
 interface HarvestJob {
   status: 'idle' | 'scraping' | 'filtering' | 'complete' | 'error';
   message: string;
-  progress?: { scraped: number; filtered: number; saved: number; aiRejected?: number };
+  progress?: { scraped: number; filtered: number; saved: number; aiRejected?: number; nearDuplicates?: number; evolved?: number; elapsed?: number };
+  workers?: WorkerStatus[];
 }
 
 export function ForgeDashboard() {
@@ -39,6 +47,8 @@ export function ForgeDashboard() {
   const [harvestSource, setHarvestSource] = useState<string>('all');
   const [harvestTopic, setHarvestTopic] = useState<string>('');
   const [harvestLimit, setHarvestLimit] = useState<number>(20);
+  const [parallelMode, setParallelMode] = useState<boolean>(false);
+  const [evolInstruct, setEvolInstruct] = useState<boolean>(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -60,8 +70,10 @@ export function ForgeDashboard() {
     return () => clearInterval(interval);
   }, [fetchStats]);
 
-  const startHarvest = async () => {
-    setHarvestJob({ status: 'scraping', message: 'Starting harvest...' });
+  const startHarvest = async (scaleMode = false) => {
+    const useParallel = scaleMode || parallelMode;
+    const useLimit = scaleMode ? 100 : harvestLimit;
+    setHarvestJob({ status: 'scraping', message: useParallel ? 'Starting parallel harvest (4 workers)...' : 'Starting harvest...' });
     try {
       const res = await fetch('/api/forge/harvest', {
         method: 'POST',
@@ -69,7 +81,10 @@ export function ForgeDashboard() {
         body: JSON.stringify({
           source: harvestSource,
           topic: harvestTopic || 'all',
-          limit: harvestLimit,
+          limit: useLimit,
+          parallel: useParallel,
+          workerCount: 4,
+          evolInstruct,
         }),
       });
 
@@ -82,13 +97,17 @@ export function ForgeDashboard() {
 
       setHarvestJob({
         status: 'complete',
-        message: `Harvest complete! ${data.saved || 0} samples saved.`,
+        message: `Harvest complete! ${data.saved || 0} samples saved${data.evolved ? ` + ${data.evolved} evolved` : ''} in ${data.elapsed || '?'}s`,
         progress: {
           scraped: data.total_input,
-          filtered: data.after_pass4,
+          filtered: data.after_pass4_5 ?? data.after_pass4,
           saved: data.saved,
           aiRejected: data.ai_rejected || 0,
+          nearDuplicates: data.near_duplicates || 0,
+          evolved: data.evolved || 0,
+          elapsed: data.elapsed,
         },
+        workers: data.workers,
       });
 
       fetchStats();
@@ -265,7 +284,7 @@ export function ForgeDashboard() {
             value={harvestSource}
             onChange={(e) => setHarvestSource(e.target.value)}
           >
-            <option value="all">All Sources (10 Scrapers)</option>
+            <option value="all">All Sources (16 Scrapers)</option>
             <option value="github">GitHub (Top Repos)</option>
             <option value="stackoverflow">Stack Overflow</option>
             <option value="docs">Official Docs (React, Next.js, TS)</option>
@@ -276,6 +295,11 @@ export function ForgeDashboard() {
             <option value="mdn">MDN Web Docs (Web Standards)</option>
             <option value="wikipedia">Wikipedia (CS Theory)</option>
             <option value="hackernews">Hacker News (Tech Discussions)</option>
+            <option value="github-issues">GitHub Issues + PRs (Bug Fixes)</option>
+            <option value="arxiv">ArXiv CS Papers (Research)</option>
+            <option value="gitlab">GitLab Public Repos</option>
+            <option value="npm-docs">npm/PyPI Package Docs</option>
+            <option value="competitive">Competitive Programming (Codeforces)</option>
           </select>
         </div>
 
@@ -304,24 +328,49 @@ export function ForgeDashboard() {
           />
         </div>
 
-        <button
-          style={harvestButtonStyle}
-          onClick={startHarvest}
-          disabled={harvestJob.status === 'scraping' || harvestJob.status === 'filtering'}
-        >
-          {harvestJob.status === 'scraping' ? (
-            <>Scraping...</>
-          ) : harvestJob.status === 'filtering' ? (
-            <>Filtering...</>
-          ) : (
-            <>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.5 3v3.5H4v1h3.5V13h1V9.5H12v-1H8.5V5h-1z"/>
-              </svg>
-              Start Harvest
-            </>
-          )}
-        </button>
+        <div style={{ marginBottom: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ccc', fontSize: '12px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={parallelMode} onChange={(e) => setParallelMode(e.target.checked)} style={{ accentColor: '#0e639c' }} />
+            Parallel Mode (4 workers)
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ccc', fontSize: '12px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={evolInstruct} onChange={(e) => setEvolInstruct(e.target.checked)} style={{ accentColor: '#ab47bc' }} />
+            Evol-Instruct (generate harder variants)
+          </label>
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button
+            style={{ ...harvestButtonStyle, flex: 1 }}
+            onClick={() => void startHarvest()}
+            disabled={harvestJob.status === 'scraping' || harvestJob.status === 'filtering'}
+          >
+            {harvestJob.status === 'scraping' ? (
+              <>Scraping...</>
+            ) : harvestJob.status === 'filtering' ? (
+              <>Filtering...</>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 1a6 6 0 110 12A6 6 0 018 2zm-.5 3v3.5H4v1h3.5V13h1V9.5H12v-1H8.5V5h-1z"/>
+                </svg>
+                Start Harvest
+              </>
+            )}
+          </button>
+          <button
+            style={{
+              ...buttonStyle,
+              flex: 1,
+              background: harvestJob.status === 'scraping' ? '#555' : '#ab47bc',
+              color: '#fff',
+            }}
+            onClick={() => void startHarvest(true)}
+            disabled={harvestJob.status === 'scraping' || harvestJob.status === 'filtering'}
+          >
+            Scale Harvest (100/src)
+          </button>
+        </div>
 
         {/* Progress / Result */}
         {harvestJob.status !== 'idle' && (
@@ -346,6 +395,27 @@ export function ForgeDashboard() {
             }}>
               {harvestJob.message}
             </div>
+            {harvestJob.workers && harvestJob.workers.length > 0 && (
+              <div style={{ marginTop: '6px' }}>
+                <div style={{ ...statLabelStyle, fontSize: '10px', marginBottom: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Workers</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px' }}>
+                  {harvestJob.workers.map(w => (
+                    <div key={w.id} style={{
+                      padding: '3px 6px',
+                      background: w.status === 'scraping' ? '#1b3a1b' : '#252526',
+                      borderRadius: '3px',
+                      fontSize: '10px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}>
+                      <span style={{ color: w.status === 'scraping' ? '#66bb6a' : '#777' }}>W{w.id + 1}</span>
+                      <span style={{ color: '#4fc3f7' }}>{w.itemsScraped}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {harvestJob.progress && (
               <div style={{ marginTop: '4px' }}>
                 <div style={{ ...statCardStyle, padding: '2px 0' }}>
@@ -358,6 +428,12 @@ export function ForgeDashboard() {
                     <span style={{ ...statValueStyle, fontSize: '11px', color: '#f44336' }}>{harvestJob.progress.aiRejected}</span>
                   </div>
                 )}
+                {harvestJob.progress.nearDuplicates !== undefined && harvestJob.progress.nearDuplicates > 0 && (
+                  <div style={{ ...statCardStyle, padding: '2px 0' }}>
+                    <span style={{ ...statLabelStyle, fontSize: '11px', color: '#ffa726' }}>Near-Duplicates Removed</span>
+                    <span style={{ ...statValueStyle, fontSize: '11px', color: '#ffa726' }}>{harvestJob.progress.nearDuplicates}</span>
+                  </div>
+                )}
                 <div style={{ ...statCardStyle, padding: '2px 0' }}>
                   <span style={{ ...statLabelStyle, fontSize: '11px' }}>Passed All Filters</span>
                   <span style={{ ...statValueStyle, fontSize: '11px' }}>{harvestJob.progress.filtered}</span>
@@ -366,6 +442,18 @@ export function ForgeDashboard() {
                   <span style={{ ...statLabelStyle, fontSize: '11px' }}>Saved to DB</span>
                   <span style={{ ...statValueStyle, fontSize: '11px', color: '#66bb6a' }}>{harvestJob.progress.saved}</span>
                 </div>
+                {harvestJob.progress.evolved !== undefined && harvestJob.progress.evolved > 0 && (
+                  <div style={{ ...statCardStyle, padding: '2px 0' }}>
+                    <span style={{ ...statLabelStyle, fontSize: '11px', color: '#ab47bc' }}>Evol-Instruct Generated</span>
+                    <span style={{ ...statValueStyle, fontSize: '11px', color: '#ab47bc' }}>{harvestJob.progress.evolved}</span>
+                  </div>
+                )}
+                {harvestJob.progress.elapsed !== undefined && (
+                  <div style={{ ...statCardStyle, padding: '2px 0' }}>
+                    <span style={{ ...statLabelStyle, fontSize: '11px' }}>Elapsed</span>
+                    <span style={{ ...statValueStyle, fontSize: '11px' }}>{harvestJob.progress.elapsed}s</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

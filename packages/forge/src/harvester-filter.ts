@@ -6,6 +6,7 @@
 import { createHash } from 'crypto';
 import { ForgeDB } from './db.js';
 import { detectAIContent, detectAIHeuristic } from './ai-content-detector.js';
+import { minHashDedup } from './minhash-dedup.js';
 import type { ScrapedItem } from './harvester.js';
 import type { HarvestSample } from './types.js';
 
@@ -138,59 +139,109 @@ interface JudgeResult {
   reason: string;
 }
 
+const BATCH_JUDGE_PROMPT = `You are a training data quality judge for an AI coding assistant called Titan AI.
+
+Score EACH of the following content items from 0-10 on its value as training data for a coding AI.
+
+SCORING CRITERIA:
+- 9-10: Contains working code with clear explanations, solves a real problem, demonstrates best practices
+- 7-8: Good technical content with useful information, some code examples
+- 5-6: Decent content but lacks depth or code examples
+- 3-4: Mostly text, little practical coding value
+- 0-2: Irrelevant, spam, outdated, or incorrect information
+
+Respond with ONLY a JSON array of objects in order: [{"score": <number>, "reason": "<one sentence>"}, ...]
+
+`;
+
+const BATCH_SIZE = 8;
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function judgeBatch(
+  batch: AITaggedItem[],
+  apiKey: string,
+): Promise<Array<{ score: number; reason: string }>> {
+  const numbered = batch
+    .map((item, i) => `--- ITEM ${i + 1} ---\n${item.raw_content.slice(0, 2000)}`)
+    .join('\n\n');
+
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://titan.kryonex.com',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',
+        messages: [{ role: 'user', content: BATCH_JUDGE_PROMPT + numbered }],
+        max_tokens: 300 + batch.length * 50,
+        temperature: 0,
+      }),
+    });
+
+    if (!res.ok) {
+      return batch.map(() => ({ score: 5, reason: `API error ${res.status}` }));
+    }
+
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const text = data.choices?.[0]?.message?.content || '';
+
+    const arrMatch = text.match(/\[[\s\S]*\]/);
+    if (!arrMatch) {
+      return batch.map(() => ({ score: 5, reason: 'Could not parse batch response' }));
+    }
+
+    const parsed = JSON.parse(arrMatch[0]) as Array<{ score: number; reason: string }>;
+    while (parsed.length < batch.length) {
+      parsed.push({ score: 5, reason: 'Missing from batch response' });
+    }
+    return parsed.slice(0, batch.length);
+  } catch {
+    return batch.map(() => ({ score: 5, reason: 'Batch judge call failed' }));
+  }
+}
+
 async function pass2_aiJudge(items: AITaggedItem[]): Promise<Array<AITaggedItem & { aiScore: number; aiReason: string }>> {
   const results: Array<AITaggedItem & { aiScore: number; aiReason: string }> = [];
+  const apiKey = process.env.OPENROUTER_API_KEY;
 
-  for (const item of items) {
-    const truncated = item.raw_content.slice(0, 3000);
-    try {
-      const apiKey = process.env.OPENROUTER_API_KEY;
-      if (!apiKey) {
-        const finalScore = Math.max(0, 6 - item.aiPenalty);
-        results.push({ ...item, aiScore: finalScore, aiReason: 'No API key — default pass' + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
-        continue;
-      }
-
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://titan.kryonex.com',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.0-flash-001',
-          messages: [{ role: 'user', content: JUDGE_PROMPT + truncated }],
-          max_tokens: 100,
-          temperature: 0,
-        }),
+  if (!apiKey) {
+    for (const item of items) {
+      const finalScore = Math.max(0, 6 - item.aiPenalty);
+      results.push({
+        ...item,
+        aiScore: finalScore,
+        aiReason: 'No API key — default pass' + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : ''),
       });
-
-      if (!res.ok) {
-        const finalScore = Math.max(0, 5 - item.aiPenalty);
-        results.push({ ...item, aiScore: finalScore, aiReason: `API error ${res.status}` + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
-        continue;
-      }
-
-      const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-      const text = data.choices?.[0]?.message?.content || '';
-
-      const match = text.match(/\{[\s\S]*?"score"\s*:\s*(\d+)[\s\S]*?"reason"\s*:\s*"([^"]*)"[\s\S]*?\}/);
-      if (match) {
-        const rawScore = Math.min(10, Math.max(0, parseInt(match[1], 10)));
-        const finalScore = Math.max(0, rawScore - item.aiPenalty);
-        const reason = match[2] + (item.aiPenalty ? ` [AI-detected, penalty -${item.aiPenalty}: ${rawScore}→${finalScore}]` : '');
-        results.push({ ...item, aiScore: finalScore, aiReason: reason });
-      } else {
-        const finalScore = Math.max(0, 5 - item.aiPenalty);
-        results.push({ ...item, aiScore: finalScore, aiReason: 'Could not parse judge response' + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
-      }
-
-      await new Promise(r => setTimeout(r, 500));
-    } catch {
-      const finalScore = Math.max(0, 5 - item.aiPenalty);
-      results.push({ ...item, aiScore: finalScore, aiReason: 'Judge call failed' + (item.aiPenalty ? ` (AI penalty -${item.aiPenalty})` : '') });
     }
+    return results;
+  }
+
+  const batches = chunkArray(items, BATCH_SIZE);
+  console.log(`[harvester/filter] AI judge: processing ${items.length} items in ${batches.length} batches of ≤${BATCH_SIZE}`);
+
+  for (const batch of batches) {
+    const batchResults = await judgeBatch(batch, apiKey);
+
+    for (let i = 0; i < batch.length; i++) {
+      const item = batch[i];
+      const raw = batchResults[i];
+      const rawScore = Math.min(10, Math.max(0, raw.score));
+      const finalScore = Math.max(0, rawScore - item.aiPenalty);
+      const reason = raw.reason + (item.aiPenalty ? ` [AI-detected, penalty -${item.aiPenalty}: ${rawScore}→${finalScore}]` : '');
+      results.push({ ...item, aiScore: finalScore, aiReason: reason });
+    }
+
+    await new Promise(r => setTimeout(r, 300));
   }
 
   return results;
@@ -283,6 +334,38 @@ function pass3_formatConverter(
         response = item.raw_content;
         break;
       }
+      case 'github-issues': {
+        const parts = item.raw_content.split(/\nFIX \(PR\):\n/);
+        instruction = (parts[0] || '').replace(/^BUG REPORT:\n/, '').trim();
+        response = parts[1] ? `Here's how this was fixed:\n${parts[1].trim()}` : item.raw_content;
+        break;
+      }
+      case 'arxiv': {
+        const parts = item.raw_content.split(/\nABSTRACT:\n/);
+        instruction = `Explain this research paper: ${item.title.replace(/^ArXiv:\s*/, '')}`;
+        response = (parts[1] || parts[0] || item.raw_content).trim();
+        break;
+      }
+      case 'gitlab': {
+        instruction = `Explain the key patterns and purpose of the GitLab project: ${item.title.replace(/^GitLab:\s*/, '')}`;
+        response = item.raw_content;
+        break;
+      }
+      case 'npm-docs': {
+        instruction = `How do I use the npm package ${item.title.replace(/^npm:\s*/, '')}? Explain its purpose and key APIs.`;
+        response = item.raw_content;
+        break;
+      }
+      case 'competitive': {
+        instruction = item.raw_content;
+        response = `To solve this problem, analyze the constraints and think about the optimal approach. Consider edge cases and time/space complexity.`;
+        break;
+      }
+      case 'evol-instruct': {
+        instruction = item.title || 'Solve this advanced coding challenge:';
+        response = item.raw_content;
+        break;
+      }
       default: {
         instruction = item.title || 'Explain the following content:';
         response = item.raw_content;
@@ -330,7 +413,9 @@ export interface FilterResult {
   after_pass2: number;
   after_pass3: number;
   after_pass4: number;
+  after_pass4_5: number;
   ai_rejected: number;
+  near_duplicates: number;
   saved: number;
   items: HarvestSample[];
 }
@@ -361,13 +446,18 @@ export async function runFilterPipeline(
   const afterP3 = pass3_formatConverter(scoredAbove);
   console.log(`[harvester/filter] Pass 3 (format): ${scoredAbove.length} → ${afterP3.length}`);
 
-  // Pass 4
+  // Pass 4: exact hash dedup
   const afterP4 = await pass4_dedup(afterP3);
-  console.log(`[harvester/filter] Pass 4 (dedup): ${afterP3.length} → ${afterP4.length}`);
+  console.log(`[harvester/filter] Pass 4 (exact dedup): ${afterP3.length} → ${afterP4.length}`);
+
+  // Pass 4.5: MinHash near-dedup
+  const minHashResult = minHashDedup(afterP4);
+  const afterP4_5 = minHashResult.unique;
+  console.log(`[harvester/filter] Pass 4.5 (near-dedup): ${afterP4.length} → ${afterP4_5.length} (${minHashResult.duplicates} near-dups)`);
 
   // Save to DB
   const saved: HarvestSample[] = [];
-  for (const item of afterP4) {
+  for (const item of afterP4_5) {
     const hash = createHash('sha256').update(item.instruction).digest('hex').slice(0, 32);
     const sample: Omit<HarvestSample, 'id' | 'created_at'> = {
       source: item.source.source,
@@ -406,7 +496,9 @@ export async function runFilterPipeline(
     after_pass2: scoredAbove.length,
     after_pass3: afterP3.length,
     after_pass4: afterP4.length,
+    after_pass4_5: afterP4_5.length,
     ai_rejected: aiPenalizedOut,
+    near_duplicates: minHashResult.duplicates,
     saved: saved.length,
     items: saved,
   };

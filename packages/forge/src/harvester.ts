@@ -21,6 +21,12 @@ const RATE_LIMIT_MS: Record<HarvestSource, number> = {
   mdn: 1500,
   wikipedia: 1000,
   hackernews: 1500,
+  'github-issues': 1500,
+  arxiv: 3000,
+  gitlab: 1000,
+  'npm-docs': 500,
+  competitive: 800,
+  'evol-instruct': 500,
 };
 
 function sleep(ms: number): Promise<void> {

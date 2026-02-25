@@ -1,18 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
-  let ForgeHarvester: any, runFilterPipeline: any;
+  let ForgeHarvester: any, runFilterPipeline: any, runParallelHarvest: any;
   try {
     const forge = await import('@titan/forge');
     ForgeHarvester = forge.ForgeHarvester;
     runFilterPipeline = forge.runFilterPipeline;
+    runParallelHarvest = forge.runParallelHarvest;
   } catch {
     return NextResponse.json({ error: 'Forge is only available in the Titan Desktop app' }, { status: 503 });
   }
 
   try {
     const body = await request.json();
-    const { source = 'all', topic = 'all', limit = 20 } = body;
+    const {
+      source = 'all',
+      topic = 'all',
+      limit = 20,
+      parallel = false,
+      workerCount = 4,
+      minScore = 6,
+      evolInstruct = false,
+    } = body;
+
+    if (parallel) {
+      try {
+        const result = await runParallelHarvest({
+          source,
+          topic,
+          limit: Math.min(limit, 500),
+          parallel: true,
+          workerCount: Math.min(workerCount, 8),
+          minScore,
+          evolInstruct,
+        });
+
+        return NextResponse.json({
+          mode: 'parallel',
+          batchId: result.batchId,
+          total_input: result.total_input,
+          after_pass1: result.after_pass1,
+          after_pass1_5: result.after_pass1_5,
+          after_pass2: result.after_pass2,
+          after_pass3: result.after_pass3,
+          after_pass4: result.after_pass4,
+          after_pass4_5: result.after_pass4_5,
+          ai_rejected: result.ai_rejected,
+          near_duplicates: result.near_duplicates,
+          evolved: result.evolved || 0,
+          saved: result.saved,
+          elapsed: result.elapsed,
+          workers: result.workers,
+        });
+      } catch (err) {
+        console.error('[api/forge/harvest] Parallel harvest error:', (err as Error).message);
+        return NextResponse.json(
+          { error: `Parallel harvest failed: ${(err as Error).message}` },
+          { status: 500 },
+        );
+      }
+    }
 
     let harvester;
     try {
@@ -46,7 +93,7 @@ export async function POST(request: NextRequest) {
 
     let result;
     try {
-      result = await runFilterPipeline(scraped, batchId, 6);
+      result = await runFilterPipeline(scraped, batchId, minScore);
     } catch (filterErr) {
       const msg = (filterErr as Error).message;
       console.error('[api/forge/harvest] Filter pipeline error:', msg);
@@ -57,13 +104,16 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
+      mode: 'sequential',
       total_input: result.total_input,
       after_pass1: result.after_pass1,
       after_pass1_5: result.after_pass1_5,
       after_pass2: result.after_pass2,
       after_pass3: result.after_pass3,
       after_pass4: result.after_pass4,
+      after_pass4_5: result.after_pass4_5,
       ai_rejected: result.ai_rejected,
+      near_duplicates: result.near_duplicates,
       saved: result.saved,
     });
   } catch (err) {
