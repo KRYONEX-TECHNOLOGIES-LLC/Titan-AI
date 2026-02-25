@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "node -e \"const p=JSON.parse(require('fs').readFileSync('package.json','utf8'));if(p.dependencies)delete p.dependencies['@titan/forge'];require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))\" && npm ci && npm run build"
 
 [deploy]
-startCommand = "node .next/standalone/apps/web/server.js"
+startCommand = "npm run start"
 healthcheckPath = "/"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"

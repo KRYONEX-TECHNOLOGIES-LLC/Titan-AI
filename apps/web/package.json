@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node .next/standalone/apps/web/server.js",
+    "start": "next start",
     "lint": "next lint",
     "midnight:supervisor": "node ./scripts/midnight-supervisor.mjs",
     "midnight:pm2:start": "pm2 start ./ecosystem.midnight.cjs",
