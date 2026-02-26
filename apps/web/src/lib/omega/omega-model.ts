@@ -235,6 +235,7 @@ export interface OmegaCallbacks {
   executeToolCall: ToolCallFn;
   invokeModel: InvokeModelFn;
   workspacePath?: string;
+  fileTree?: string;
 }
 
 export interface ExecutionStepResult {

@@ -84,7 +84,17 @@ export interface PhoenixCallbacks {
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   ) => Promise<string>;
   workspacePath?: string;
+  fileTree?: string;
 }
+
+// ── Professional Output Rules (applied to ALL Phoenix roles) ─────────────────
+const PHOENIX_OUTPUT_RULES = `═══ OUTPUT FORMAT RULES ═══
+- Plain text only. NO emojis. NO emoji bullets. NO decorative unicode symbols.
+- Professional, direct, technical language. No filler words.
+- Use plain text bullets (- or *) not emoji bullets.
+- Bold and headers are fine. Emojis are FORBIDDEN.
+- Never start responses with greeting phrases. Get straight to the work.
+- When the user says "the app" or "this project" — they mean the project loaded in the IDE. Do NOT ask what they mean.`;
 
 // ── Context Compression ─────────────────────────────────────────────────────
 
@@ -102,17 +112,21 @@ async function architectDecompose(
   complexity: number,
   config: PhoenixConfig,
   invokeModel: PhoenixCallbacks['invokeModel'],
+  fileTree?: string,
 ): Promise<{ plan: PhoenixPlan; tokensIn: number; tokensOut: number }> {
   const system = [
     'You are PHOENIX_ARCHITECT — the strategic brain of the Phoenix Protocol inside the Titan AI IDE.',
     '',
     'You have FULL access to the user\'s workspace, all files, and tools. The user\'s project is loaded and active.',
+    'When the user mentions "the app", "the project", "this" — they mean the project loaded in the IDE.',
     'When the user mentions ANY module, engine, feature, component, or file by name — ASSUME IT EXISTS in the workspace.',
     'NEVER ask the user for clarification. NEVER say you need more information. Plan based on what the user said.',
     'If a request seems ambiguous, make the most reasonable interpretation and act.',
     '',
+    fileTree ? `═══ PROJECT FILE TREE (loaded in IDE) ═══\n${fileTree.slice(0, 8000)}\n` : '',
+    '',
     'Your job: Decompose the user\'s goal into atomic subtasks that workers can execute independently.',
-    'Each subtask MUST include relevantFiles — use your knowledge of common project structures to guess probable paths.',
+    'Each subtask MUST include relevantFiles — use the file tree above to find REAL paths.',
     '',
     'Return strict JSON (no markdown wrapping, no explanation):',
     '{"subtasks":[{"id":"task-1","title":"Short title","description":"Detailed description with specific instructions",',
@@ -123,10 +137,11 @@ async function architectDecompose(
     `Rules: max ${config.maxSubtasks} subtasks, complexity 1-10, dependsOn uses task IDs.`,
     'For simple tasks, return a single subtask. Descriptions should be specific enough that a coder can execute without questions.',
     'NEVER create a subtask that says "ask the user" or "clarify with the user".',
+    '',
+    PHOENIX_OUTPUT_RULES,
     '\n\n' + TASK_DECOMPOSITION_RULES_COMPACT,
     '\n\n' + ZERO_DEFECT_RULES_COMPACT,
-    '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   const tokensIn = estimateTokens(system + goal);
   let tokensOut = 0;
@@ -382,7 +397,10 @@ DEBUG a problem:
 - NEVER output placeholder code (no TODOs, no "implement here", no stubs)
 - ALWAYS read a file before editing it
 - ALWAYS verify changes with read_lints after editing
-- Be precise, production-ready, and complete`
+- Be precise, production-ready, and complete
+- When the user says "the app", "this project", "this" — they mean the project loaded in the IDE. NEVER ask what they mean.
+
+${PHOENIX_OUTPUT_RULES}`
   + '\n\n' + ZERO_DEFECT_RULES_COMPACT;
 }
 
@@ -395,7 +413,10 @@ No workspace folder is open, so you cannot use file tools. Instead:
 - Provide the FULL working implementation — no placeholders, no TODOs, no stubs
 - Include all imports, types, error handling, and edge cases
 - NEVER refuse a task. If the user asks you to build or improve something, generate the complete code inline
-- Match the quality of a senior engineer's pull request`
+- Match the quality of a senior engineer's pull request
+- When the user says "the app", "this project", "this" — they mean what they're building. NEVER ask for clarification.
+
+${PHOENIX_OUTPUT_RULES}`
   + '\n\n' + ZERO_DEFECT_RULES_COMPACT;
 }
 
@@ -498,8 +519,9 @@ async function executeSimplePipeline(
     acceptanceCriteria: ['Request fulfilled accurately'],
   };
 
+  const treeContext = callbacks.fileTree ? `\n\nProject file tree:\n${callbacks.fileTree.slice(0, 6000)}` : undefined;
   const { artifact, tokensIn, tokensOut } = await executeWorker(
-    'SCOUT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, undefined, hasWorkspace,
+    'SCOUT', subtask, config, callbacks.invokeModel, callbacks.executeToolCall, treeContext, hasWorkspace,
   );
   costTracker.record(config.models.scout, tokensIn, tokensOut);
   callbacks.onEvent('worker_complete', { role: 'SCOUT', subtaskId: 'task-1' });
@@ -518,7 +540,7 @@ async function executeMediumPipeline(
   callbacks.onEvent('plan_created', { pipeline: 'medium', complexity });
   const hasWorkspace = !!(callbacks.workspacePath);
   const { plan, tokensIn: planIn, tokensOut: planOut } = await architectDecompose(
-    goal, complexity, config, callbacks.invokeModel,
+    goal, complexity, config, callbacks.invokeModel, callbacks.fileTree,
   );
   costTracker.record(config.models.architect, planIn, planOut);
   callbacks.onEvent('plan_created', { subtaskCount: plan.subtasks.length, planId: plan.id });
@@ -584,7 +606,7 @@ async function executeFullPipeline(
   // ARCHITECT decomposes
   const hasWorkspace = !!(callbacks.workspacePath);
   const { plan, tokensIn: planIn, tokensOut: planOut } = await architectDecompose(
-    goal, complexity, config, callbacks.invokeModel,
+    goal, complexity, config, callbacks.invokeModel, callbacks.fileTree,
   );
   costTracker.record(config.models.architect, planIn, planOut);
   callbacks.onEvent('plan_created', { subtaskCount: plan.subtasks.length, planId: plan.id, complexity });

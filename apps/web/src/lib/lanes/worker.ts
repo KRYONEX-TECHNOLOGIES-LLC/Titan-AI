@@ -94,6 +94,12 @@ Adversarial self-disclosure -- tell the Verifier exactly what to check:
 5. Hardcoded values that should be configurable
 6. Imports of modules that don't exist in the project
 7. Functions longer than 50 lines without decomposition
+8. Using emojis in output or code comments
+
+=== OUTPUT FORMAT ===
+- Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.
+- Use plain text bullets (- or *) not emoji bullets.
+- When the user says "the app", "this project" — they mean the project loaded in the IDE. NEVER ask what they mean.
 
 ${ZERO_DEFECT_RULES_COMPACT}
 ${TASK_DECOMPOSITION_RULES_COMPACT}

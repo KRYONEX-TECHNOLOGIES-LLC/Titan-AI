@@ -25,6 +25,8 @@ const MEDIUM_KEYWORDS = new Set([
   'bug', 'fix', 'debug', 'error', 'test', 'implement', 'feature', 'add',
   'create', 'build', 'component', 'api', 'endpoint', 'hook', 'state',
   'function', 'class', 'module', 'style', 'update', 'upgrade', 'install',
+  'make', 'improve', 'smarter', 'better', 'faster', 'enhance', 'change',
+  'engine', 'system', 'logic', 'algorithm', 'strategy', 'integration',
 ]);
 
 const SIMPLE_KEYWORDS = new Set([
@@ -44,7 +46,7 @@ function extractSignals(message: string, conversationDepth: number): ComplexityS
     else if (SIMPLE_KEYWORDS.has(word)) keywordScore -= 1;
   }
 
-  const multiFilePatterns = /multiple files|across files|several files|all files|every file|monorepo|whole project/i;
+  const multiFilePatterns = /multiple files|across files|several files|all files|every file|monorepo|whole project|the app|this app|the project|this project|entire|everything/i;
   const errorPatterns = /error|exception|stack trace|traceback|failed|crash|broken|not working/i;
   const codeBlockCount = (message.match(/```/g) || []).length / 2;
   const instructionCount = (message.match(/\d+\.\s|[-*]\s/g) || []).length;

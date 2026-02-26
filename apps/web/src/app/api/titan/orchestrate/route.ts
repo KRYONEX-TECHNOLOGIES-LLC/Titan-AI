@@ -145,7 +145,7 @@ function buildWorkspaceContext(body: OrchestrateRequest): string {
   }
 
   if (body.fileTree) {
-    parts.push(`Project structure:\n${body.fileTree.slice(0, 5000)}`);
+    parts.push(`Project structure (loaded in IDE):\n${body.fileTree.slice(0, 8000)}`);
   }
 
   if (body.openTabs && body.openTabs.length > 0) {

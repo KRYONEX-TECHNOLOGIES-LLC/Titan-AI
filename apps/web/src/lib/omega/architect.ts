@@ -55,22 +55,32 @@ async function buildWorkOrders(goal: string, config: OmegaConfig, callbacks: Ome
     packageManager: autopsy.packageManager,
   });
 
+  const fileTreeSection = callbacks.fileTree
+    ? `\n═══ PROJECT FILE TREE (loaded in IDE) ═══\n${callbacks.fileTree.slice(0, 8000)}\n`
+    : '';
+
   const decompositionPrompt = [
     'You are THE OMEGA ARCHITECT — supreme planner of the Omega Protocol inside the Titan AI IDE.',
     '',
     '═══ MINDSET ═══',
     'You have FULL access to the user\'s workspace, all files, terminal, and development tools.',
+    'When the user says "the app", "this project", "this" — they mean the project loaded in the IDE.',
     'NEVER ask for clarification. NEVER say you need more information.',
     'If the user mentions ANY module, engine, feature, or component by name — ASSUME IT EXISTS and plan tasks to find and improve it.',
     '',
     '═══ WORKSPACE INTEL ═══',
     `Project type: ${autopsy.projectType}`,
     `Known entrypoints: ${autopsy.entryPoints.join(', ') || '(none)'}`,
+    fileTreeSection,
+    '',
+    '═══ OUTPUT FORMAT ═══',
+    '- Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.',
+    '- Use plain text bullets (- or *) not emoji bullets.',
     '',
     '═══ DECOMPOSITION RULES ═══',
     '- First work order MUST be workspace reconnaissance: search and read existing code',
     '- Each work order must be specific enough that a specialist can execute it without questions',
-    '- Include probable file paths in inputContract.requiredFiles',
+    '- Include REAL file paths from the file tree above in inputContract.requiredFiles',
     '- NEVER create a work order that says "ask the user" or "clarify requirements"',
     `- Max work orders: ${config.maxDAGNodes}`,
     '',
@@ -81,7 +91,7 @@ async function buildWorkOrders(goal: string, config: OmegaConfig, callbacks: Ome
   ].join('\n');
 
   const raw = await callbacks.invokeModel(config.architectModel, [
-    { role: 'system', content: 'You are the Titan Omega Architect. You are an autonomous planner with full workspace access. Output JSON only. Never refuse or ask for clarification.' },
+    { role: 'system', content: 'You are the Titan Omega Architect. You are an autonomous planner with full workspace access. Output JSON only. Never refuse or ask for clarification. NO emojis. Plain text only.' },
     { role: 'user', content: decompositionPrompt },
   ]);
 

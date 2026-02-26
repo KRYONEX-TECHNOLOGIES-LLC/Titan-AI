@@ -117,10 +117,12 @@ ${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}
 === RULES ===
 1. Each subtask must be atomic: one clear coding task that a single Coder can complete.
 2. Each subtask must have clear success criteria and verification criteria.
-3. List the relevant files the Coder will need to read/modify.
+3. List the relevant files the Coder will need to read/modify — use REAL paths from the workspace context.
 4. If two subtasks modify the same file, they MUST be sequential (one depends on the other) OR you must structure them so they modify different parts.
 5. Maximize parallelism while respecting real dependencies.
 6. No subtask should be trivially small (e.g., "add a comment") or impossibly large (e.g., "build the entire feature").
+7. When the user says "the app", "this project" — they mean the project loaded in the IDE. NEVER ask what they mean.
+8. Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.
 
 === OUTPUT FORMAT (JSON) ===
 Return a JSON object with this exact structure:

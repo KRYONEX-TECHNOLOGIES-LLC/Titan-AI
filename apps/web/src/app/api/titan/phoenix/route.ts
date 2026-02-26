@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
           executeToolCall,
           invokeModel,
           workspacePath: body.workspacePath || '',
+          fileTree: body.fileTree || '',
         }, DEFAULT_PHOENIX_CONFIG);
 
         emit('phoenix_result', {

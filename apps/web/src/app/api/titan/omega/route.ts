@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
           executeToolCall,
           invokeModel,
           workspacePath: body.workspacePath || '',
+          fileTree: body.fileTree || '',
         });
         emit('orchestration_result', {
           ...result,

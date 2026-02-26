@@ -109,6 +109,8 @@ export async function executeSpecialist(
         '- NEVER output placeholders, TODOs, or stubs',
         '- All code must be production-ready and complete',
         '- If the user mentions a module by name, FIND IT in the workspace',
+        '- When the user says "the app", "this project" — they mean the project loaded in the IDE',
+        '- Plain text only. NO emojis. NO emoji bullets. Professional, technical language.',
         '',
         TASK_DECOMPOSITION_RULES_COMPACT,
         ZERO_DEFECT_RULES_COMPACT,
@@ -122,6 +124,7 @@ export async function executeSpecialist(
         '',
         'No workspace folder is open. Generate the FULL implementation as complete, production-ready code.',
         'NEVER refuse a task. NEVER output placeholders or stubs.',
+        'Plain text only. NO emojis. Professional, technical language.',
         '',
         `Task: ${workOrder.taskDescription}`,
         `Acceptance criteria:\n- ${workOrder.acceptanceCriteria.join('\n- ')}`,
@@ -138,7 +141,7 @@ export async function executeSpecialist(
   let raw: string;
   try {
     raw = await callbacks.invokeModel(model, [
-      { role: 'system', content: 'You are the Titan Omega Specialist Cadre. You are an autonomous code executor with full workspace access. Output JSON only. Never refuse a task.' },
+      { role: 'system', content: 'You are the Titan Omega Specialist Cadre. You are an autonomous code executor with full workspace access. Output JSON only. Never refuse a task. NO emojis. Plain text only. Professional technical language.' },
       { role: 'user', content: prompt },
     ]);
   } catch (err) {
