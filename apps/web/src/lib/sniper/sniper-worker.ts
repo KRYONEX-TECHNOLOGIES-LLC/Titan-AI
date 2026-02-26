@@ -59,6 +59,7 @@ RULES:
   REPLACE>>>
 - Be thorough — implement everything needed for the acceptance criteria.
 - Use TypeScript types, proper error handling, and follow existing patterns.
+- Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 ${ZERO_DEFECT_RULES_COMPACT}
 ${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}

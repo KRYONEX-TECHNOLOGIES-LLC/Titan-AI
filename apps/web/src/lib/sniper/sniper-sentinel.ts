@@ -60,6 +60,7 @@ OUTPUT FORMAT (JSON):
 }
 
 Be strict. The CODER gets a retry if you fail them — it's better to catch problems now than ship broken code.
+Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.
 
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 

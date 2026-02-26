@@ -58,6 +58,7 @@ cs-a11y-alt, cs-a11y-keyboard
 
 Only mark items as checked if they are genuinely addressed by the completed tasks.
 Be honest — this is the last line of defense before shipping.
+Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.
 
 QUIZ-SKIP RULE: To skip ANY checklist item, you MUST:
 1. Name 2-3 specific files/locations you checked to confirm the item is irrelevant

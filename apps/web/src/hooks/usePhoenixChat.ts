@@ -189,8 +189,8 @@ export function usePhoenixChat({
               const elapsed = Number(payload.elapsedMs || 0);
               const pipeline = String(payload.pipeline || 'unknown');
               const success = payload.success !== false;
-              const statusIcon = success ? '✅' : '⚠️';
-              const header = `${statusIcon} **Phoenix Protocol** — ${success ? 'Complete' : 'Partial'} · \`${pipeline}\` pipeline · ⏱ ${(elapsed / 1000).toFixed(1)}s · 💰 $${cost.toFixed(5)}`;
+              const statusLabel = success ? 'Complete' : 'Partial';
+              const header = `**Phoenix Protocol** [${statusLabel}] — \`${pipeline}\` pipeline | ${(elapsed / 1000).toFixed(1)}s | $${cost.toFixed(5)}`;
               updateMessage(sessionId, messageId, (m) => ({
                 ...m,
                 content: output ? `${header}\n\n${output}` : `${header}\n\n${statusLines.join('\n')}`,
@@ -283,56 +283,55 @@ export function usePhoenixChat({
 function formatPhoenixEvent(eventType: string, payload: Record<string, unknown>): string {
   switch (eventType) {
     case 'phoenix_start':
-      return '🔥 Protocol ignited — scanning complexity…';
+      return '[Phoenix] Protocol active — analyzing complexity...';
     case 'complexity_routed':
-      return `🔍 Complexity **${payload.complexity}/10** → \`${String(payload.pipeline).toUpperCase()}\` pipeline`;
+      return `[Phoenix] Complexity ${payload.complexity}/10 -> \`${String(payload.pipeline).toUpperCase()}\` pipeline`;
     case 'plan_created':
       return payload.subtaskCount
-        ? `📋 Architect decomposed into **${payload.subtaskCount}** subtasks`
-        : `📋 Planning (\`${payload.pipeline}\` pipeline)…`;
+        ? `[Architect] Decomposed into **${payload.subtaskCount}** subtasks`
+        : `[Architect] Planning (\`${payload.pipeline}\` pipeline)...`;
     case 'subtask_started':
-      return `\n### 🔄 Phase: ${String(payload.title || payload.subtaskId)}`;
+      return `\n### Phase: ${String(payload.title || payload.subtaskId)}`;
     case 'worker_dispatched':
-      return `- 🔄 **${String(payload.role)}** dispatched on \`${String(payload.model)}\``;
+      return `- **${String(payload.role)}** dispatched on \`${String(payload.model)}\``;
     case 'worker_complete':
-      return `- ✅ **${String(payload.role)}** completed \`${String(payload.subtaskId)}\``;
+      return `- **${String(payload.role)}** completed \`${String(payload.subtaskId)}\``;
     case 'verification_started':
-      return `- 🔍 Verifier checking \`${String(payload.subtaskId)}\`…`;
+      return `- Verifier checking \`${String(payload.subtaskId)}\`...`;
     case 'verification_result': {
-      const icon = payload.pass ? '✅' : '❌';
       const label = payload.pass ? '**PASS**' : '**FAIL**';
       const strikes = payload.strikes ? ` — ${payload.strikes} strike${Number(payload.strikes) > 1 ? 's' : ''}` : '';
-      return `- ${icon} Verification ${label}${strikes}`;
+      return `- Verification ${label}${strikes}`;
     }
     case 'strike_triggered':
-      return `- ⚠️ Strike ${payload.strike} — escalating to **${String(payload.role)}**`;
+      return `- Strike ${payload.strike} — escalating to **${String(payload.role)}**`;
     case 'consensus_started':
-      return '- 🔍 Consensus voting initiated (3 models)';
+      return '- Consensus voting initiated (3 models)';
     case 'consensus_result':
       return payload.pass
-        ? `- ✅ Consensus **RESOLVED** (${payload.votes} votes)`
-        : `- ❌ Consensus **DEADLOCK** (${payload.votes} votes)`;
+        ? `- Consensus **RESOLVED** (${payload.votes} votes)`
+        : `- Consensus **DEADLOCK** (${payload.votes} votes)`;
     case 'judge_started':
-      return `- 🔍 Judge reviewing \`${String(payload.subtaskId)}\`…`;
+      return `- Judge reviewing \`${String(payload.subtaskId)}\`...`;
     case 'judge_result':
       return payload.pass
-        ? '- ✅ Judge: **APPROVED**'
-        : '- ❌ Judge: **REJECTED**';
+        ? '- Judge: **APPROVED**'
+        : '- Judge: **REJECTED**';
     case 'subtask_complete':
-      return `- ✅ Subtask \`${String(payload.subtaskId)}\` **complete**`;
+      return `- Subtask \`${String(payload.subtaskId)}\` **complete**`;
     case 'subtask_failed':
-      return `- ❌ Subtask \`${String(payload.subtaskId)}\` **failed**`;
+      return `- Subtask \`${String(payload.subtaskId)}\` **failed**`;
     case 'cost_update':
-      return `💰 Cost so far: **$${Number(payload.totalCost || 0).toFixed(6)}**`;
+      return `Cost so far: **$${Number(payload.totalCost || 0).toFixed(6)}**`;
     case 'phoenix_complete': {
-      const status = payload.success ? '✅' : '⚠️';
+      const status = payload.success ? 'Complete' : 'Partial';
       const pipeline = String(payload.pipeline);
       const elapsed = (Number(payload.elapsedMs || 0) / 1000).toFixed(1);
       const cost = Number(payload.cost || 0).toFixed(6);
-      return `\n---\n${status} **Phoenix Complete** · \`${pipeline}\` pipeline · ⏱ ${elapsed}s · 💰 $${cost}`;
+      return `\n---\n**Phoenix ${status}** — \`${pipeline}\` pipeline | ${elapsed}s | $${cost}`;
     }
     case 'phoenix_error':
-      return `\n❌ **Error:** ${String(payload.message || 'unknown')}`;
+      return `\n**Error:** ${String(payload.message || 'unknown')}`;
     default:
       return '';
   }

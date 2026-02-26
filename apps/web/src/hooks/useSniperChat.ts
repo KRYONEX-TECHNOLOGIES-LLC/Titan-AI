@@ -78,7 +78,7 @@ export function useSniperChat({
     const assistantMessage: ChatMessage = {
       id: messageId,
       role: 'assistant',
-      content: 'Plan Sniper -- 7-role model orchestra activating...',
+      content: 'Plan Sniper -- executing plan tasks via 7-role model orchestra...',
       time: 'just now',
       streaming: true,
       streamingModel: 'titan-plan-sniper',
@@ -92,7 +92,7 @@ export function useSniperChat({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    const tasks = Object.values(planStore.tasks).filter(t => t.parentId === null);
+    const tasks = Object.values(planStore.tasks).filter(t => t.parentId === null && (t.status === 'pending' || t.status === 'in_progress'));
     const taskList = tasks.map(t => ({
       id: t.id,
       title: t.title,
@@ -103,6 +103,23 @@ export function useSniperChat({
       blockedBy: t.blockedBy,
     }));
 
+    if (taskList.length === 0) {
+      updateMessage(sessionId, messageId, (m) => ({
+        ...m,
+        streaming: false,
+        isError: true,
+        content: 'Plan Sniper is an execution-only engine. Generate a plan first in Plan Mode, then switch to Sniper to execute it. No tasks found to execute.',
+      }));
+      setIsRunning(false);
+      abortControllerRef.current = null;
+      return;
+    }
+
+    // Clear completed results from previous Sniper run
+    for (const t of tasks) {
+      if (t.status === 'pending') planStore.updateTask(t.id, { status: 'pending' });
+    }
+
     try {
       const response = await fetch('/api/titan/sniper', {
         method: 'POST',
@@ -110,7 +127,7 @@ export function useSniperChat({
         signal: controller.signal,
         body: JSON.stringify({
           goal,
-          tasks: taskList.length > 0 ? taskList : [{ id: 'auto-1', title: goal, description: goal, phase: 1, priority: 'high', tags: [], blockedBy: [] }],
+          tasks: taskList,
           workspacePath: workspacePath || '',
           fileTree: serializeFileTree(),
           openFiles: openTabs || [],

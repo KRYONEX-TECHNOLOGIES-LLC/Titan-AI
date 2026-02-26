@@ -1120,6 +1120,8 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
     setPlanGenerating(true);
 
     const planStore = usePlanStore.getState();
+    // Clear old plan before generating new one
+    planStore.clearPlan();
     planStore.addMemory({ type: 'reminder', title: 'Plan Goal', content: `User request: ${input}`, linkedTaskIds: [], pinned: true, expiresAt: null });
 
     try {
@@ -1139,6 +1141,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
       const tasks = data.tasks as Array<{ title: string; description: string; phase: number; priority: 'critical' | 'high' | 'medium' | 'low'; tags: string[]; subtasks?: string[] }>;
 
       if (Array.isArray(tasks) && tasks.length > 0) {
+        if (data.projectName) planStore.setPlanName(data.projectName);
         planStore.bulkAddTasks(tasks.map(t => ({
           title: t.title || 'Untitled task',
           description: t.description || '',
@@ -1146,10 +1149,12 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           priority: t.priority || 'medium',
           tags: Array.isArray(t.tags) ? t.tags : [],
           checklist: Array.isArray(t.subtasks)
-            ? t.subtasks.map((s, i) => ({ id: `sub-${i}`, label: s, checked: false }))
+            ? t.subtasks.map((s: string, i: number) => ({ id: `sub-${i}`, label: s, checked: false }))
             : [],
         })));
-        planStore.addReport({ type: 'progress', severity: 'info', title: 'Plan Generated', details: `Created ${tasks.length} tasks from: "${input}"`, taskId: null, resolved: false });
+        const ideaSummary = data.idea ? `\n\nVision: ${(data.idea as string).slice(0, 200)}` : '';
+        const techInfo = data.techStack?.framework ? ` (${data.techStack.framework}/${data.techStack.language || 'unknown'})` : '';
+        planStore.addReport({ type: 'progress', severity: 'info', title: 'Plan Generated', details: `Created ${tasks.length} tasks for "${data.projectName || input}"${techInfo}${ideaSummary}`, taskId: null, resolved: false });
       } else {
         planStore.addReport({ type: 'error', severity: 'warning', title: 'Plan Generation Failed', details: 'Could not parse tasks from AI response. Try being more specific.', taskId: null, resolved: false });
       }

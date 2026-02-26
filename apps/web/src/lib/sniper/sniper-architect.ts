@@ -68,6 +68,7 @@ RULES:
 - Architecture/database tasks should come before code that depends on them.
 - Tests should depend on the code they test.
 - Keep descriptions actionable — tell the CODER exactly what to implement.
+- Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 ${ZERO_DEFECT_RULES_COMPACT}
 ${GIT_RULES}`;

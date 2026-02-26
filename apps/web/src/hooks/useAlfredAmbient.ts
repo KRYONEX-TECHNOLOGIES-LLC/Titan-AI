@@ -6,6 +6,58 @@ import { useTitanMemory } from '@/stores/titan-memory';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { serializeBrainContext, saveConversation } from '@/lib/voice/brain-storage';
 import { usePlanStore } from '@/stores/plan-store';
+import { useFileStore } from '@/stores/file-store';
+
+const ALFRED_LOG_KEY_PREFIX = 'alfred-conversation-';
+const ALFRED_TASKS_KEY = 'alfred-pending-tasks';
+const MAX_PERSISTED_MESSAGES = 50;
+
+function getAlfredStorageKey(): string {
+  const ws = useFileStore.getState().workspacePath || 'global';
+  return `${ALFRED_LOG_KEY_PREFIX}${ws.replace(/[\\/:]/g, '_')}`;
+}
+
+function loadPersistedLog(): AlfredMessage[] {
+  try {
+    const raw = localStorage.getItem(getAlfredStorageKey());
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(-MAX_PERSISTED_MESSAGES) : [];
+  } catch { return []; }
+}
+
+function persistLog(log: AlfredMessage[]) {
+  try {
+    localStorage.setItem(getAlfredStorageKey(), JSON.stringify(log.slice(-MAX_PERSISTED_MESSAGES)));
+  } catch { /* storage full or unavailable */ }
+}
+
+export interface AlfredPendingTask {
+  id: string;
+  description: string;
+  createdAt: number;
+  status: 'pending' | 'done';
+}
+
+function loadAlfredTasks(): AlfredPendingTask[] {
+  try {
+    const raw = localStorage.getItem(ALFRED_TASKS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveAlfredTask(description: string) {
+  const tasks = loadAlfredTasks();
+  tasks.push({ id: Date.now().toString(36), description, createdAt: Date.now(), status: 'pending' });
+  if (tasks.length > 20) tasks.splice(0, tasks.length - 20);
+  try { localStorage.setItem(ALFRED_TASKS_KEY, JSON.stringify(tasks)); } catch { /* */ }
+}
+
+function getPendingTasksContext(): string {
+  const tasks = loadAlfredTasks().filter(t => t.status === 'pending');
+  if (tasks.length === 0) return '';
+  return `\n[PENDING ALFRED TASKS - you committed to these, follow up]\n${tasks.map(t => `- ${t.description}`).join('\n')}\n`;
+}
 
 export interface AlfredMessage {
   role: 'user' | 'alfred';
@@ -37,8 +89,13 @@ export function useAlfredAmbient() {
   const autoListenMode = titanVoice.autoListenMode;
 
   const [alfredState, setAlfredState] = useState<AlfredState>('idle');
-  const [conversationLog, setConversationLog] = useState<AlfredMessage[]>([]);
+  const [conversationLog, setConversationLog] = useState<AlfredMessage[]>(() => loadPersistedLog());
   const [hasGreeted, setHasGreeted] = useState(false);
+
+  // Persist conversation log to localStorage whenever it changes
+  useEffect(() => {
+    if (conversationLog.length > 0) persistLog(conversationLog);
+  }, [conversationLog]);
 
   // Wake word state
   const wakeDetectedRef = useRef(false);
@@ -156,7 +213,7 @@ export function useAlfredAmbient() {
             role: c.role === 'user' ? 'user' : 'assistant',
             content: c.text,
           })),
-          memoryContext,
+          memoryContext: memoryContext + getPendingTasksContext(),
           brainContext,
           learnedStrategies,
           systemState,
@@ -229,6 +286,13 @@ export function useAlfredAmbient() {
         setAlfredState('speaking');
         if (titanVoice.autoSpeak) {
           titanVoice.speak(responseText, 6);
+        }
+
+        // Detect task commitments from Alfred ("I'll", "I will", "Let me", "I'm going to")
+        const taskPattern = /(?:I'll|I will|Let me|I'm going to|I shall)\s+(.{10,80}?)(?:\.|,|$)/i;
+        const taskMatch = responseText.match(taskPattern);
+        if (taskMatch?.[1]) {
+          saveAlfredTask(taskMatch[1].trim());
         }
 
         // Auto-learn from conversation
@@ -467,6 +531,7 @@ export function useAlfredAmbient() {
     voice,
     sendManual,
     addToLog,
+    pendingTasks: loadAlfredTasks().filter(t => t.status === 'pending'),
   };
 }
 

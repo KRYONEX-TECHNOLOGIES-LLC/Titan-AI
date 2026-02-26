@@ -105,8 +105,9 @@ export default function TitleBar(props: TitleBarProps) {
       </div>
 
       {/* Model Pill */}
-      <div className="relative">
+      <div className="relative" data-dropdown-keep>
         <button
+          data-dropdown-keep
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); setShowModelDropdown(!showModelDropdown); }}
           style={activeModel === 'titan-phoenix-protocol' ? {
@@ -129,7 +130,7 @@ export default function TitleBar(props: TitleBarProps) {
         >
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: activeModel === 'titan-phoenix-protocol' ? '#fbbf24' : activeModel === 'titan-protocol' ? '#c084fc' : '#3fb950' }}></span>
           {activeModelLabel}
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4z"/></svg>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" style={{ pointerEvents: 'none' }}><path d="M4 6l4 4 4-4z"/></svg>
         </button>
         {showModelDropdown && (
           <div className="absolute top-full right-0 mt-1 w-[320px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-xl z-50 overflow-hidden" data-dropdown-keep onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>

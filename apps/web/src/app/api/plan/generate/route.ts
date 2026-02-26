@@ -1,111 +1,129 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { callModelDirect } from '@/lib/llm-call';
 import { TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
-function envValue(...names: string[]): string {
-  for (const name of names) {
-    const raw = process.env[name];
-    if (typeof raw === 'string' && raw.trim()) return raw.trim();
-  }
-  return '';
+export const maxDuration = 60;
+
+const PLAN_SYSTEM_PROMPT = `You are a senior software architect specializing in project planning and task decomposition. Given a user's project idea, produce a comprehensive plan with hierarchical task + subtask architecture.
+
+Return ONLY valid JSON with this exact structure:
+{
+  "projectName": "Short project name derived from the description",
+  "idea": "A 2-3 paragraph description of the project vision, goals, and key features",
+  "techStack": {
+    "runtime": "node|python|rust|go|etc",
+    "framework": "next.js|express|django|etc",
+    "language": "typescript|javascript|python|etc",
+    "styling": "tailwindcss|css-modules|styled-components|etc",
+    "database": "postgresql|sqlite|mongodb|none",
+    "extras": ["list", "of", "additional", "tools"]
+  },
+  "tasks": [
+    {
+      "title": "Clear, actionable top-level task name",
+      "description": "Detailed description of what needs to be done, specific about files, components, APIs",
+      "phase": 1,
+      "priority": "critical",
+      "tags": ["relevant", "tech", "tags"],
+      "subtasks": [
+        "Specific verifiable deliverable 1",
+        "Specific verifiable deliverable 2",
+        "Specific verifiable deliverable 3"
+      ]
+    }
+  ]
 }
 
-export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { prompt } = body as { prompt: string };
-  if (!prompt?.trim()) {
-    return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
-  }
+PHASE VALUES:
+- 1 = Setup/foundation/scaffolding
+- 2 = Core features/backend/API
+- 3 = Frontend/UI/polish/testing
 
-  const openRouterKey = envValue('OPENROUTER_API_KEY');
-  if (!openRouterKey) {
-    return NextResponse.json({ error: 'OPENROUTER_API_KEY not configured' }, { status: 500 });
-  }
+PRIORITY VALUES: "critical" | "high" | "medium" | "low"
 
-  const systemPrompt = `You are a project planning expert. The user will describe what they want to build. You MUST respond ONLY with a valid JSON array of task objects. No markdown, no explanation, no code fences — just the raw JSON array.
-
-Each task object must have these fields:
-- "title": string (short task title — one independently-buildable feature/module)
-- "description": string (what needs to be done, specific about files, components, APIs)
-- "phase": number (1 = setup/foundation, 2 = core features, 3 = polish/testing)
-- "priority": "critical" | "high" | "medium" | "low"
-- "tags": string[] (relevant tech tags like "react", "api", "database", "auth", "ui")
-- "subtasks": string[] (3-8 specific, verifiable acceptance criteria per task)
+SCALING RULES (NO HARDCODED CEILING):
+- Static site / landing page: 5-8 tasks
+- Multi-page website with forms: 10-15 tasks
+- Full SaaS with auth, DB, payments: 20-35 tasks
+- Enterprise platform with multiple subsystems: 35-60+ tasks
+- Let the user's description drive the count. NEVER compress multiple unrelated systems into a single task.
 
 SUBTASK RULES:
-- Each subtask answers YES/NO: "Does this exist and work correctly?"
-- NEVER use vague subtasks like "implement the feature" or "add styling"
+- Each task gets 3-8 subtasks as acceptance criteria
+- Each subtask must be a single, verifiable YES/NO deliverable
 - GOOD: "Create EmailVerificationToken table with userId, token, expiresAt columns"
 - GOOD: "Rate limit: max 3 verification emails per hour per address"
 - BAD: "Set up the email system" (too vague)
 - BAD: "Handle errors" (which errors? what behavior?)
 
-SCALING (proportional to project complexity):
-- Landing page / static site: 5-8 tasks
-- Multi-page website with forms: 10-15 tasks
-- Full SaaS with auth, DB, payments: 20-35 tasks
-- Enterprise platform: 35-60+ tasks
-- NEVER compress multiple systems into one task
-
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 
+ORDERING:
+- Setup/scaffolding and database schema first
+- Core backend logic and API routes next
+- Frontend components and pages after
+- Integration, testing, and polish last
+- Include a final "Run full test suite and verify all features" task
+
 COVERAGE: frontend, backend, database schema, auth, API routes, components, pages, state management, testing, deployment, UI/UX polish, error handling, responsive design.
-Tasks should be ordered logically (foundations first, features, then polish).
 Each task should be completable in a single coding session.
-Be specific — not "build the frontend" but "Create LoginPage component with email/password form, validation, and error display".`;
+Be specific. Do NOT wrap in markdown code fences. Return raw JSON only.`;
+
+export async function POST(request: NextRequest) {
+  const body = await request.json();
+  const { prompt, projectName } = body as { prompt: string; projectName?: string };
+  if (!prompt?.trim()) {
+    return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
+  }
+
+  const userPrompt = projectName
+    ? `Project name: ${projectName}\n\nUser's request:\n${prompt}\n\nGenerate the full project plan as JSON.`
+    : `User's request:\n${prompt}\n\nGenerate the full project plan as JSON. Derive a short project name from the description.`;
 
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openRouterKey}`,
-        'HTTP-Referer': process.env.OPENROUTER_SITE_URL || 'https://titan-ai.up.railway.app',
-        'X-Title': 'Titan AI Plan Generator',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 16000,
-      }),
-    });
+    const raw = await callModelDirect(
+      'google/gemini-2.0-flash-001',
+      [
+        { role: 'system', content: PLAN_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
+      { temperature: 0.3, maxTokens: 16000 },
+    );
 
-    if (!response.ok) {
-      const errText = await response.text();
-      return NextResponse.json({ error: `OpenRouter error: ${response.status}`, detail: errText }, { status: 502 });
-    }
+    const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content || '';
-
-    let tasks: unknown[] = [];
-    const cleaned = content.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
+    let plan: { projectName?: string; idea?: string; techStack?: Record<string, unknown>; tasks?: unknown[] };
     try {
-      tasks = JSON.parse(cleaned);
+      plan = JSON.parse(cleaned);
     } catch {
-      const match = cleaned.match(/\[[\s\S]*\]/);
-      if (match) {
-        try { tasks = JSON.parse(match[0]); } catch { /* fallback */ }
+      const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+      if (arrMatch) {
+        const tasks = JSON.parse(arrMatch[0]);
+        plan = { tasks };
+      } else {
+        return NextResponse.json({ error: 'Failed to parse plan from AI response', raw: cleaned }, { status: 422 });
       }
     }
 
-    if (!Array.isArray(tasks) || tasks.length === 0) {
-      return NextResponse.json({ error: 'Failed to parse tasks from AI response', raw: content }, { status: 422 });
+    if (!plan.tasks || !Array.isArray(plan.tasks) || plan.tasks.length === 0) {
+      return NextResponse.json({ error: 'No tasks in plan', raw: cleaned }, { status: 422 });
     }
 
-    const normalizedTasks = tasks.map((t: any) => ({
-      title: t.title || 'Untitled task',
-      description: t.description || '',
-      phase: t.phase || 1,
-      priority: t.priority || 'medium',
+    const normalizedTasks = (plan.tasks as Record<string, unknown>[]).map((t) => ({
+      title: (t.title as string) || 'Untitled task',
+      description: (t.description as string) || '',
+      phase: (t.phase as number) || 1,
+      priority: (t.priority as string) || 'medium',
       tags: Array.isArray(t.tags) ? t.tags : [],
-      subtasks: Array.isArray(t.subtasks) ? t.subtasks.filter((s: unknown) => typeof s === 'string') : [],
+      subtasks: Array.isArray(t.subtasks) ? (t.subtasks as unknown[]).filter((s: unknown) => typeof s === 'string') : [],
     }));
 
-    return NextResponse.json({ tasks: normalizedTasks });
+    return NextResponse.json({
+      projectName: plan.projectName || projectName || 'Untitled Project',
+      idea: plan.idea || '',
+      techStack: plan.techStack || {},
+      tasks: normalizedTasks,
+    });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
