@@ -70,7 +70,8 @@ export default function TitanIDE() {
   useEffect(() => { setMounted(true); }, []);
 
   const titanSession = useSession();
-  const { alfredState } = useAlfredAmbient();
+  const alfred = useAlfredAmbient();
+  const { alfredState } = alfred;
 
   // Initialize command registry once — use getState directly so we don't
   // subscribe TitanIDE to the entire store (which would re-render on any
@@ -727,7 +728,7 @@ export default function TitanIDE() {
                 onBackToIDE={() => setActiveView('explorer')}
               />
             )}
-            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} alfred={alfredState} />}
+            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} alfred={alfred} />}
             {activeView === 'training-lab' && <TrainingLabPanel />}
             {activeView === 'brain' && <BrainObservatoryPanel />}
             {activeView === 'accounts' && <AccountsPanel />}
