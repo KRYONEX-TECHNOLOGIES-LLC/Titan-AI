@@ -6,6 +6,7 @@ import type {
   WorkOrder,
 } from './omega-model';
 import { selectModelForRisk } from './risk-router';
+import { ZERO_DEFECT_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 
 interface SpecialistCallbacks {
   invokeModel: (
@@ -109,6 +110,9 @@ export async function executeSpecialist(
         '- All code must be production-ready and complete',
         '- If the user mentions a module by name, FIND IT in the workspace',
         '',
+        ZERO_DEFECT_RULES_COMPACT,
+        GIT_RULES,
+        '',
         'Return strict JSON with keys: modifications (array of {file, content} with COMPLETE code for each file), assumptions, edgeCasesHandled, selfAssessment.',
       ].filter(Boolean).join('\n')
     : [
@@ -120,6 +124,9 @@ export async function executeSpecialist(
         `Task: ${workOrder.taskDescription}`,
         `Acceptance criteria:\n- ${workOrder.acceptanceCriteria.join('\n- ')}`,
         `Expected files:\n- ${workOrder.outputContract.expectedFiles.join('\n- ') || '(as needed)'}`,
+        '',
+        ZERO_DEFECT_RULES_COMPACT,
+        GIT_RULES,
         '',
         'Return strict JSON with keys: modifications (array of {file, content} objects with complete code), assumptions, edgeCasesHandled, selfAssessment.',
       ].join('\n');

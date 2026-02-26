@@ -1,5 +1,6 @@
 import type { SupremeArtifact, SupremeConfig, SupremeTaskNode, ToolCallLogEntry } from './supreme-model';
 import type { WorkerExecutionCallbacks } from './primary-worker';
+import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
 function section(text: string, heading: string) {
   const marker = `${heading}:`;
@@ -48,7 +49,7 @@ export async function executeSecondaryWorker(
         'CODE ARTIFACT: (complete implementation)',
         'SELF-REVIEW: (quality assessment)',
         'VERIFICATION HINTS: (how to verify)',
-        '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
+        '\n\n' + ZERO_DEFECT_RULES_COMPACT + '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
       ].join('\n')
     : [
         'You are TITAN_CLEANUP — the fast execution specialist of the Supreme Protocol.',
@@ -63,7 +64,7 @@ export async function executeSecondaryWorker(
         'CODE ARTIFACT: (complete implementation)',
         'SELF-REVIEW: (quality assessment)',
         'VERIFICATION HINTS: (verification steps)',
-        '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
+        '\n\n' + ZERO_DEFECT_RULES_COMPACT + '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
       ].join('\n');
 
   let fileContext = '';

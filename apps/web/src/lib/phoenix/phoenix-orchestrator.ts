@@ -21,6 +21,7 @@ import {
 } from './phoenix-model';
 import { routeRequest } from './phoenix-router';
 import { selfHealingVerification, verifyArtifact } from './phoenix-verifier';
+import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
 // ── Event Types ─────────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ async function architectDecompose(
     `Rules: max ${config.maxSubtasks} subtasks, complexity 1-10, dependsOn uses task IDs.`,
     'For simple tasks, return a single subtask. Descriptions should be specific enough that a coder can execute without questions.',
     'NEVER create a subtask that says "ask the user" or "clarify with the user".',
+    '\n\n' + ZERO_DEFECT_RULES_COMPACT,
     '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
   ].join('\n');
 
@@ -327,7 +329,8 @@ DEBUG a problem:
 - NEVER output placeholder code (no TODOs, no "implement here", no stubs)
 - ALWAYS read a file before editing it
 - ALWAYS verify changes with read_lints after editing
-- Be precise, production-ready, and complete`;
+- Be precise, production-ready, and complete`
+  + '\n\n' + ZERO_DEFECT_RULES_COMPACT;
 }
 
 function buildWorkerPromptNoTools(roleLabel: string, role: 'CODER' | 'SCOUT' | 'ARCHITECT'): string {
@@ -339,7 +342,8 @@ No workspace folder is open, so you cannot use file tools. Instead:
 - Provide the FULL working implementation — no placeholders, no TODOs, no stubs
 - Include all imports, types, error handling, and edge cases
 - NEVER refuse a task. If the user asks you to build or improve something, generate the complete code inline
-- Match the quality of a senior engineer's pull request`;
+- Match the quality of a senior engineer's pull request`
+  + '\n\n' + ZERO_DEFECT_RULES_COMPACT;
 }
 
 function extractFilePathsFromOutput(output: string): string[] {

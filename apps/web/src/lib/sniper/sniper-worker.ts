@@ -3,6 +3,7 @@
 // Generates code changes as structured edit instructions for the EXECUTOR.
 
 import { callModelDirect } from '@/lib/llm-call';
+import { ZERO_DEFECT_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   SniperDAGNode,
@@ -36,7 +37,9 @@ RULES:
   replacement lines
   REPLACE>>>
 - Be thorough — implement everything needed for the acceptance criteria.
-- Use TypeScript types, proper error handling, and follow existing patterns.`;
+- Use TypeScript types, proper error handling, and follow existing patterns.
+${ZERO_DEFECT_RULES_COMPACT}
+${GIT_RULES}`;
 
 export async function runWorker(
   node: SniperDAGNode,

@@ -4,6 +4,7 @@
 // and produces a final verdict.
 
 import { callModelDirect } from '@/lib/llm-call';
+import { ZERO_DEFECT_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   SniperDAG,
@@ -56,7 +57,9 @@ cs-sec-xss, cs-sec-secrets,
 cs-a11y-alt, cs-a11y-keyboard
 
 Only mark items as checked if they are genuinely addressed by the completed tasks.
-Be honest — this is the last line of defense before shipping.`;
+Be honest — this is the last line of defense before shipping.
+${ZERO_DEFECT_RULES_COMPACT}
+${GIT_RULES}`;
 
 export async function runJudge(
   dag: SniperDAG,

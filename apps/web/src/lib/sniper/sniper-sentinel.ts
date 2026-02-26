@@ -3,6 +3,7 @@
 // Checks each completed task against acceptance criteria, lint, and types.
 
 import { callModelDirect } from '@/lib/llm-call';
+import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   SniperDAGNode,
@@ -42,6 +43,8 @@ OUTPUT FORMAT (JSON):
 }
 
 Be strict but fair. Only fail if there are genuine problems, not style preferences.
+
+${ZERO_DEFECT_RULES_COMPACT}
 
 GIT RULES (applies to ALL Titan AI commits):
 - Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.

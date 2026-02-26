@@ -1,4 +1,5 @@
 import { callModelDirect } from '@/lib/llm-call';
+import { GIT_RULES } from '@/lib/shared/coding-standards';
 
 export interface PseudoCodeResult {
   projectName: string;
@@ -44,7 +45,9 @@ Return ONLY valid JSON:
       ]
     }
   ]
-}`;
+}
+
+${GIT_RULES}`;
 
 export async function parsePseudoCode(input: string): Promise<PseudoCodeResult> {
   const response = await callModelDirect(

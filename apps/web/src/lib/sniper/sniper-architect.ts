@@ -3,6 +3,7 @@
 // assign risk levels, identify dependencies, and route to optimal models.
 
 import { callModelDirect } from '@/lib/llm-call';
+import { ZERO_DEFECT_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   ScanResult,
@@ -57,7 +58,9 @@ RULES:
 - Minimize dependencies — only add them when truly required.
 - Architecture/database tasks should come before code that depends on them.
 - Tests should depend on the code they test.
-- Keep descriptions actionable — tell the CODER exactly what to implement.`;
+- Keep descriptions actionable — tell the CODER exactly what to implement.
+${ZERO_DEFECT_RULES_COMPACT}
+${GIT_RULES}`;
 
 export async function runArchitect(
   tasks: PlanTaskInput[],

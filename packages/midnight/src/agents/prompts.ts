@@ -3,6 +3,20 @@
  * Elite prompts for Actor and Sentinel agents
  */
 
+const ZERO_DEFECT_RULES_COMPACT = `
+ZERO-DEFECT RULES (MANDATORY):
+- READ files before editing. NEVER edit blind.
+- KNOW YOUR SCOPE — only use variables available in the current function/component.
+- VERIFY every import resolves to a real file.
+- MATCH existing patterns (naming, types, architecture).
+- TYPE SAFETY — never pass wrong types.
+- NO PHANTOM REFERENCES — every variable/function/module you use MUST exist and be in scope.
+- COMPLETE CODE — no TODOs, no placeholders.
+- MATCH FUNCTION SIGNATURES — correct parameter count and types.
+- SELF-CHECK — mentally compile before declaring done (types, imports, scope, syntax).
+- NEVER use out-of-scope variables, add duplicate declarations, remove code you don't understand, or change signatures without updating callers.
+- NEVER deviate outside the project scope.`;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ACTOR SYSTEM PROMPT
 // ═══════════════════════════════════════════════════════════════════════════
@@ -50,6 +64,8 @@ For each action, respond with:
 - The Sentinel is watching every move - write code you'd be proud to show a senior architect
 - Speed is secondary to correctness - the Sentinel will make you redo rushed work
 - If you're stuck, explain your reasoning so the Sentinel can help guide you
+
+${ZERO_DEFECT_RULES_COMPACT}
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════

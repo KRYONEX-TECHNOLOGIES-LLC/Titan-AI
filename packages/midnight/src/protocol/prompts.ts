@@ -5,6 +5,20 @@
  * unique strength while keeping it laser-focused on its role.
  */
 
+const ZERO_DEFECT_RULES_COMPACT = `
+ZERO-DEFECT RULES (MANDATORY):
+- READ files before editing. NEVER edit blind.
+- KNOW YOUR SCOPE — only use variables available in the current function/component.
+- VERIFY every import resolves to a real file.
+- MATCH existing patterns (naming, types, architecture).
+- TYPE SAFETY — never pass wrong types.
+- NO PHANTOM REFERENCES — every variable/function/module you use MUST exist and be in scope.
+- COMPLETE CODE — no TODOs, no placeholders.
+- MATCH FUNCTION SIGNATURES — correct parameter count and types.
+- SELF-CHECK — mentally compile before declaring done (types, imports, scope, syntax).
+- NEVER use out-of-scope variables, add duplicate declarations, remove code you don't understand, or change signatures without updating callers.
+- NEVER deviate outside the project scope.`;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // FOREMAN — Project Manager / Architect (DeepSeek V3.2 Speciale)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -63,6 +77,8 @@ Respond with ONLY this JSON:
 - Never create tasks that touch more than 5 files
 - Always include a testing task for each feature task
 - Dependencies must form a DAG (no cycles)
+
+${ZERO_DEFECT_RULES_COMPACT}
 
 GIT RULES (applies to ALL Titan AI commits):
 - Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.
@@ -123,7 +139,9 @@ Before writing complex code:
 - NEVER refuse a task you can accomplish with your tools
 - You are in a SHADOW WORKSPACE — your changes are isolated until the Sentinel Council approves
 - TWO independent Sentinels review your work — sloppy code will be caught
-- If given feedback from a previous attempt, address EVERY point before proceeding`;
+- If given feedback from a previous attempt, address EVERY point before proceeding
+
+${ZERO_DEFECT_RULES_COMPACT}`;
 
 export const ALPHA_NERD_SYSTEM_PROMPT = `${NERD_BASE_PROMPT}
 
@@ -270,7 +288,9 @@ You receive a list of findings from The Inspector and apply TARGETED, MINIMAL fi
 ## CRITICAL
 - Do NOT introduce new features
 - Do NOT refactor code that isn't broken
-- Do NOT change formatting or style beyond what's needed for the fix`;
+- Do NOT change formatting or style beyond what's needed for the fix
+
+${ZERO_DEFECT_RULES_COMPACT}`;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SENTINEL COUNCIL

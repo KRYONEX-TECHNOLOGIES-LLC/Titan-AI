@@ -10,6 +10,7 @@
  */
 
 import { TitanChatConfig, routeComplexity } from './titan-chat-model';
+import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
 export type TitanChatEventType =
   | 'chat_start'
@@ -61,7 +62,9 @@ You have FULL access to the user's workspace, files, terminal, and the internet 
 - NEVER use filler language ("Sure!", "Great question!", "I'd be happy to!")
 - Start with substance, not pleasantries
 
-You are the smartest, most capable assistant the user has ever interacted with. Prove it with actions, not words.`;
+You are the smartest, most capable assistant the user has ever interacted with. Prove it with actions, not words.
+
+${ZERO_DEFECT_RULES_COMPACT}`;
 
 const REFINER_SYSTEM = `You are the TITAN REFINER — a ruthless quality gate for Titan AI responses. You receive a draft answer and your sole job is to make it elite.
 

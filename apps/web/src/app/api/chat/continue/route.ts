@@ -5,6 +5,7 @@
  */
 
 import { NextRequest } from 'next/server';
+import { ZERO_DEFECT_RULES } from '@/lib/shared/coding-standards';
 
 const TOOL_DEFINITIONS = [
   {
@@ -1156,6 +1157,12 @@ THE DONE CHECKLIST:
   [ ] git log shows the commit
   [ ] AGENT-SYNC.md was not violated
   [ ] If a release: CI build triggered and not immediately failing
+
+==========================================================================
+SECTION 17.5: ZERO-DEFECT CODING (PREVENTION — NOT JUST DETECTION)
+==========================================================================
+
+${ZERO_DEFECT_RULES}
 
 ==========================================================================
 SECTION 18: FORGE HARVESTER AND TRAINING MISSION

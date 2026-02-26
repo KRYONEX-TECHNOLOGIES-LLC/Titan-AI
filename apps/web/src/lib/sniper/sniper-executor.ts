@@ -3,6 +3,7 @@
 // concrete tool calls (file edits, creates, commands) and execute them.
 
 import { callModelDirect } from '@/lib/llm-call';
+import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   CodeArtifact,
@@ -38,6 +39,8 @@ RULES:
 - For new files (--- FILE: path ---), use create_file with the complete content.
 - Include ALL changes — missing a file edit will cause verification to fail.
 - Order tool calls logically: creates before edits, installs before imports.
+
+${ZERO_DEFECT_RULES_COMPACT}
 
 GIT RULES (applies to ALL Titan AI commits):
 - Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.

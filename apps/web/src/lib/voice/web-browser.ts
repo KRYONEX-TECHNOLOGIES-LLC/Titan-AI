@@ -19,7 +19,7 @@ export async function fetchAndExtract(url: string): Promise<WebPage> {
     return cached;
   }
 
-  const res = await fetch('/api/titan/browse', {
+  const res = await fetch('/api/web/fetch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
