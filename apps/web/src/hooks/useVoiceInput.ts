@@ -34,6 +34,12 @@ declare global {
 
 type VoiceMode = 'native' | 'whisper' | 'off';
 
+const WHISPER_CHUNK_MS = 2000;
+const VAD_SILENCE_THRESHOLD = 0.01;
+const VAD_SILENCE_FRAMES = 8;
+const RESTART_DELAY_MS = 50;
+const FORCE_RESTART_SILENCE_MS = 5000;
+
 export function useVoiceInput(
   onTranscript: (text: string) => void,
   options?: { onAutoSend?: () => void; autoSendDelayMs?: number },
@@ -51,15 +57,24 @@ export function useVoiceInput(
   const autoSendDelay = options?.autoSendDelayMs ?? 2000;
   onAutoSendRef.current = options?.onAutoSend;
 
-  // Pause/resume for TTS coordination — blocks onend auto-restart
   const pausedRef = useRef(false);
   const stopTimestampRef = useRef(0);
+
+  // Track last result time — force-restart if recognition silently dies
+  const lastResultTimeRef = useRef(Date.now());
+  const watchdogRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Whisper fallback refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const whisperIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // VAD refs for Whisper
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const vadSilenceCountRef = useRef(0);
+  const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const SpeechRecognition = typeof window !== 'undefined'
@@ -78,11 +93,24 @@ export function useVoiceInput(
         clearTimeout(autoSendTimerRef.current);
         autoSendTimerRef.current = null;
       }
+      if (watchdogRef.current) {
+        clearInterval(watchdogRef.current);
+        watchdogRef.current = null;
+      }
       stopWhisperRecording();
     };
   }, []);
 
-  // ═══ WHISPER FALLBACK ═══
+  // ═══ WHISPER FALLBACK WITH VAD ═══
+
+  function getAudioEnergy(): number {
+    if (!analyserRef.current) return 1;
+    const data = new Float32Array(analyserRef.current.fftSize);
+    analyserRef.current.getFloatTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    return Math.sqrt(sum / data.length);
+  }
 
   async function transcribeChunk(blob: Blob): Promise<string> {
     try {
@@ -91,16 +119,12 @@ export function useVoiceInput(
         new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
       );
       const mimeType = blob.type || 'audio/webm';
-      console.log('[voice] Sending audio chunk for transcription:', { size: blob.size, mimeType });
       const res = await fetch('/api/speech/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audio: base64, mimeType }),
       });
-      if (!res.ok) {
-        console.warn('[voice] Transcription API returned', res.status);
-        return '';
-      }
+      if (!res.ok) return '';
       const data = (await res.json()) as { text?: string };
       const text = data.text?.trim() || '';
       if (text) console.log('[voice] Transcribed:', text);
@@ -128,6 +152,19 @@ export function useVoiceInput(
       streamRef.current = stream;
       console.log('[voice] Whisper recording started, format:', preferredMime);
 
+      // Set up VAD via Web Audio API
+      try {
+        const ctx = new AudioContext();
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        audioContextRef.current = ctx;
+        analyserRef.current = analyser;
+      } catch { /* VAD unavailable, still works without it */ }
+
+      let sendingChunk = false;
+
       function createRecorder(): MediaRecorder {
         const rec = new MediaRecorder(stream, { mimeType: preferredMime });
         const chunks: Blob[] = [];
@@ -139,8 +176,10 @@ export function useVoiceInput(
             const blob = new Blob(chunks, { type: preferredMime.split(';')[0] });
             chunks.length = 0;
             if (blob.size > 500) {
+              sendingChunk = true;
               transcribeChunk(blob).then((text) => {
                 setInterimText('');
+                sendingChunk = false;
                 if (text) onTranscript(text);
               });
             }
@@ -154,7 +193,7 @@ export function useVoiceInput(
       activeRecorder.start();
       setIsListening(true);
 
-      whisperIntervalRef.current = setInterval(() => {
+      function cycleRecorder() {
         if (!streamRef.current) return;
         if (activeRecorder.state === 'recording') {
           activeRecorder.stop();
@@ -164,7 +203,29 @@ export function useVoiceInput(
           mediaRecorderRef.current = activeRecorder;
           activeRecorder.start();
         } catch { /* stream ended */ }
-      }, 3000);
+      }
+
+      // VAD-based early send: if we detect silence after speech, send chunk immediately
+      vadSilenceCountRef.current = 0;
+      vadIntervalRef.current = setInterval(() => {
+        const energy = getAudioEnergy();
+        if (energy < VAD_SILENCE_THRESHOLD) {
+          vadSilenceCountRef.current++;
+          // ~8 frames of silence at 50ms = 400ms of quiet after speech
+          if (vadSilenceCountRef.current >= VAD_SILENCE_FRAMES && !sendingChunk) {
+            vadSilenceCountRef.current = 0;
+            cycleRecorder();
+          }
+        } else {
+          vadSilenceCountRef.current = 0;
+        }
+      }, 50);
+
+      // Fallback: max interval ensures chunks are never longer than WHISPER_CHUNK_MS
+      whisperIntervalRef.current = setInterval(() => {
+        vadSilenceCountRef.current = 0;
+        cycleRecorder();
+      }, WHISPER_CHUNK_MS);
     }).catch((err) => {
       console.error('[voice] Mic access failed:', err);
       setIsListening(false);
@@ -173,6 +234,10 @@ export function useVoiceInput(
   }
 
   function stopWhisperRecording() {
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
     if (whisperIntervalRef.current) {
       clearInterval(whisperIntervalRef.current);
       whisperIntervalRef.current = null;
@@ -184,6 +249,11 @@ export function useVoiceInput(
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      try { audioContextRef.current.close(); } catch { /* ignore */ }
+      audioContextRef.current = null;
+      analyserRef.current = null;
     }
     audioChunksRef.current = [];
   }
@@ -204,6 +274,7 @@ export function useVoiceInput(
     setErrorMessage(null);
     setVoiceMode('native');
     restartCountRef.current = 0;
+    lastResultTimeRef.current = Date.now();
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
@@ -215,9 +286,11 @@ export function useVoiceInput(
       setInterimText('');
       setErrorMessage(null);
       networkRetryRef.current = 0;
+      lastResultTimeRef.current = Date.now();
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
+      lastResultTimeRef.current = Date.now();
       let interim = '';
       let final = '';
 
@@ -256,20 +329,28 @@ export function useVoiceInput(
           setErrorMessage('Microphone access denied. Check your system permissions.');
           break;
         case 'network':
-          // Native speech API unavailable (common in Electron) — skip directly to Whisper
           console.log('[voice] Native speech unavailable, switching to Whisper immediately');
           if (recognitionRef.current) {
             try { recognitionRef.current.abort(); } catch { /* ignore */ }
           }
           recognitionRef.current = null;
+          if (watchdogRef.current) { clearInterval(watchdogRef.current); watchdogRef.current = null; }
           setInterimText('');
           setErrorMessage(null);
           startWhisperRecording();
           return;
         case 'no-speech':
-          // No-speech is normal during ambient listening — never kill the mic
+          // Immediately restart on no-speech instead of waiting for onend cycle
           restartCountRef.current = 0;
-          break;
+          if (recognitionRef.current === recognition) {
+            try { recognition.abort(); } catch { /* ignore */ }
+            setTimeout(() => {
+              if (recognitionRef.current === recognition && !pausedRef.current) {
+                try { recognition.start(); } catch { /* ignore */ }
+              }
+            }, RESTART_DELAY_MS);
+          }
+          return;
         case 'aborted':
           break;
         default:
@@ -280,24 +361,25 @@ export function useVoiceInput(
     };
 
     recognition.onend = () => {
-      // Don't auto-restart if paused (TTS is speaking) or recently stopped
       const recentlyStoppedMs = Date.now() - stopTimestampRef.current;
-      if (pausedRef.current || recentlyStoppedMs < 300) {
+      if (pausedRef.current || recentlyStoppedMs < 200) {
         setIsListening(false);
         setInterimText('');
         return;
       }
 
       if (recognitionRef.current === recognition) {
-        // Always attempt restart — ambient listening should never die
+        // Minimal restart delay to eliminate dead zones
         setTimeout(() => {
-          try {
-            recognition.start();
-          } catch {
-            setIsListening(false);
-            setInterimText('');
+          if (recognitionRef.current === recognition && !pausedRef.current) {
+            try {
+              recognition.start();
+            } catch {
+              setIsListening(false);
+              setInterimText('');
+            }
           }
-        }, 200);
+        }, RESTART_DELAY_MS);
         return;
       }
       setIsListening(false);
@@ -305,6 +387,23 @@ export function useVoiceInput(
     };
 
     recognitionRef.current = recognition;
+
+    // Watchdog: force-restart if recognition silently dies (no results for 5s while "listening")
+    if (watchdogRef.current) clearInterval(watchdogRef.current);
+    watchdogRef.current = setInterval(() => {
+      if (!recognitionRef.current || pausedRef.current) return;
+      const silent = Date.now() - lastResultTimeRef.current;
+      if (silent > FORCE_RESTART_SILENCE_MS && recognitionRef.current === recognition) {
+        console.log('[voice] Watchdog: force-restarting silent recognition');
+        try { recognition.abort(); } catch { /* ignore */ }
+        setTimeout(() => {
+          if (recognitionRef.current === recognition && !pausedRef.current) {
+            try { recognition.start(); } catch { /* ignore */ }
+          }
+        }, RESTART_DELAY_MS);
+        lastResultTimeRef.current = Date.now();
+      }
+    }, 2000);
 
     try {
       recognition.start();
@@ -322,13 +421,15 @@ export function useVoiceInput(
 
   const stopListening = useCallback(() => {
     stopTimestampRef.current = Date.now();
-    // Stop native
     const rec = recognitionRef.current;
     recognitionRef.current = null;
     if (rec) {
       try { rec.stop(); } catch { /* ignore */ }
     }
-    // Stop whisper
+    if (watchdogRef.current) {
+      clearInterval(watchdogRef.current);
+      watchdogRef.current = null;
+    }
     stopWhisperRecording();
 
     if (autoSendTimerRef.current) {
@@ -354,7 +455,6 @@ export function useVoiceInput(
     pausedRef.current = true;
     stopTimestampRef.current = Date.now();
     const rec = recognitionRef.current;
-    recognitionRef.current = null;
     if (rec) {
       try { rec.abort(); } catch { /* ignore */ }
     }

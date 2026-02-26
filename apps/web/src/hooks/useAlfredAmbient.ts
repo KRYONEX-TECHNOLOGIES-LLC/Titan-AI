@@ -49,6 +49,9 @@ export function useAlfredAmbient() {
   const processingRef = useRef(false);
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Buffer speech received while TTS is playing (so nothing is lost)
+  const ttsBufferRef = useRef<string[]>([]);
+
   // Pending action for "proceed" flow
   const pendingActionRef = useRef<{ action: string; params: Record<string, string>; description: string } | null>(null);
 
@@ -301,9 +304,9 @@ export function useAlfredAmbient() {
       return;
     }
 
-    // Secondary detection: if we're within 3s of activation and get a transcript
-    // (covers mic-restart edge cases where wake state was cleared)
-    if (!wakeDetectedRef.current && wakeActivatedAtRef.current > 0 && (Date.now() - wakeActivatedAtRef.current) < 3000) {
+    // Secondary detection: if we're within 5s of activation and get a transcript
+    // (covers mic-restart edge cases and speech during activation phrase)
+    if (!wakeDetectedRef.current && wakeActivatedAtRef.current > 0 && (Date.now() - wakeActivatedAtRef.current) < 5000) {
       console.log('[alfred] Secondary wake window — treating as command:', trimmed);
       wakeDetectedRef.current = true;
       pendingTranscript.current = trimmed;
@@ -319,7 +322,7 @@ export function useAlfredAmbient() {
         } else {
           setAlfredState('listening');
         }
-      }, 2000);
+      }, 1500);
       return;
     }
 
@@ -327,7 +330,7 @@ export function useAlfredAmbient() {
     if (wakeDetectedRef.current) {
       pendingTranscript.current += (pendingTranscript.current ? ' ' : '') + trimmed;
 
-      // Reset the send timer — send after 2s of silence
+      // Reset the send timer — send after 1.5s of silence
       if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
       sendTimerRef.current = setTimeout(() => {
         const full = pendingTranscript.current.trim();
@@ -339,7 +342,7 @@ export function useAlfredAmbient() {
         } else {
           setAlfredState('listening');
         }
-      }, 2000);
+      }, 1500);
     }
     // If no wake word detected yet, ignore (ambient listening)
   }, [addToLog, titanVoice, sendToAlfred]);
@@ -364,7 +367,7 @@ export function useAlfredAmbient() {
     }
   }, [voice.isSupported]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // If mic somehow stops, restart it
+  // If mic somehow stops, restart it fast
   useEffect(() => {
     if (!voice.isListening && voice.isSupported && !titanVoice.isSpeaking && alfredState !== 'processing') {
       const restart = setTimeout(() => {
@@ -372,33 +375,44 @@ export function useAlfredAmbient() {
           voice.startListening();
           setAlfredState('listening');
         }
-      }, 1500);
+      }, 500);
       return () => clearTimeout(restart);
     }
   }, [voice.isListening, voice.isSupported, titanVoice.isSpeaking, alfredState]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pause mic when TTS starts so speech recognition doesn't pick up Alfred's voice
+  // Keep mic running during TTS — echo cancellation handles feedback.
+  // Any speech detected while Alfred is talking gets buffered and processed after.
   useEffect(() => {
     if (titanVoice.isSpeaking) {
-      voice.pause();
+      ttsBufferRef.current = [];
     }
   }, [titanVoice.isSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Resume listening after Alfred finishes speaking + start 60s inactivity timer
+  // Resume state after Alfred finishes speaking — process any buffered speech
   useEffect(() => {
     if (!titanVoice.isSpeaking && alfredState === 'speaking') {
       const timer = setTimeout(() => {
-        setAlfredState('listening');
+        setAlfredState(wakeDetectedRef.current ? 'activated' : 'listening');
         if (!voice.isListening && voice.isSupported) {
           voice.resume();
         }
+
+        // Process any speech that was buffered during TTS playback
+        if (ttsBufferRef.current.length > 0) {
+          const buffered = ttsBufferRef.current.join(' ').trim();
+          ttsBufferRef.current = [];
+          if (buffered.length > 2 && wakeDetectedRef.current) {
+            pendingTranscript.current += (pendingTranscript.current ? ' ' : '') + buffered;
+          }
+        }
+
         if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
         inactivityTimerRef.current = setTimeout(() => {
           if (!wakeDetectedRef.current && !processingRef.current) {
             setAlfredState('listening');
           }
         }, 60000);
-      }, 700);
+      }, 200);
       return () => clearTimeout(timer);
     }
   }, [titanVoice.isSpeaking, alfredState]); // eslint-disable-line react-hooks/exhaustive-deps

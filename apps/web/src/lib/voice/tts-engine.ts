@@ -1,6 +1,6 @@
 'use client';
 
-type TTSBackend = 'kokoro' | 'native' | 'none';
+type TTSBackend = 'elevenlabs' | 'native' | 'none';
 
 interface TTSQueueItem {
   text: string;
@@ -19,6 +19,7 @@ class TitanTTSEngine {
   private currentUtterance: SpeechSynthesisUtterance | null = null;
   private onSpeakingChange?: (speaking: boolean) => void;
   private initialized = false;
+  private elevenLabsAvailable = false;
 
   async init(onSpeakingChange?: (speaking: boolean) => void): Promise<TTSBackend> {
     if (this.initialized) return this.backend;
@@ -30,20 +31,36 @@ class TitanTTSEngine {
       return this.backend;
     }
 
+    // Check ElevenLabs availability
+    try {
+      const { isElevenLabsAvailable } = await import('./elevenlabs-tts');
+      this.elevenLabsAvailable = isElevenLabsAvailable();
+      if (this.elevenLabsAvailable) {
+        this.backend = 'elevenlabs';
+      }
+    } catch {
+      this.elevenLabsAvailable = false;
+    }
+
+    // Always set up native as fallback
     if ('speechSynthesis' in window) {
       this.nativeSynth = window.speechSynthesis;
-      this.backend = 'native';
+      if (!this.elevenLabsAvailable) {
+        this.backend = 'native';
+      }
 
       const loadVoices = () => {
         const voices = this.nativeSynth!.getVoices();
         if (voices.length === 0) return;
 
+        // Prefer British English male voices for Alfred's butler persona
         const preferred = [
           'Google UK English Male',
+          'Microsoft George',
+          'Daniel',
           'Microsoft David',
           'Microsoft Mark',
           'Google US English',
-          'Daniel',
           'Alex',
         ];
 
@@ -56,10 +73,13 @@ class TitanTTSEngine {
         }
 
         if (!this.preferredVoice) {
+          const britishMale = voices.find(v =>
+            v.lang === 'en-GB' && v.name.toLowerCase().includes('male'),
+          );
           const englishMale = voices.find(v =>
             v.lang.startsWith('en') && v.name.toLowerCase().includes('male'),
           );
-          this.preferredVoice = englishMale || voices.find(v => v.lang.startsWith('en')) || voices[0];
+          this.preferredVoice = britishMale || englishMale || voices.find(v => v.lang.startsWith('en')) || voices[0];
         }
       };
 
@@ -112,7 +132,32 @@ class TitanTTSEngine {
 
     this.setSpeaking(true);
 
-    if (this.backend === 'native' && this.nativeSynth) {
+    // Try ElevenLabs first
+    if (this.elevenLabsAvailable) {
+      try {
+        const { speakWithElevenLabs, getElevenLabsUsage } = await import('./elevenlabs-tts');
+        const usage = getElevenLabsUsage();
+
+        if (usage.remaining >= cleanText.length) {
+          const success = await speakWithElevenLabs(
+            cleanText,
+            undefined,
+            () => {
+              this.setSpeaking(false);
+              this.processQueue();
+            },
+          );
+          if (success) return;
+        } else {
+          console.log('[tts] ElevenLabs credits low, using native fallback');
+        }
+      } catch {
+        console.warn('[tts] ElevenLabs failed, falling back to native');
+      }
+    }
+
+    // Native fallback
+    if (this.nativeSynth) {
       return new Promise<void>((resolve) => {
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = this.rate;
@@ -150,7 +195,7 @@ class TitanTTSEngine {
 
   stop() {
     this.queue = [];
-    if (this.backend === 'native' && this.nativeSynth) {
+    if (this.nativeSynth) {
       this.nativeSynth.cancel();
     }
     this.currentUtterance = null;
