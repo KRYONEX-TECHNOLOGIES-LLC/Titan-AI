@@ -199,7 +199,6 @@ export const useFileStore = create<FileState>()(
       partialize: (s) => ({
         workspacePath: s.workspacePath,
         workspaceName: s.workspaceName,
-        workspaceOpen: s.workspaceOpen,
         expandedPaths: [...s.expandedPaths],
       }),
       merge: (persisted: unknown, current) => {
@@ -207,6 +206,9 @@ export const useFileStore = create<FileState>()(
         return {
           ...current,
           ...(p ?? {}),
+          // Always start closed — user must explicitly open a folder each session
+          workspaceOpen: false,
+          fileTree: [],
           expandedPaths: new Set(p?.expandedPaths ?? []),
         };
       },
