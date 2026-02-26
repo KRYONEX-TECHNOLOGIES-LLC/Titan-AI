@@ -954,10 +954,10 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   const handleDismissThought = useCallback(() => setActiveThought(null), []);
   const handleTellMoreThought = useCallback((thought: ProactiveThought) => {
     const prompt = `Tell me more about: ${thought.text.slice(0, 200)}`;
-chat.setChatInput(prompt);
+    setChatInput(prompt);
     setActiveThought(null);
-    setTimeout(() => chat?.handleSend(), 150);
-  }, [chat]);
+    setTimeout(() => onSend(), 150);
+  }, [setChatInput, onSend]);
   const handleSnoozeThoughts = useCallback((durationMs: number) => {
     titanVoice.snoozeThoughts(durationMs);
     setActiveThought(null);
