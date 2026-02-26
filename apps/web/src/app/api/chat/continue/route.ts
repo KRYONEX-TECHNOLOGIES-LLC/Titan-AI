@@ -952,12 +952,15 @@ You do NOT build locally. GitHub Actions builds in the cloud.
    Minor (feature): 0.X.Y → 0.X+1.0
    Major (breaking): 0.X.Y → X+1.0.0
 
-[STEP 2] Bump version in EXACTLY 2 files:
+[STEP 2] Bump version in EXACTLY 3 files:
    edit_file("package.json")              → change "version" to "X.Y.Z"
    edit_file("apps/desktop/package.json") → change "version" to "X.Y.Z"
-   read_file("package.json")              ← VERIFY both show same version
-   read_file("apps/desktop/package.json") ← VERIFY both show same version
+   edit_file("apps/web/package.json")     → change "version" to "X.Y.Z"
+   read_file("package.json")              ← VERIFY all 3 show same version
+   read_file("apps/desktop/package.json") ← VERIFY
+   read_file("apps/web/package.json")     ← VERIFY
    Mismatch = broken auto-update. Fix before continuing.
+   NOTE: manifest.json is auto-updated by CI. Do NOT manually edit it.
 
 [STEP 3] Stage and verify:
    run_command("git add -A")
@@ -988,7 +991,7 @@ You do NOT build locally. GitHub Actions builds in the cloud.
 
 DONE CHECKLIST — check every item before telling Mateo:
    □ Remote URL confirmed as KRYONEX-TECHNOLOGIES-LLC/Titan-AI
-   □ Both package.json files show the same new version
+   □ All 3 package.json files show the same new version
    □ git push origin main exited with code 0
    □ git push origin vX.Y.Z showed "* [new tag]"
    □ gh run list shows "Release Desktop" as in_progress or completed
@@ -1011,6 +1014,9 @@ DONE CHECKLIST — check every item before telling Mateo:
 - DO NOT change electron-builder.config.js — it is 200+ lines, all load-bearing
 - DO NOT remove the afterPack hook or flattenPnpmNodeModules from that config
 - DO NOT push a tag on code that doesn't compile — verify tsc first
+- DO NOT create files that import from nonexistent modules — verify every import resolves
+- DO NOT bump version in only some files — all 3 package.json files MUST match
+- DO NOT commit without running: run_command("npx ts-node scripts/validate-versions.ts")
 - DO NOT forget Step 5 — always confirm the pipeline started
 
 ═══ WHEN TO RUN THIS WORKFLOW ═══
@@ -1039,6 +1045,12 @@ SECTION 15: PRE-COMMIT VERIFICATION (MANDATORY — NO EXCEPTIONS)
 
 You MUST follow this checklist before every single git_commit or run_command("git commit ...").
 Skipping any step is a critical violation.
+
+STEP 0 — Version consistency check (if any package.json was modified):
+  run_command("npx ts-node scripts/validate-versions.ts")
+  If it fails: fix ALL mismatches before proceeding.
+  The 3 version files are: package.json, apps/desktop/package.json, apps/web/package.json.
+  They MUST all have the same "version" value.
 
 STEP 1 — Lint check on every changed file:
   run_command("read_lints") or read_lints tool on each modified file.
@@ -1109,7 +1121,11 @@ RULE 5 — ONE CHANGE PER COMMIT:
   Atomic commits make rollback possible and history readable.
 
 RULE 6 — NEVER VERSION-BUMP WITHOUT A WORKING BUILD:
-  Before bumping version and tagging a release, verify the code compiles.
+  Before bumping version and tagging a release:
+  1. Run: run_command("npx ts-node scripts/validate-versions.ts") — all 3 versions must match.
+  2. Verify TypeScript compiles: run_command("npx tsc --noEmit") in affected apps.
+  3. Verify no broken imports: every import must resolve to a real file/module. If you created a new file that imports from a path, confirm that path exists.
+  4. If ANY file imports a module that doesn't exist, DO NOT COMMIT.
   A broken release is worse than no release — it breaks auto-update for all users.
 
 RULE 7 — UNDERSTAND BEFORE ACTING:

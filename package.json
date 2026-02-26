@@ -1,6 +1,6 @@
 {
   "name": "titan-ai",
-  "version": "0.3.45",
+  "version": "0.3.46",
   "private": true,
   "description": "Titan AI - Next-Generation AI-Native IDE",
   "author": "KRYONEX TECHNOLOGIES LLC",
@@ -41,13 +41,14 @@
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "clean": "turbo run clean && rimraf node_modules .turbo",
-    "prepare": "husky install",
+    "prepare": "husky",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "turbo run build --filter='./packages/*' && changeset publish",
     "setup:fork": "ts-node scripts/setup-fork.ts",
     "sync:upstream": "ts-node scripts/sync-upstream.ts",
-    "inject:packages": "ts-node scripts/inject-packages.ts"
+    "inject:packages": "ts-node scripts/inject-packages.ts",
+    "validate-versions": "ts-node scripts/validate-versions.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.10",

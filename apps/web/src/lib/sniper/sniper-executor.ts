@@ -37,7 +37,16 @@ RULES:
 - For SEARCH/REPLACE blocks, use edit_file with the exact old_string and new_string.
 - For new files (--- FILE: path ---), use create_file with the complete content.
 - Include ALL changes — missing a file edit will cause verification to fail.
-- Order tool calls logically: creates before edits, installs before imports.`;
+- Order tool calls logically: creates before edits, installs before imports.
+
+GIT RULES (applies to ALL Titan AI commits):
+- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.
+- manifest.json is auto-updated by CI. Never edit it manually.
+- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).
+- Before version bump: verify the code compiles. Never tag broken code.
+- Commit format: "vX.Y.Z: one-line description"
+- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.
+- NEVER force-push to main.`;
 
 export async function runExecutor(
   artifact: CodeArtifact,

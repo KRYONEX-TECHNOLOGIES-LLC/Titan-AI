@@ -321,10 +321,13 @@ git remote get-url origin
 # Major (breaking):   0.2.2 → 1.0.0
 ```
 
-**Step 3: Bump version in EXACTLY 2 files (must match):**
+**Step 3: Bump version in EXACTLY 3 files (must match):**
 - `package.json` (root) → update `"version"` to `"X.Y.Z"`
 - `apps/desktop/package.json` → update `"version"` to `"X.Y.Z"`
-- **Both MUST be identical.** Mismatch = broken auto-update.
+- `apps/web/package.json` → update `"version"` to `"X.Y.Z"`
+- **All 3 MUST be identical.** Mismatch = broken auto-update.
+- Run `npx ts-node scripts/validate-versions.ts` to verify.
+- NOTE: `manifest.json` is auto-updated by CI. Do NOT manually edit it.
 
 **Step 4: Commit and push:**
 ```bash
@@ -422,7 +425,7 @@ Write down: OLD_VERSION = `0.X.Y`  NEW_VERSION = `0.X.Z`
 
 ---
 
-#### STEP 2 — Bump version in EXACTLY 2 files (must be identical)
+#### STEP 2 — Bump version in EXACTLY 3 files (must be identical)
 
 File 1:
 ```
@@ -434,11 +437,20 @@ File 2:
 edit_file("apps/desktop/package.json") change "version": "OLD" → "version": "NEW"
 ```
 
-VERIFY — Read both files back and confirm they match:
+File 3:
+```
+edit_file("apps/web/package.json")     change "version": "OLD" → "version": "NEW"
+```
+
+NOTE: manifest.json is auto-updated by CI. Do NOT manually edit it.
+
+VERIFY — Read all 3 files back and confirm they match:
 ```
 read_file("package.json")              ← confirm "version": "NEW_VERSION"
 read_file("apps/desktop/package.json") ← confirm "version": "NEW_VERSION"
+read_file("apps/web/package.json")     ← confirm "version": "NEW_VERSION"
 ```
+Also run: `run_command("npx ts-node scripts/validate-versions.ts")`
 IF THEY DON'T MATCH → Fix them now. Mismatch = broken auto-update.
 
 ---

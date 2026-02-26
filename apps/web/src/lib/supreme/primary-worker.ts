@@ -67,6 +67,7 @@ export async function executePrimaryWorker(
         'CODE ARTIFACT: (complete implementation)',
         'SELF-REVIEW: (quality assessment)',
         'VERIFICATION HINTS: (how to verify the changes work)',
+        '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
       ].join('\n')
     : [
         'You are TITAN_CODER — the elite code worker of the Supreme Protocol.',
@@ -82,6 +83,7 @@ export async function executePrimaryWorker(
         'CODE ARTIFACT: (complete implementation)',
         'SELF-REVIEW: (quality assessment)',
         'VERIFICATION HINTS: (how to verify the changes work)',
+        '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
       ].join('\n');
 
   let fileContext = '';

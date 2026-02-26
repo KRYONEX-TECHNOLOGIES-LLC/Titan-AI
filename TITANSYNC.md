@@ -14,27 +14,62 @@
 ### How to release
 
 ```powershell
-# 1. Commit your changes
+# 0. Validate version consistency (all 3 files must match)
+npx ts-node scripts/validate-versions.ts
+
+# 1. Bump version in EXACTLY 3 files (must match):
+#    - package.json (root)
+#    - apps/desktop/package.json
+#    - apps/web/package.json
+#    NOTE: manifest.json is auto-updated by CI. Do NOT manually edit it.
+
+# 2. Commit your changes
 git add -A
 git commit -m "v0.X.XX: description of changes"
 
-# 2. Push to main
+# 3. Push to main
 git push origin main
 
-# 3. Create and push a version tag (triggers desktop build + manifest update)
+# 4. Create and push a version tag (triggers desktop build + manifest update)
 git tag -a v0.X.XX -m "v0.X.XX: description"
 git push origin v0.X.XX
 
-# 4. Monitor the pipeline
+# 5. Monitor the pipeline
 gh run list --workflow=release-desktop.yml --limit=3
 gh run view <run-id> --log-failed   # if it fails
 ```
+
+### Version Files (MUST stay in sync)
+
+| File | Purpose |
+|------|---------|
+| `package.json` | Root monorepo version |
+| `apps/desktop/package.json` | Desktop app version (drives installer filename) |
+| `apps/web/package.json` | Web app version |
+| `apps/web/src/app/api/releases/latest/manifest.json` | Auto-updated by CI — do NOT edit manually |
+
+### Pre-commit Hook
+
+A husky pre-commit hook runs automatically on every commit:
+1. `npx ts-node scripts/validate-versions.ts` — blocks commit if versions mismatch
+2. `npx lint-staged` — runs ESLint + Prettier on changed files
+
+### Common Git Mistakes (and how they're now prevented)
+
+| Mistake | What happened | Prevention |
+|---------|---------------|------------|
+| Version mismatch | Bumped only 2 of 3 package.json files | `validate-versions.ts` pre-commit hook blocks mismatched commits |
+| Broken imports | Created files importing `../../config/ajv` which didn't exist | System prompt RULE 6 now requires verifying all imports resolve |
+| Messy version bumps | Multiple commits each bumping to different versions | System prompt enforces single atomic version bump + tag |
+| manifest.json manually edited | Overwrote CI-managed file, then CI overwrote it back | All prompts now say "manifest.json is auto-updated by CI" |
+| Force-push to main | Destructive history rewrite | All protocol prompts include "NEVER force-push to main" |
 
 ### Troubleshooting
 
 - If desktop build fails with TypeScript errors, check `apps/desktop/src/` for strict null issues
 - The CI pipeline uses `pnpm install --frozen-lockfile` — run `pnpm install` locally first if you added deps
 - Railway auto-deploys on push to main (watches `apps/web/**`)
+- If pre-commit hook blocks your commit: run `npx ts-node scripts/validate-versions.ts` to see which files mismatch
 
 ---
 
@@ -316,30 +351,40 @@ Complexity-based routing: simple → RESPONDER, code → SCANNER → RESPONDER, 
 |------|---------|
 | `apps/web/src/lib/voice/tts-engine.ts` | TTS engine (SpeechSynthesis) |
 | `apps/web/src/lib/voice/titan-voice-protocol.ts` | 4-role model orchestrator |
-| `apps/web/src/lib/voice/titan-personality.ts` | Alfred personality prompt |
-| `apps/web/src/lib/voice/voice-commands.ts` | Voice command parser |
-| `apps/web/src/lib/voice/brain-storage.ts` | Supabase brain service + SQL |
+| `apps/web/src/lib/voice/titan-personality.ts` | Alfred personality prompt (full system map, git awareness) |
+| `apps/web/src/lib/voice/voice-commands.ts` | Voice command parser (22 commands) |
+| `apps/web/src/lib/voice/brain-storage.ts` | Supabase brain service + SQL (9 categories) |
 | `apps/web/src/lib/voice/thought-engine.ts` | Proactive thought system |
 | `apps/web/src/lib/voice/vision.ts` | Screenshot/viewport capture |
-| `apps/web/src/lib/voice/system-control.ts` | System control (Midnight, Plan, Forge) |
-| `apps/web/src/lib/voice/knowledge-ingest.ts` | Harvest data → brain pipeline |
+| `apps/web/src/lib/voice/system-control.ts` | System control (Midnight, Plan, Forge, web, markets, auto-learn) |
+| `apps/web/src/lib/voice/knowledge-ingest.ts` | Harvest data → brain pipeline (expanded routing) |
 | `apps/web/src/lib/voice/evolution-tracker.ts` | Growth & evolution tracking |
+| `apps/web/src/lib/voice/web-browser.ts` | URL fetch + content extraction with caching |
+| `apps/web/src/lib/voice/auto-learner.ts` | Autonomous background learning engine |
 | `apps/web/src/stores/titan-voice.store.ts` | TTS state (Zustand) |
+| `apps/web/src/hooks/useAlfredAmbient.ts` | Wake word, proceed flow, global listener |
 | `apps/web/src/hooks/useTitanVoiceChat.ts` | Voice protocol chat hook |
 | `apps/web/src/app/api/titan/voice/route.ts` | SSE API endpoint |
 | `apps/web/src/components/ide/TitanVoicePopup.tsx` | Proactive thought popup |
 
 ### Voice commands
 
-- "Titan, start midnight mode" — Start Midnight
-- "Titan, stop midnight mode" — Stop Midnight
-- "Titan, scan the project" — Code scan
-- "Titan, what's the status?" — Plan progress
-- "Titan, start the harvest" — Forge harvester
-- "Titan, take a screenshot" — Viewport capture
-- "Titan, switch to plan/chat/agent mode" — Mode switch
-- "Titan, be quiet" — Mute voice
-- "Titan, snooze thoughts" — Snooze proactive thoughts
+- "Alfred, start midnight mode" — Start Midnight (requires "proceed" to confirm)
+- "Alfred, stop midnight mode" — Stop Midnight (requires "proceed" to confirm)
+- "Alfred, scan the project" — Code scan
+- "Alfred, what's the status?" — Plan progress
+- "Alfred, start the harvest" — Forge harvester (requires "proceed" to confirm)
+- "Alfred, take a screenshot" — Viewport capture
+- "Alfred, switch to plan/chat/agent mode" — Mode switch
+- "Alfred, be quiet" — Mute voice
+- "Alfred, snooze thoughts" — Snooze proactive thoughts
+- "Alfred, proceed / go ahead / do it" — Confirm and execute pending action
+- "Alfred, check markets" — Financial market summary
+- "Alfred, look up [url]" — Browse and extract URL content
+- "Alfred, search knowledge [query]" — Search brain knowledge base
+- "Alfred, start auto-learning" — Start background learning engine
+- "Alfred, stop auto-learning" — Stop background learning engine
+- "Alfred, what do you think?" — Request analysis or opinion
 
 ### Supabase tables
 
@@ -359,7 +404,41 @@ Timer-based with human cognition timing:
 
 ### Knowledge Ingestion
 
-Polls Forge harvester data every 5 minutes, extracts insights, stores in brain. New harvest categories added: `tech-news`, `patents`, `best-practices`, `ai-research`, `innovations`.
+Polls Forge harvester data every 5 minutes, extracts insights, stores in brain with expanded category routing:
+- `knowledge` — general facts, documentation
+- `skill` — best practices, patterns, techniques
+- `idea` — innovations, new concepts, tech news
+- `finance` — stocks, crypto, real estate, investing
+- `strategy` — business, military, chess strategy
+- `culture` — books, movies, entertainment
+- `research` — AI research, arXiv papers, academic
+
+### Proceed Protocol (v0.3.45)
+
+Destructive actions require user confirmation before execution:
+1. Alfred suggests an action (e.g. "Ready to start Midnight Mode")
+2. User says "proceed", "go ahead", "do it", or "yes"
+3. Only then does Alfred execute the action
+
+Actions requiring confirmation: start/stop midnight, start/stop harvest, start/stop auto-learn.
+
+---
+
+## Changelog
+
+### v0.3.45 — Alfred AGI Upgrade (2026-02-24)
+
+- **Personality overhaul**: Full system map, mission, financial awareness, honesty rules, proceed protocol, git awareness
+- **Proceed protocol**: Destructive actions require "proceed" / "go ahead" confirmation
+- **Web browser**: `web-browser.ts` — URL fetch with 5min cache + quick research
+- **Auto-learner**: `auto-learner.ts` — background engine cycling 15+ topics every 10min
+- **New voice commands**: proceed, check markets, browse URL, search brain, start/stop auto-learning, request analysis
+- **New system controls**: browseWeb, searchKnowledge, startAutoLearn, stopAutoLearn, checkMarkets
+- **Brain categories**: Added finance, strategy, culture, research — with full routing
+- **7 new scrapers**: finance, real-estate, business-strategy, military-strategy, chess-strategy, books, movies
+- **28 total harvest sources**: Up from 21, all wired into parallel workers
+- **Git pipeline hardening**: Pre-commit hook, version validation script, 3-file version rule, GIT RULES in all protocol prompts
+- **Cleanup**: Removed broken safe-json files, fixed titan-ide indentation
 
 ---
 

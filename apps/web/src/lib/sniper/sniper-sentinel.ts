@@ -41,7 +41,16 @@ OUTPUT FORMAT (JSON):
   "suggestions": ["suggestion 1"]
 }
 
-Be strict but fair. Only fail if there are genuine problems, not style preferences.`;
+Be strict but fair. Only fail if there are genuine problems, not style preferences.
+
+GIT RULES (applies to ALL Titan AI commits):
+- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.
+- manifest.json is auto-updated by CI. Never edit it manually.
+- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).
+- Before version bump: verify the code compiles. Never tag broken code.
+- Commit format: "vX.Y.Z: one-line description"
+- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.
+- NEVER force-push to main.`;
 
 export async function runSentinel(
   node: SniperDAGNode,

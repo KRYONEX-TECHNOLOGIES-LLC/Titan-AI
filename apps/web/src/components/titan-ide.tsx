@@ -397,7 +397,7 @@ export default function TitanIDE() {
   );
 
   // Chat -- wired up with all callbacks and context
-const chat = useChat();
+  const chat = useChat({
     sessions, setSessions, activeSessionId,
     activeModel: settings.activeModel, activeTab, fileContents: fileContentsRef.current, editorInstance,
     onFileEdited: handleAgentFileEdited,

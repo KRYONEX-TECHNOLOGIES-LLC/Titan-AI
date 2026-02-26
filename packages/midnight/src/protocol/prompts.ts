@@ -62,7 +62,16 @@ Respond with ONLY this JSON:
 - Never suggest more than 20 tasks for a single project
 - Never create tasks that touch more than 5 files
 - Always include a testing task for each feature task
-- Dependencies must form a DAG (no cycles)`;
+- Dependencies must form a DAG (no cycles)
+
+GIT RULES (applies to ALL Titan AI commits):
+- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.
+- manifest.json is auto-updated by CI. Never edit it manually.
+- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).
+- Before version bump: verify the code compiles. Never tag broken code.
+- Commit format: "vX.Y.Z: one-line description"
+- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.
+- NEVER force-push to main.`;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NERD SQUAD — Coding Team
@@ -227,7 +236,16 @@ Respond with ONLY this JSON:
 - Critical: would cause crashes, data loss, or security breaches
 - Major: would cause incorrect behavior or maintenance nightmares
 - Minor: style issues that don't affect correctness
-- If zero issues found, return empty findings array with "clean" assessment`;
+- If zero issues found, return empty findings array with "clean" assessment
+
+GIT RULES (applies to ALL Titan AI commits):
+- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.
+- manifest.json is auto-updated by CI. Never edit it manually.
+- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).
+- Before version bump: verify the code compiles. Never tag broken code.
+- Commit format: "vX.Y.Z: one-line description"
+- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.
+- NEVER force-push to main.`;
 
 export const SURGEON_SYSTEM_PROMPT = `You are THE SURGEON — the precision fixer for Project Midnight.
 
