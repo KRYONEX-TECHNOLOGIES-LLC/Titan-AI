@@ -2,11 +2,12 @@ name: Forge Harvest
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Every day at 2:00 AM UTC
+    - cron: '0 2 * * *'   # Daily 2 AM UTC — full rotation
+    - cron: '0 14 * * *'  # Daily 2 PM UTC — second pass
   workflow_dispatch:
     inputs:
       source:
-        description: 'Source to scrape (all, github, stackoverflow, docs, blog, dataset, reddit, devto, mdn, wikipedia, hackernews)'
+        description: 'Source to scrape (all, or specific source name)'
         default: 'all'
         required: false
       topic:
@@ -15,7 +16,11 @@ on:
         required: false
       limit:
         description: 'Max items to scrape per source'
-        default: '20'
+        default: '30'
+        required: false
+      parallel:
+        description: 'Use parallel workers (true/false)'
+        default: 'true'
         required: false
 
 permissions:
@@ -25,6 +30,7 @@ permissions:
 jobs:
   harvest:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,8 +42,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -53,25 +57,21 @@ jobs:
             echo "topic=${{ inputs.topic }}" >> $GITHUB_OUTPUT
             echo "limit=${{ inputs.limit }}" >> $GITHUB_OUTPUT
           else
-            # Rotate sources daily across 10 scrapers (2-week cycle)
+            # Rotate through ALL 26 sources on a 26-day cycle
             DAY_OF_YEAR=$(date +%j)
-            CYCLE=$((DAY_OF_YEAR % 10))
-            case $CYCLE in
-              0) SRC="github" ;;
-              1) SRC="stackoverflow" ;;
-              2) SRC="reddit" ;;
-              3) SRC="devto" ;;
-              4) SRC="mdn" ;;
-              5) SRC="wikipedia" ;;
-              6) SRC="hackernews" ;;
-              7) SRC="docs" ;;
-              8) SRC="blog" ;;
-              9) SRC="dataset" ;;
-              *) SRC="all" ;;
-            esac
+            CYCLE=$((DAY_OF_YEAR % 26))
+            SOURCES=(
+              github stackoverflow reddit devto mdn
+              wikipedia hackernews docs blog dataset
+              github-issues arxiv gitlab npm-docs competitive
+              tech-news best-practices ai-research innovations
+              finance real-estate business-strategy military-strategy
+              chess-strategy books movies
+            )
+            SRC="${SOURCES[$CYCLE]}"
             echo "source=$SRC" >> $GITHUB_OUTPUT
             echo "topic=all" >> $GITHUB_OUTPUT
-            echo "limit=30" >> $GITHUB_OUTPUT
+            echo "limit=50" >> $GITHUB_OUTPUT
           fi
 
       - name: Run harvest

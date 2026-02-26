@@ -1,0 +1,6 @@
+tree 26288ee63e77ace4c199dfaae48fcd1cf44f5c7f
+parent a8b7717609b6c7de0cc948d1338adc3c57d126bf
+author github-actions[bot] <github-actions[bot]@users.noreply.github.com> 1771884433 +0000
+committer github-actions[bot] <github-actions[bot]@users.noreply.github.com> 1771884433 +0000
+
+chore: bump release manifest to v0.2.2

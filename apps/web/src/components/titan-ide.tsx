@@ -613,6 +613,14 @@ export default function TitanIDE() {
     return () => window.removeEventListener('titan:openFolder', handler);
   }, [fileSystem]);
 
+  // Auto-start harvester on app boot (fire-and-forget, 4h cooldown on server)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetch('/api/forge/auto-harvest').catch(() => {});
+    }, 8000);
+    return () => clearTimeout(t);
+  }, []);
+
   // Close dropdowns on mousedown outside (mousedown fires before click, so button's stopPropagation works)
   useEffect(() => {
     const handleClose = (e: MouseEvent) => {
