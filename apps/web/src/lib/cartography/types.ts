@@ -78,6 +78,19 @@ export interface CartographyGraph {
   scannedAt: number;
 }
 
+export interface LegacyPattern {
+  file: string;
+  pattern: string;
+  modernAlternative: string;
+  effort: 'low' | 'medium' | 'high';
+}
+
+export interface CouplingHotZone {
+  files: string[];
+  reason: string;
+  severity: 'low' | 'medium' | 'high';
+}
+
 export interface LLMAnalysis {
   architectureSummary: string;
   hotspotAnalysis: string;
@@ -85,6 +98,9 @@ export interface LLMAnalysis {
   healthScore: number;
   keyDecisions: string[];
   risks: string[];
+  legacyPatterns: LegacyPattern[];
+  couplingHotZones: CouplingHotZone[];
+  modernizationPlan: string[];
 }
 
 export interface CartographyResult {

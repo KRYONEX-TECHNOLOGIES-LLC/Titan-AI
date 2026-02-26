@@ -59,10 +59,21 @@ function getPendingTasksContext(): string {
   return `\n[PENDING ALFRED TASKS - you committed to these, follow up]\n${tasks.map(t => `- ${t.description}`).join('\n')}\n`;
 }
 
+export interface AlfredBuildStep {
+  id: string;
+  tool: string;
+  description: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  result?: string;
+  startedAt?: number;
+  completedAt?: number;
+}
+
 export interface AlfredMessage {
   role: 'user' | 'alfred';
   text: string;
   time: string;
+  buildSteps?: AlfredBuildStep[];
 }
 
 type AlfredState = 'idle' | 'listening' | 'activated' | 'processing' | 'speaking';
@@ -217,6 +228,8 @@ export function useAlfredAmbient() {
           brainContext,
           learnedStrategies,
           systemState,
+          workspacePath: useFileStore.getState().workspacePath || '',
+          workspaceName: useFileStore.getState().workspaceName || '',
         }),
       });
 
@@ -233,6 +246,8 @@ export function useAlfredAmbient() {
       let buffer = '';
       let responseText = '';
       const pendingClientActions: Array<{ action: string; params: Record<string, string> }> = [];
+      const buildSteps: AlfredBuildStep[] = [];
+      let buildMsgId: string | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -258,17 +273,49 @@ export function useAlfredAmbient() {
               responseText = payload.content || '';
               if (payload.clientActions) pendingClientActions.push(...payload.clientActions);
             } else if (eventType === 'voice_tool_call') {
-              const payload = JSON.parse(data) as { name: string; dangerous?: boolean };
+              const payload = JSON.parse(data) as { name: string; dangerous?: boolean; args?: Record<string, unknown> };
+              const stepId = `step-${Date.now()}-${buildSteps.length}`;
+              const toolDesc = payload.args?.path ? `${payload.name}: ${String(payload.args.path)}` : payload.name;
+              buildSteps.push({ id: stepId, tool: payload.name, description: toolDesc, status: 'running', startedAt: Date.now() });
+
+              // Show live build progress in chat
+              if (!buildMsgId) {
+                buildMsgId = `build-${Date.now()}`;
+                const buildMsg: AlfredMessage = { role: 'alfred', text: '[build]', time: timestamp(), buildSteps: [...buildSteps] };
+                setConversationLog(prev => [...prev.slice(-80), buildMsg]);
+              } else {
+                setConversationLog(prev => prev.map(m =>
+                  m.buildSteps && m.text === '[build]' ? { ...m, buildSteps: [...buildSteps] } : m
+                ));
+              }
+
               if (payload.dangerous) {
-                pendingActionRef.current = {
-                  action: payload.name,
-                  params: {},
-                  description: `execute ${payload.name}`,
-                };
+                pendingActionRef.current = { action: payload.name, params: {}, description: `execute ${payload.name}` };
+              }
+            } else if (eventType === 'voice_tool_result') {
+              const payload = JSON.parse(data) as { name: string; success?: boolean; message?: string };
+              const step = buildSteps.find(s => s.tool === payload.name && s.status === 'running');
+              if (step) {
+                step.status = payload.success !== false ? 'done' : 'error';
+                step.completedAt = Date.now();
+                step.result = payload.message ? String(payload.message).slice(0, 200) : undefined;
+                setConversationLog(prev => prev.map(m =>
+                  m.buildSteps && m.text === '[build]' ? { ...m, buildSteps: [...buildSteps] } : m
+                ));
               }
             }
           } catch { /* skip malformed events */ }
         }
+      }
+
+      // Mark any remaining running steps as done
+      for (const step of buildSteps) {
+        if (step.status === 'running') { step.status = 'done'; step.completedAt = Date.now(); }
+      }
+      if (buildSteps.length > 0) {
+        setConversationLog(prev => prev.map(m =>
+          m.buildSteps && m.text === '[build]' ? { ...m, buildSteps: [...buildSteps] } : m
+        ));
       }
 
       // Execute any client-side actions returned by tool calls

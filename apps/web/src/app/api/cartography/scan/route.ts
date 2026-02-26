@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
         healthScore: hotspotReport.healthScore,
         keyDecisions: [],
         risks: graph.antiPatterns.filter(p => p.severity === 'critical').map(p => p.detail),
+        legacyPatterns: [],
+        couplingHotZones: [],
+        modernizationPlan: [],
       };
     } else {
       analysis = await analyzeWithLLM(graph, hotspotReport, fileTree);

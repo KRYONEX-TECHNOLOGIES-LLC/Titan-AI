@@ -20,6 +20,8 @@ interface VoiceRequestBody {
   projectStatus?: string;
   learnedStrategies?: string;
   systemState?: ClientState;
+  workspacePath?: string;
+  workspaceName?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -64,6 +66,7 @@ export async function POST(request: NextRequest) {
           body.projectStatus ? `\n[PROJECT STATUS]\n${body.projectStatus}` : '',
           brainContext ? `\n[BRAIN KNOWLEDGE]\n${brainContext}` : '',
           body.learnedStrategies ? `\n[LEARNED STRATEGIES]\n${body.learnedStrategies}` : '',
+          body.workspacePath ? `\n[ACTIVE WORKSPACE]\nPath: ${body.workspacePath}\nName: ${body.workspaceName || 'Unknown'}\nIs Titan AI: ${/titan[\s-_]?ai/i.test(body.workspacePath || '') ? 'YES' : 'NO'}` : '',
           '\nCONVERSATION RULES:',
           '- Keep spoken responses concise (2-4 sentences) unless the user asks for detail.',
           '- You are speaking aloud, so be natural and conversational.',

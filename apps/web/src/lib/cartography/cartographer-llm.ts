@@ -5,7 +5,7 @@ import type { HotspotReport } from './hotspot-detector';
 const CARTOGRAPHER_MODEL = 'deepseek/deepseek-v3.2';
 
 const CARTOGRAPHER_SYSTEM = `You are the Cartographer — Titan AI's elite codebase intelligence engine.
-You analyze dependency graphs, architecture patterns, and code health with surgical precision.
+You perform deep architecture analysis, dependency mapping, legacy detection, modernization planning, and resonance/coupling analysis with surgical precision.
 
 RULES:
 - Plain text only. NO emojis. NO markdown headers. Professional, direct, technical language.
@@ -14,6 +14,14 @@ RULES:
 - Health score must be 0-100 integer. Be honest — don't inflate.
 - Return ONLY valid JSON. No code fences, no extra text.
 
+ANALYSIS DOMAINS:
+1. ARCHITECTURE: Overall patterns (monolith, modular, layered, microservice), separation of concerns, folder structure quality.
+2. HOTSPOTS: High fan-in/fan-out files, god files, files with high churn risk.
+3. LEGACY DETECTION: Identify outdated patterns — deprecated APIs (e.g. componentWillMount, require() in ESM, var usage, callback-heavy code instead of async/await, old class components vs hooks, CommonJS in TS projects). Flag files using pre-2024 patterns that have modern alternatives.
+4. MODERNIZATION: For each legacy pattern, provide a specific file-by-file upgrade path with the modern replacement and expected benefit.
+5. RESONANCE/COUPLING: Identify files that are tightly coupled (change together, import each other heavily, share mutable state). Flag coupling hot zones where a change in one file risks cascading breaks. Compute coupling clusters.
+6. ANTI-PATTERNS: God files, circular deps, barrel file overuse, prop drilling chains, missing error boundaries, oversized components.
+
 OUTPUT FORMAT (strict JSON):
 {
   "architectureSummary": "one paragraph describing the project architecture",
@@ -21,7 +29,10 @@ OUTPUT FORMAT (strict JSON):
   "refactoringSuggestions": ["suggestion 1", "suggestion 2", ...],
   "healthScore": 82,
   "keyDecisions": ["decision 1 detected", ...],
-  "risks": ["risk 1", "risk 2", ...]
+  "risks": ["risk 1", "risk 2", ...],
+  "legacyPatterns": [{"file": "path", "pattern": "what is outdated", "modernAlternative": "what to use instead", "effort": "low|medium|high"}],
+  "couplingHotZones": [{"files": ["file1", "file2"], "reason": "why they are tightly coupled", "severity": "low|medium|high"}],
+  "modernizationPlan": ["step 1: upgrade X in file Y", "step 2: ..."]
 }`;
 
 function buildAnalysisPrompt(graph: CartographyGraph, report: HotspotReport, fileTree?: string): string {
@@ -109,6 +120,24 @@ export async function analyzeWithLLM(
         : report.healthScore,
       keyDecisions: Array.isArray(parsed.keyDecisions) ? parsed.keyDecisions.map(String) : [],
       risks: Array.isArray(parsed.risks) ? parsed.risks.map(String) : [],
+      legacyPatterns: Array.isArray(parsed.legacyPatterns)
+        ? (parsed.legacyPatterns as Record<string, unknown>[]).map(lp => ({
+            file: String(lp.file || ''),
+            pattern: String(lp.pattern || ''),
+            modernAlternative: String(lp.modernAlternative || ''),
+            effort: (['low', 'medium', 'high'].includes(String(lp.effort)) ? String(lp.effort) : 'medium') as 'low' | 'medium' | 'high',
+          }))
+        : [],
+      couplingHotZones: Array.isArray(parsed.couplingHotZones)
+        ? (parsed.couplingHotZones as Record<string, unknown>[]).map(cz => ({
+            files: Array.isArray(cz.files) ? (cz.files as unknown[]).map(String) : [],
+            reason: String(cz.reason || ''),
+            severity: (['low', 'medium', 'high'].includes(String(cz.severity)) ? String(cz.severity) : 'medium') as 'low' | 'medium' | 'high',
+          }))
+        : [],
+      modernizationPlan: Array.isArray(parsed.modernizationPlan)
+        ? parsed.modernizationPlan.map(String)
+        : [],
     };
   } catch (err) {
     console.error('[cartographer-llm] Analysis failed:', (err as Error).message);
@@ -122,6 +151,9 @@ export async function analyzeWithLLM(
       healthScore: report.healthScore,
       keyDecisions: [],
       risks: graph.antiPatterns.filter(p => p.severity === 'critical').map(p => p.detail),
+      legacyPatterns: [],
+      couplingHotZones: [],
+      modernizationPlan: [],
     };
   }
 }

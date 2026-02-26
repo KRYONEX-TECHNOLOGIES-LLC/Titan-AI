@@ -117,6 +117,14 @@ export const useCartographyStore = create<CartographyState>()(
           lines.push(`Risks: ${analysis.risks.slice(0, 3).join('; ')}`);
         }
 
+        if (analysis.legacyPatterns && analysis.legacyPatterns.length > 0) {
+          lines.push(`Legacy patterns: ${analysis.legacyPatterns.slice(0, 3).map(lp => `${lp.file}: ${lp.pattern} -> ${lp.modernAlternative}`).join('; ')}`);
+        }
+
+        if (analysis.couplingHotZones && analysis.couplingHotZones.length > 0) {
+          lines.push(`Coupling hot zones: ${analysis.couplingHotZones.slice(0, 3).map(cz => `${cz.files.join('+')} (${cz.severity})`).join('; ')}`);
+        }
+
         lines.push('=== END INTELLIGENCE ===');
 
         let result = lines.join('\n');

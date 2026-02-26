@@ -1834,6 +1834,63 @@ function renderInlineContent(text: string): React.ReactNode {
   return parts.length > 0 ? <>{parts}</> : text;
 }
 
+/* ─── ALFRED BUILD PROGRESS CARD ─── */
+function BuildProgressCard({ steps }: { steps: Array<{ id: string; tool: string; description: string; status: string; result?: string }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const completed = steps.filter(s => s.status === 'done').length;
+  const hasErrors = steps.some(s => s.status === 'error');
+  const allDone = steps.every(s => s.status === 'done' || s.status === 'error');
+
+  return (
+    <div className="bg-[#1a1a2e] border border-cyan-800/30 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2 hover:bg-cyan-900/10 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-cyan-400 font-mono">{expanded ? '▾' : '▸'}</span>
+          <span className="text-[11px] font-semibold text-cyan-300">
+            {allDone ? 'Build Complete' : 'Building...'}
+          </span>
+          <span className="text-[10px] text-[#808080]">{completed}/{steps.length} steps</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {!allDone && <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-pulse" />}
+          {allDone && !hasErrors && <span className="text-[10px] text-green-400">DONE</span>}
+          {hasErrors && <span className="text-[10px] text-red-400">ERRORS</span>}
+        </div>
+      </button>
+      {/* Progress bar */}
+      <div className="h-1 bg-[#0d1117]">
+        <div
+          className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
+          style={{ width: `${steps.length > 0 ? (completed / steps.length) * 100 : 0}%` }}
+        />
+      </div>
+      {expanded && (
+        <div className="px-3 py-1.5 space-y-1">
+          {steps.map((step) => (
+            <div key={step.id} className="flex items-start gap-2 py-0.5">
+              <span className="shrink-0 mt-0.5 text-[11px]">
+                {step.status === 'done' ? <span className="text-green-400">&#10003;</span>
+                  : step.status === 'error' ? <span className="text-red-400">&#10007;</span>
+                  : step.status === 'running' ? <span className="text-cyan-400 animate-pulse">&#9679;</span>
+                  : <span className="text-[#555]">&#9675;</span>}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-mono text-[#b0b0b0] truncate">{step.description}</div>
+                {step.result && expanded && (
+                  <div className="text-[9px] text-[#666] mt-0.5 truncate">{step.result}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── ALFRED PANEL ─── */
 function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred: ReturnType<typeof useAlfredAmbient> }) {
   const titanVoice = useTitanVoice();
@@ -1922,28 +1979,42 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
 
       {/* Conversation Log */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {conversationLog.map((entry, i) => (
-          <div key={i} className={`flex gap-2 ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {entry.role === 'alfred' && (
-              <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-white text-[9px] font-bold">A</span>
+        {conversationLog.map((entry, i) => {
+          if (entry.buildSteps && entry.buildSteps.length > 0) {
+            return (
+              <div key={i} className="flex gap-2 justify-start">
+                <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-white text-[9px] font-bold">A</span>
+                </div>
+                <div className="max-w-[90%] flex-1">
+                  <BuildProgressCard steps={entry.buildSteps} />
+                </div>
               </div>
-            )}
-            <div className={`max-w-[85%] rounded-lg px-3 py-2 ${
-              entry.role === 'user'
-                ? 'bg-blue-600/20 border border-blue-500/30'
-                : 'bg-[#252526] border border-[#3c3c3c]'
-            }`}>
-              <div className="text-[12px] text-[#e0e0e0] leading-relaxed whitespace-pre-wrap">{entry.role === 'alfred' ? renderAlfredMessage(entry.text) : entry.text}</div>
-              <span className="text-[9px] text-[#666] mt-1 block">{entry.time}</span>
+            );
+          }
+          return (
+            <div key={i} className={`flex gap-2 ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {entry.role === 'alfred' && (
+                <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-white text-[9px] font-bold">A</span>
+                </div>
+              )}
+              <div className={`max-w-[85%] rounded-lg px-3 py-2 ${
+                entry.role === 'user'
+                  ? 'bg-blue-600/20 border border-blue-500/30'
+                  : 'bg-[#252526] border border-[#3c3c3c]'
+              }`}>
+                <div className="text-[12px] text-[#e0e0e0] leading-relaxed whitespace-pre-wrap">{entry.role === 'alfred' ? renderAlfredMessage(entry.text) : entry.text}</div>
+                <span className="text-[9px] text-[#666] mt-1 block">{entry.time}</span>
+              </div>
+              {entry.role === 'user' && (
+                <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-white text-[9px] font-bold">U</span>
+                </div>
+              )}
             </div>
-            {entry.role === 'user' && (
-              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-white text-[9px] font-bold">U</span>
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
         {isProcessing && (
           <div className="flex gap-2 justify-start">
             <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0">
