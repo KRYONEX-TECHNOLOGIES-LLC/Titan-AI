@@ -88,6 +88,14 @@ async function pollAndIngest(): Promise<number> {
         brainCategory = 'skill';
       } else if (cat === 'innovations' || cat === 'ideas' || cat === 'tech-news') {
         brainCategory = 'idea';
+      } else if (cat === 'finance' || cat === 'real-estate' || cat === 'stocks' || cat === 'crypto') {
+        brainCategory = 'finance';
+      } else if (cat === 'business-strategy' || cat === 'military-strategy' || cat === 'chess-strategy') {
+        brainCategory = 'strategy';
+      } else if (cat === 'books' || cat === 'movies' || cat === 'entertainment') {
+        brainCategory = 'culture';
+      } else if (cat === 'ai-research' || cat === 'arxiv' || cat === 'papers') {
+        brainCategory = 'research';
       }
 
       tasks.push({

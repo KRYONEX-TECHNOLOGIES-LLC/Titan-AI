@@ -94,6 +94,43 @@ const COMMANDS: VoiceCommand[] = [
     action: 'show_evolution',
     description: 'Show evolution/growth stats',
   },
+  {
+    pattern: /\b(?:(?:alfred|titan)[,.]?\s+)?(?:proceed|go\s+ahead|do\s+it|make\s+it\s+(?:so|happen)|execute|confirmed?)\b/i,
+    action: 'proceed',
+    description: 'Confirm and execute pending action',
+  },
+  {
+    pattern: /\b(?:(?:alfred|titan)[,.]?\s+)?(?:what\s+do\s+you\s+think|your\s+(?:thoughts?|opinion|take)|analyze\s+this)\b/i,
+    action: 'request_analysis',
+    description: 'Ask Alfred for analysis or opinion',
+  },
+  {
+    pattern: /\b(?:(?:alfred|titan)[,.]?\s+)?(?:check|how\s+(?:are|is)\s+(?:the\s+)?market|stock|crypto|bitcoin|finance)\b/i,
+    action: 'check_markets',
+    description: 'Check financial markets',
+  },
+  {
+    pattern: /\b(?:(?:alfred|titan)[,.]?\s+)?(?:look\s+(?:up|into|at)|browse|open|fetch|visit)\s+(?:the\s+)?(?:url\s+|site\s+|page\s+)?(.+)/i,
+    action: 'browse_web',
+    description: 'Browse a URL or look something up',
+    extract: (m) => ({ url: m[1].trim() }),
+  },
+  {
+    pattern: /\b(?:(?:alfred|titan)[,.]?\s+)?(?:search|find|query)\s+(?:the\s+)?(?:brain|knowledge|memory)\s+(?:for\s+)?(.+)/i,
+    action: 'search_knowledge',
+    description: 'Search brain knowledge base',
+    extract: (m) => ({ query: m[1].trim() }),
+  },
+  {
+    pattern: /\b(?:(?:alfred|titan)[,.]?\s+)?(?:start|begin|enable)\s+(?:auto[- ]?learn(?:ing|er)?|background\s+learn(?:ing)?)\b/i,
+    action: 'start_auto_learn',
+    description: 'Start autonomous background learning',
+  },
+  {
+    pattern: /\b(?:(?:alfred|titan)[,.]?\s+)?(?:stop|disable|pause)\s+(?:auto[- ]?learn(?:ing|er)?|background\s+learn(?:ing)?)\b/i,
+    action: 'stop_auto_learn',
+    description: 'Stop autonomous background learning',
+  },
 ];
 
 export function parseVoiceCommand(text: string): VoiceCommandResult {

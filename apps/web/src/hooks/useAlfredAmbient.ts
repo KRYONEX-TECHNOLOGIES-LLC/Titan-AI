@@ -47,6 +47,9 @@ export function useAlfredAmbient() {
   const wakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processingRef = useRef(false);
 
+  // Pending action for "proceed" flow
+  const pendingActionRef = useRef<{ action: string; params: Record<string, string>; description: string } | null>(null);
+
   const addToLog = useCallback((role: 'user' | 'alfred', text: string) => {
     const msg: AlfredMessage = { role, text, time: timestamp() };
     setConversationLog(prev => [...prev.slice(-80), msg]);
@@ -68,6 +71,35 @@ export function useAlfredAmbient() {
       const { executeVoiceAction } = await import('@/lib/voice/system-control');
       const result = parseVoiceCommand(text);
       if (result.matched) {
+        // "proceed" confirms and executes the pending action
+        if (result.action === 'proceed') {
+          const pending = pendingActionRef.current;
+          if (pending) {
+            pendingActionRef.current = null;
+            const controlResult = await executeVoiceAction(pending.action, pending.params);
+            addToLog('alfred', controlResult.message);
+            titanVoice.speak(controlResult.message, 8);
+          } else {
+            addToLog('alfred', 'Nothing pending to execute, sir.');
+            titanVoice.speak('Nothing pending to execute, sir.', 6);
+          }
+          setAlfredState('speaking');
+          processingRef.current = false;
+          return;
+        }
+
+        // Actions that modify state get held for confirmation
+        const confirmActions = new Set(['start_midnight', 'stop_midnight', 'start_harvest', 'stop_harvest', 'start_auto_learn', 'stop_auto_learn']);
+        if (confirmActions.has(result.action)) {
+          pendingActionRef.current = { action: result.action, params: result.params, description: result.description };
+          const msg = `Ready to ${result.description.toLowerCase()}. Say "proceed" or "go ahead" to confirm.`;
+          addToLog('alfred', msg);
+          titanVoice.speak(msg, 8);
+          setAlfredState('speaking');
+          processingRef.current = false;
+          return;
+        }
+
         const controlResult = await executeVoiceAction(result.action, result.params);
         addToLog('alfred', controlResult.message);
         titanVoice.speak(controlResult.message, 8);

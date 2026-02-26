@@ -170,6 +170,73 @@ export function snoozeThoughts(durationMs = 1800000): ControlResult {
 }
 
 /**
+ * Browse a URL and extract content.
+ */
+export async function browseWeb(url: string): Promise<ControlResult> {
+  try {
+    const { fetchAndExtract } = await import('./web-browser');
+    const result = await fetchAndExtract(url);
+    return { success: true, message: `Fetched: ${result.title || url}`, data: { content: result.content.slice(0, 2000), title: result.title } };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to browse URL' };
+  }
+}
+
+/**
+ * Search the brain knowledge base.
+ */
+export function searchKnowledge(query: string): ControlResult {
+  try {
+    const { queryBrain } = require('./brain-storage');
+    const results = queryBrain(undefined, query) as Array<{ content: string; category: string }>;
+    if (results.length === 0) return { success: true, message: `No brain entries found for "${query}"` };
+    const summary = results.slice(0, 5).map((r: { content: string; category: string }) => `[${r.category}] ${r.content.slice(0, 100)}`).join('\n');
+    return { success: true, message: `Found ${results.length} entries:\n${summary}`, data: { count: results.length } };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Knowledge search failed' };
+  }
+}
+
+/**
+ * Start the auto-learner background engine.
+ */
+export async function startAutoLearn(): Promise<ControlResult> {
+  try {
+    const { getAutoLearner } = await import('./auto-learner');
+    getAutoLearner().start();
+    return { success: true, message: 'Auto-learner started. I\'ll research in the background and report findings.' };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to start auto-learner' };
+  }
+}
+
+/**
+ * Stop the auto-learner.
+ */
+export async function stopAutoLearn(): Promise<ControlResult> {
+  try {
+    const { getAutoLearner } = await import('./auto-learner');
+    getAutoLearner().stop();
+    return { success: true, message: 'Auto-learner stopped.' };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to stop auto-learner' };
+  }
+}
+
+/**
+ * Check market/finance data (delegates to auto-learner).
+ */
+export async function checkMarkets(): Promise<ControlResult> {
+  try {
+    const { getAutoLearner } = await import('./auto-learner');
+    const summary = await getAutoLearner().getMarketSummary();
+    return { success: true, message: summary || 'No market data available yet. Start the auto-learner first.' };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Market check failed' };
+  }
+}
+
+/**
  * Execute a voice command action.
  */
 export async function executeVoiceAction(action: string, params: Record<string, string>): Promise<ControlResult> {
@@ -186,6 +253,11 @@ export async function executeVoiceAction(action: string, params: Record<string, 
     case 'snooze_thoughts': return snoozeThoughts();
     case 'show_ideas': return { success: true, message: 'Loading ideas...', data: { action: 'show_ideas' } };
     case 'show_evolution': return { success: true, message: 'Loading evolution stats...', data: { action: 'show_evolution' } };
+    case 'browse_web': return browseWeb(params.url || '');
+    case 'search_knowledge': return searchKnowledge(params.query || '');
+    case 'start_auto_learn': return startAutoLearn();
+    case 'stop_auto_learn': return stopAutoLearn();
+    case 'check_markets': return checkMarkets();
     default: return { success: false, message: `Unknown action: ${action}` };
   }
 }

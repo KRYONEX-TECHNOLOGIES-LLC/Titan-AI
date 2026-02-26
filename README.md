@@ -106,14 +106,17 @@ Titan AI/
 - **Wake word activation**: Say "Alfred" to activate — responds "Yes sir" and listens for command
 - **Ambient always-on listening**: Runs globally, not just in Alfred panel. Orb indicator in sidebar glows/pulses to show state
 - **Full conversational memory**: Injects persistent memory (preferences, decisions, identity), brain knowledge, and conversation history into every response
+- **Proceed protocol**: Destructive actions require "proceed" / "go ahead" confirmation before execution
 - Text-to-speech via Web Speech API with auto-speak toggle
-- Voice commands: "Alfred, start midnight mode", "Alfred, scan the project", "Alfred, status"
+- Voice commands: "Alfred, start midnight mode", "Alfred, scan the project", "Alfred, check markets", "Alfred, look up [url]", "Alfred, search knowledge [query]", "Alfred, start auto-learning"
 - Proactive thought engine: AI-generated suggestions with dedup, snooze, and cooldown
-- Persistent brain: Supabase + localStorage for knowledge, skills, ideas, conversations
+- Persistent brain: Supabase + localStorage for knowledge, skills, ideas, finance, strategy, culture, research
+- **Web browser**: URL fetching and content extraction with caching
+- **Auto-learner**: Autonomous background learning engine cycling through 15+ topics (tech, finance, strategy, chess, etc.)
 - Async parallel data ingestion pipeline for knowledge harvesting
 - Evolution tracking: level system, milestones, growth stats
-- Full system control: can operate Plan Mode, Midnight Mode, Forge, file system
-- Knowledge ingestion: feeds from Forge harvester data into the brain
+- Full system control: can operate Plan Mode, Midnight Mode, Forge, file system, web browsing, market checks
+- Knowledge ingestion: feeds from Forge harvester data into the brain with expanded category routing
 - Cost: ~$0.001-0.005 per interaction
 
 ### 7-Layer Persistent Memory
@@ -133,7 +136,7 @@ Titan AI/
 - **Omega Protocol**: Deep-research multi-specialist engine
 
 ### Forge Harvester
-- 100 parallel workers scraping 15+ sources
+- 100 parallel workers scraping 22+ sources (including finance, real-estate, strategy, chess, books, movies)
 - 5-pass quality pipeline with AI judge
 - Continuous harvest targeting 10,000+ samples for model training
 - Email notification on completion

@@ -69,7 +69,7 @@ export default function TitanIDE() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-const titanSession = useSession();
+  const titanSession = useSession();
   const { alfredState } = useAlfredAmbient();
   const chat = useChat();
 

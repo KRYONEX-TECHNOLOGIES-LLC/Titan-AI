@@ -32,6 +32,13 @@ const RATE_LIMIT_MS: Record<HarvestSource, number> = {
   'best-practices': 700,
   'ai-research': 1500,
   'innovations': 1000,
+  'finance': 800,
+  'real-estate': 800,
+  'business-strategy': 800,
+  'military-strategy': 700,
+  'chess-strategy': 700,
+  'books': 500,
+  'movies': 700,
 };
 
 function sleep(ms: number): Promise<void> {

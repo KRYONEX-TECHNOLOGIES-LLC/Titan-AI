@@ -1,6 +1,6 @@
 {
   "name": "@titan/web",
-  "version": "0.3.40",
+  "version": "0.3.45",
   "private": true,
   "scripts": {
     "dev": "next dev",

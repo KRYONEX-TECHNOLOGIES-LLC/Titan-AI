@@ -7,7 +7,7 @@ const BRAIN_LS_KEY = 'titan-voice-brain';
 const CONVOS_LS_KEY = 'titan-voice-conversations';
 const IDEAS_LS_KEY = 'titan-voice-ideas';
 
-export type BrainCategory = 'knowledge' | 'skill' | 'idea' | 'observation' | 'mistake';
+export type BrainCategory = 'knowledge' | 'skill' | 'idea' | 'observation' | 'mistake' | 'finance' | 'strategy' | 'culture' | 'research';
 export type IdeaCategory = 'project' | 'improvement' | 'invention' | 'cure' | 'tool';
 export type IdeaStatus = 'idea' | 'in_progress' | 'completed' | 'archived';
 
@@ -258,6 +258,18 @@ export function serializeBrainContext(maxChars = 2000): string {
   if (mistakes.length > 0) {
     parts.push('Mistakes to avoid: ' + mistakes.map(m => m.content.slice(0, 80)).join(' | '));
   }
+  const finance = queryBrain('finance').slice(0, 5);
+  if (finance.length > 0) {
+    parts.push('Finance: ' + finance.map(f => f.content.slice(0, 80)).join(' | '));
+  }
+  const strategy = queryBrain('strategy').slice(0, 5);
+  if (strategy.length > 0) {
+    parts.push('Strategy: ' + strategy.map(s => s.content.slice(0, 80)).join(' | '));
+  }
+  const culture = queryBrain('culture').slice(0, 5);
+  if (culture.length > 0) {
+    parts.push('Culture: ' + culture.map(c => c.content.slice(0, 80)).join(' | '));
+  }
   if (ideas.length > 0) {
     parts.push('Active ideas: ' + ideas.map(i => `${i.title} (${i.status})`).join(', '));
   }
@@ -275,7 +287,7 @@ export const SUPABASE_MIGRATION_SQL = `
 CREATE TABLE IF NOT EXISTS titan_voice_brain (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id TEXT DEFAULT 'default',
-  category TEXT NOT NULL CHECK (category IN ('knowledge', 'skill', 'idea', 'observation', 'mistake')),
+  category TEXT NOT NULL CHECK (category IN ('knowledge', 'skill', 'idea', 'observation', 'mistake', 'finance', 'strategy', 'culture', 'research')),
   content TEXT NOT NULL,
   source TEXT DEFAULT '',
   importance INT DEFAULT 5,

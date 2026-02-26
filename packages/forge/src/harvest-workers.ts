@@ -20,6 +20,8 @@ const ALL_SOURCES: HarvestSource[] = [
   'reddit', 'devto', 'mdn', 'wikipedia', 'hackernews',
   'github-issues', 'arxiv', 'gitlab', 'npm-docs', 'competitive',
   'tech-news', 'best-practices', 'ai-research', 'innovations',
+  'finance', 'real-estate', 'business-strategy', 'military-strategy',
+  'chess-strategy', 'books', 'movies',
 ];
 
 const LEGACY_SOURCES: HarvestSource[] = [
@@ -30,6 +32,8 @@ const LEGACY_SOURCES: HarvestSource[] = [
 const NEW_SOURCES: HarvestSource[] = [
   'github-issues', 'arxiv', 'gitlab', 'npm-docs', 'competitive',
   'tech-news', 'best-practices', 'ai-research', 'innovations',
+  'finance', 'real-estate', 'business-strategy', 'military-strategy',
+  'chess-strategy', 'books', 'movies',
 ];
 
 export interface ParallelHarvestOptions {

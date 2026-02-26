@@ -287,6 +287,208 @@ async function scrapeCompetitive(topic: string, limit: number): Promise<ScrapedI
   return items;
 }
 
+// ── Finance ──
+async function scrapeFinance(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  const query = encodeURIComponent(topic || 'investing strategy portfolio');
+  try {
+    const url = `https://hn.algolia.com/api/v1/search_by_date?query=${query}+finance&tags=story&hitsPerPage=${Math.min(limit, 20)}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/2.0' } });
+    if (!res.ok) return items;
+    const data = (await res.json()) as { hits?: Array<{ title?: string; url?: string; story_text?: string; objectID?: string }> };
+    for (const hit of data.hits || []) {
+      if (!hit.title) continue;
+      items.push({
+        source: 'finance',
+        source_url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
+        title: hit.title,
+        raw_content: hit.story_text || hit.title,
+        instruction: `Explain this financial concept: ${hit.title}`,
+        response: hit.story_text || `Analysis of: ${hit.title}`,
+        language: 'en',
+        tags: ['finance', 'investing', topic],
+      });
+    }
+  } catch (err) {
+    console.error('[harvester/finance] Error:', (err as Error).message);
+  }
+  return items;
+}
+
+// ── Real Estate ──
+async function scrapeRealEstate(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  const query = encodeURIComponent(topic || 'real estate investment property');
+  try {
+    const url = `https://hn.algolia.com/api/v1/search_by_date?query=${query}+real+estate&tags=story&hitsPerPage=${Math.min(limit, 20)}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/2.0' } });
+    if (!res.ok) return items;
+    const data = (await res.json()) as { hits?: Array<{ title?: string; url?: string; story_text?: string; objectID?: string }> };
+    for (const hit of data.hits || []) {
+      if (!hit.title) continue;
+      items.push({
+        source: 'real-estate',
+        source_url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
+        title: hit.title,
+        raw_content: hit.story_text || hit.title,
+        instruction: `Explain this real estate concept: ${hit.title}`,
+        response: hit.story_text || `Analysis of: ${hit.title}`,
+        language: 'en',
+        tags: ['real-estate', 'property', topic],
+      });
+    }
+  } catch (err) {
+    console.error('[harvester/real-estate] Error:', (err as Error).message);
+  }
+  return items;
+}
+
+// ── Business Strategy ──
+async function scrapeBusinessStrategy(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  const query = encodeURIComponent(topic || 'business strategy scaling startup');
+  try {
+    const url = `https://hn.algolia.com/api/v1/search?query=${query}+strategy&tags=story&hitsPerPage=${Math.min(limit, 20)}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/2.0' } });
+    if (!res.ok) return items;
+    const data = (await res.json()) as { hits?: Array<{ title?: string; url?: string; story_text?: string; objectID?: string }> };
+    for (const hit of data.hits || []) {
+      if (!hit.title) continue;
+      items.push({
+        source: 'business-strategy',
+        source_url: hit.url || `https://news.ycombinator.com/item?id=${hit.objectID}`,
+        title: hit.title,
+        raw_content: hit.story_text || hit.title,
+        instruction: `Explain this business strategy: ${hit.title}`,
+        response: hit.story_text || `Strategy analysis: ${hit.title}`,
+        language: 'en',
+        tags: ['business', 'strategy', topic],
+      });
+    }
+  } catch (err) {
+    console.error('[harvester/business-strategy] Error:', (err as Error).message);
+  }
+  return items;
+}
+
+// ── Military Strategy ──
+async function scrapeMilitaryStrategy(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  const query = encodeURIComponent(topic || 'military strategy tactics leadership');
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${query}&srnamespace=0&srlimit=${Math.min(limit, 15)}&format=json`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/2.0' } });
+    if (!res.ok) return items;
+    const data = (await res.json()) as { query?: { search?: Array<{ title?: string; snippet?: string; pageid?: number }> } };
+    for (const result of data.query?.search || []) {
+      if (!result.title || !result.snippet) continue;
+      const clean = result.snippet.replace(/<[^>]*>/g, '');
+      items.push({
+        source: 'military-strategy',
+        source_url: `https://en.wikipedia.org/wiki/${encodeURIComponent(result.title)}`,
+        title: result.title,
+        raw_content: clean,
+        instruction: `Explain the military strategy concept: ${result.title}`,
+        response: clean,
+        language: 'en',
+        tags: ['military', 'strategy', 'leadership', topic],
+      });
+    }
+  } catch (err) {
+    console.error('[harvester/military-strategy] Error:', (err as Error).message);
+  }
+  return items;
+}
+
+// ── Chess Strategy ──
+async function scrapeChessStrategy(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  const query = encodeURIComponent(topic || 'chess opening strategy tactics endgame');
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${query}+chess&srnamespace=0&srlimit=${Math.min(limit, 15)}&format=json`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/2.0' } });
+    if (!res.ok) return items;
+    const data = (await res.json()) as { query?: { search?: Array<{ title?: string; snippet?: string; pageid?: number }> } };
+    for (const result of data.query?.search || []) {
+      if (!result.title || !result.snippet) continue;
+      const clean = result.snippet.replace(/<[^>]*>/g, '');
+      items.push({
+        source: 'chess-strategy',
+        source_url: `https://en.wikipedia.org/wiki/${encodeURIComponent(result.title)}`,
+        title: result.title,
+        raw_content: clean,
+        instruction: `Explain the chess concept: ${result.title}`,
+        response: clean,
+        language: 'en',
+        tags: ['chess', 'strategy', 'games', topic],
+      });
+    }
+  } catch (err) {
+    console.error('[harvester/chess-strategy] Error:', (err as Error).message);
+  }
+  return items;
+}
+
+// ── Books ──
+async function scrapeBooks(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  const query = encodeURIComponent(topic || 'programming software engineering');
+  try {
+    const url = `https://openlibrary.org/search.json?q=${query}&limit=${Math.min(limit, 20)}`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/2.0' } });
+    if (!res.ok) return items;
+    const data = (await res.json()) as { docs?: Array<{ title?: string; author_name?: string[]; first_sentence?: string[]; key?: string; subject?: string[] }> };
+    for (const book of data.docs || []) {
+      if (!book.title) continue;
+      const author = book.author_name?.[0] || 'Unknown';
+      const sentence = book.first_sentence?.[0] || '';
+      const subjects = (book.subject || []).slice(0, 5).join(', ');
+      items.push({
+        source: 'books',
+        source_url: `https://openlibrary.org${book.key}`,
+        title: `${book.title} by ${author}`,
+        raw_content: `${book.title} by ${author}. ${sentence} Subjects: ${subjects}`,
+        instruction: `Summarize the key ideas from the book "${book.title}" by ${author}`,
+        response: sentence || `${book.title} is a book by ${author} covering: ${subjects}`,
+        language: 'en',
+        tags: ['books', 'reading', topic],
+      });
+    }
+  } catch (err) {
+    console.error('[harvester/books] Error:', (err as Error).message);
+  }
+  return items;
+}
+
+// ── Movies ──
+async function scrapeMovies(topic: string, limit: number): Promise<ScrapedItem[]> {
+  const items: ScrapedItem[] = [];
+  const query = encodeURIComponent(topic || 'science fiction technology');
+  try {
+    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${query}+film&srnamespace=0&srlimit=${Math.min(limit, 15)}&format=json`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/2.0' } });
+    if (!res.ok) return items;
+    const data = (await res.json()) as { query?: { search?: Array<{ title?: string; snippet?: string; pageid?: number }> } };
+    for (const result of data.query?.search || []) {
+      if (!result.title || !result.snippet) continue;
+      const clean = result.snippet.replace(/<[^>]*>/g, '');
+      items.push({
+        source: 'movies',
+        source_url: `https://en.wikipedia.org/wiki/${encodeURIComponent(result.title)}`,
+        title: result.title,
+        raw_content: clean,
+        instruction: `Describe the film "${result.title}" and its themes`,
+        response: clean,
+        language: 'en',
+        tags: ['movies', 'film', 'entertainment', topic],
+      });
+    }
+  } catch (err) {
+    console.error('[harvester/movies] Error:', (err as Error).message);
+  }
+  return items;
+}
+
 // ── Source Router ──
 
 export async function scrapeNewSources(
@@ -314,6 +516,20 @@ export async function scrapeNewSources(
     case 'innovations':
     case 'patents':
       return scrapeInnovations(topic, limit);
+    case 'finance':
+      return scrapeFinance(topic, limit);
+    case 'real-estate':
+      return scrapeRealEstate(topic, limit);
+    case 'business-strategy':
+      return scrapeBusinessStrategy(topic, limit);
+    case 'military-strategy':
+      return scrapeMilitaryStrategy(topic, limit);
+    case 'chess-strategy':
+      return scrapeChessStrategy(topic, limit);
+    case 'books':
+      return scrapeBooks(topic, limit);
+    case 'movies':
+      return scrapeMovies(topic, limit);
     default:
       return [];
   }
