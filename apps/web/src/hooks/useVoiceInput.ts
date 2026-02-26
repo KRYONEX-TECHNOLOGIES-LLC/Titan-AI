@@ -90,15 +90,23 @@ export function useVoiceInput(
       const base64 = btoa(
         new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''),
       );
+      const mimeType = blob.type || 'audio/webm';
+      console.log('[voice] Sending audio chunk for transcription:', { size: blob.size, mimeType });
       const res = await fetch('/api/speech/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ audio: base64 }),
+        body: JSON.stringify({ audio: base64, mimeType }),
       });
-      if (!res.ok) return '';
+      if (!res.ok) {
+        console.warn('[voice] Transcription API returned', res.status);
+        return '';
+      }
       const data = (await res.json()) as { text?: string };
-      return data.text?.trim() || '';
-    } catch {
+      const text = data.text?.trim() || '';
+      if (text) console.log('[voice] Transcribed:', text);
+      return text;
+    } catch (err) {
+      console.warn('[voice] Transcription failed:', err);
       return '';
     }
   }
@@ -108,58 +116,59 @@ export function useVoiceInput(
     setErrorMessage(null);
     setInterimText('');
 
-    navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+    const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/mp4';
+
+    navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    }).then((stream) => {
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-      mediaRecorderRef.current = recorder;
-      audioChunksRef.current = [];
+      console.log('[voice] Whisper recording started, format:', preferredMime);
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = () => {
-        // Process final chunk
-        if (audioChunksRef.current.length > 0) {
-          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-          audioChunksRef.current = [];
-          if (blob.size > 1000) {
-            setInterimText('Transcribing...');
-            transcribeChunk(blob).then((text) => {
-              setInterimText('');
-              if (text) onTranscript(text);
-            });
+      function createRecorder(): MediaRecorder {
+        const rec = new MediaRecorder(stream, { mimeType: preferredMime });
+        const chunks: Blob[] = [];
+        rec.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+        rec.onstop = () => {
+          if (chunks.length > 0) {
+            const blob = new Blob(chunks, { type: preferredMime.split(';')[0] });
+            chunks.length = 0;
+            if (blob.size > 500) {
+              transcribeChunk(blob).then((text) => {
+                setInterimText('');
+                if (text) onTranscript(text);
+              });
+            }
           }
-        }
-      };
+        };
+        return rec;
+      }
 
-      recorder.start();
+      let activeRecorder = createRecorder();
+      mediaRecorderRef.current = activeRecorder;
+      activeRecorder.start();
       setIsListening(true);
 
-      // Every 4 seconds, stop and restart recording to get chunks for transcription
       whisperIntervalRef.current = setInterval(() => {
-        if (recorder.state === 'recording') {
-          recorder.stop();
-          setTimeout(() => {
-            if (streamRef.current && mediaRecorderRef.current) {
-              try {
-                const newRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
-                newRecorder.ondataavailable = (e) => {
-                  if (e.data.size > 0) audioChunksRef.current.push(e.data);
-                };
-                newRecorder.onstop = recorder.onstop;
-                mediaRecorderRef.current = newRecorder;
-                audioChunksRef.current = [];
-                newRecorder.start();
-              } catch { /* stream may have ended */ }
-            }
-          }, 100);
+        if (!streamRef.current) return;
+        if (activeRecorder.state === 'recording') {
+          activeRecorder.stop();
         }
-      }, 4000);
+        try {
+          activeRecorder = createRecorder();
+          mediaRecorderRef.current = activeRecorder;
+          activeRecorder.start();
+        } catch { /* stream ended */ }
+      }, 3000);
     }).catch((err) => {
       console.error('[voice] Mic access failed:', err);
       setIsListening(false);
-      setErrorMessage('Microphone access denied.');
+      setErrorMessage('Microphone access denied. Check browser permissions.');
     });
   }
 

@@ -3,7 +3,7 @@ import { TITAN_VOICE_PERSONALITY } from '@/lib/voice/titan-personality';
 import { serializeBrainContext } from '@/lib/voice/brain-storage';
 import { callModelDirect, callModelWithTools } from '@/lib/llm-call';
 import { VOICE_MODELS, classifyComplexity, type VoiceRole } from '@/lib/voice/titan-voice-protocol';
-import { getToolSchema, executeToolServerSide, isToolDangerous, type ToolExecResult } from '@/lib/voice/alfred-tools';
+import { getToolSchema, executeToolServerSide, isToolDangerous, type ToolExecResult, type ClientState } from '@/lib/voice/alfred-tools';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +19,7 @@ interface VoiceRequestBody {
   codeDirectory?: string;
   projectStatus?: string;
   learnedStrategies?: string;
+  systemState?: ClientState;
 }
 
 export async function POST(request: NextRequest) {
@@ -67,10 +68,11 @@ export async function POST(request: NextRequest) {
           '- Keep spoken responses concise (2-4 sentences) unless the user asks for detail.',
           '- You are speaking aloud, so be natural and conversational.',
           '- Reference things you remember about the user from memory.',
-          '- You have REAL tool-calling capabilities. When you need to take action, use your tools. Do NOT just describe what you would do — actually call the tool.',
-          '- When a tool returns results, ALWAYS summarize the useful findings for the user. Never just say "I processed your request" — tell them what you found.',
-          '- When the user says "yes", "ok", "proceed", "go ahead", or "do it" — EXECUTE immediately. Do not ask again.',
-          '- For dangerous actions (starting protocols, harvester, git), tell the user what you plan to do and they will confirm.',
+          '- You have REAL tool-calling capabilities. CALL the tool — do NOT describe what you would do.',
+          '- Tool results are SYNCHRONOUS — when a tool returns, you HAVE the data. NEVER say "I\'ll check" or "I\'ll let you know." Summarize the results NOW.',
+          '- BANNED: "I\'ll check and let you know", "being checked", "results will be available soon", "would you like me to check?"',
+          '- When the user says "yes", "ok", "proceed", "go ahead", or "do it" — EXECUTE immediately.',
+          '- For dangerous actions (starting protocols, harvester, git), tell the user what you plan to do first.',
           '- You are an ultimate conversationalist: witty, insightful, warm, and sharp.',
         ].filter(Boolean).join('\n');
 
@@ -123,6 +125,7 @@ export async function POST(request: NextRequest) {
         const toolSchema = getToolSchema();
         const clientActions: Array<{ action: string; params: Record<string, string> }> = [];
         let finalResponse = '';
+        const clientState = body.systemState;
 
         // Tool-calling loop: LLM decides tools → execute → feed results → repeat
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -163,7 +166,7 @@ export async function POST(request: NextRequest) {
                 clientAction: { action: tc.name, params: tc.arguments as Record<string, string> },
               };
             } else {
-              toolResult = await executeToolServerSide(tc.name, tc.arguments);
+              toolResult = await executeToolServerSide(tc.name, tc.arguments, clientState);
             }
 
             if (toolResult.clientAction) {
@@ -191,11 +194,15 @@ export async function POST(request: NextRequest) {
         }
 
         if (!finalResponse) {
-          // Tool loop completed but model never gave text — force a final summarization call
           try {
+            const summaryMessages = messages.map(m => ({ role: m.role, content: m.content || '' }));
+            summaryMessages.push({
+              role: 'user',
+              content: 'Summarize what your tools returned and give the user a clear, concrete answer. Do NOT say "I\'ll check" or "results pending" — you already have the data from the tool calls above.',
+            });
             const summarized = await callModelDirect(
               VOICE_MODELS.RESPONDER,
-              messages.map(m => ({ role: m.role, content: m.content || '' })),
+              summaryMessages,
               { temperature: 0.3, maxTokens: 4096 },
             );
             if (summarized && summarized.trim().length > 5) {

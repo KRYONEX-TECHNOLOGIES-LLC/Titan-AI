@@ -4,8 +4,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTitanVoice } from '@/stores/titan-voice.store';
 import { useTitanMemory } from '@/stores/titan-memory';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
-import { serializeBrainContext } from '@/lib/voice/brain-storage';
-import { saveConversation } from '@/lib/voice/brain-storage';
+import { serializeBrainContext, saveConversation } from '@/lib/voice/brain-storage';
+import { usePlanStore } from '@/stores/plan-store';
 
 export interface AlfredMessage {
   role: 'user' | 'alfred';
@@ -111,7 +111,6 @@ export function useAlfredAmbient() {
       }
     } catch { /* voice commands not available */ }
 
-    // Build rich context from memory
     let memoryContext = '';
     try { memoryContext = useTitanMemory.getState().serialize(5000); } catch { /* */ }
 
@@ -123,6 +122,26 @@ export function useAlfredAmbient() {
       const { getRelevantStrategies } = await import('@/lib/voice/self-improvement');
       learnedStrategies = getRelevantStrategies(text);
     } catch { /* self-improvement module not available yet */ }
+
+    // Pre-load system state so tools return real data instead of placeholders
+    let systemState: Record<string, unknown> = {};
+    try {
+      const planStore = usePlanStore.getState();
+      const tasks = Object.values(planStore.tasks);
+      const recentTasks = tasks.slice(-5).map(t => `${t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '→' : '○'} ${(t as { title?: string }).title || 'task'}`).join(', ');
+      systemState = {
+        protocolStatus: {
+          mode: planStore.chatMode || 'agent',
+          planName: planStore.planName || 'None',
+          total: tasks.length,
+          completed: tasks.filter(t => t.status === 'completed').length,
+          inProgress: tasks.filter(t => t.status === 'in_progress').length,
+          failed: tasks.filter(t => t.status === 'failed').length,
+          pending: tasks.filter(t => t.status === 'pending').length,
+          taskSummary: recentTasks || undefined,
+        },
+      };
+    } catch { /* plan store not available */ }
 
     try {
       const response = await fetch('/api/titan/voice', {
@@ -137,6 +156,7 @@ export function useAlfredAmbient() {
           memoryContext,
           brainContext,
           learnedStrategies,
+          systemState,
         }),
       });
 

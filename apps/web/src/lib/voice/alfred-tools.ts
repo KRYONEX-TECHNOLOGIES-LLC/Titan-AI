@@ -396,11 +396,29 @@ export function isToolDangerous(name: string): boolean {
   return TOOL_SAFETY[name] === 'confirm';
 }
 
+// ═══ CLIENT STATE (sent from browser for tools that need local data) ═══
+
+export interface ClientState {
+  protocolStatus?: {
+    mode: string;
+    planName: string;
+    total: number;
+    completed: number;
+    inProgress: number;
+    failed: number;
+    pending: number;
+    taskSummary?: string;
+  };
+  projectFiles?: string;
+  harvestInfo?: string;
+}
+
 // ═══ SERVER-SIDE TOOL EXECUTION ═══
 
 export async function executeToolServerSide(
   name: string,
   args: Record<string, unknown>,
+  clientState?: ClientState,
 ): Promise<ToolExecResult> {
   switch (name) {
     case 'browse_url': {
@@ -521,7 +539,7 @@ export async function executeToolServerSide(
       const category = args.category ? String(args.category) : undefined;
       return {
         success: true,
-        message: 'Querying brain...',
+        message: `Brain query for "${query}"${category ? ` [${category}]` : ''} dispatched to client. Results will be in the next context update.`,
         clientAction: {
           action: 'query_knowledge',
           params: { query, ...(category ? { category } : {}) },
@@ -529,11 +547,29 @@ export async function executeToolServerSide(
       };
     }
 
-    case 'check_protocol_status':
-      return { success: true, message: 'Checking status...', clientAction: { action: 'check_status', params: {} } };
+    case 'check_protocol_status': {
+      const ps = clientState?.protocolStatus;
+      if (ps && ps.total > 0) {
+        return {
+          success: true,
+          message: `Mode: ${ps.mode} | Plan "${ps.planName}": ${ps.completed}/${ps.total} done, ${ps.inProgress} active, ${ps.failed} failed, ${ps.pending} pending.${ps.taskSummary ? '\nRecent tasks: ' + ps.taskSummary : ''}`,
+          data: ps as unknown as Record<string, unknown>,
+        };
+      }
+      return { success: true, message: 'No active plan or protocol running. All systems idle.' };
+    }
 
-    case 'scan_project':
-      return { success: true, message: 'Scanning project...', clientAction: { action: 'scan_project', params: {} } };
+    case 'scan_project': {
+      const files = clientState?.projectFiles;
+      if (files && files.length > 10) {
+        return {
+          success: true,
+          message: `Project structure:\n${files}`,
+          data: { fileCount: files.split('\n').length },
+        };
+      }
+      return { success: true, message: 'No project folder is currently loaded in the IDE. Ask the user to open a folder first.' };
+    }
 
     case 'start_protocol': {
       const protocol = String(args.protocol || '');
@@ -557,17 +593,34 @@ export async function executeToolServerSide(
     }
 
     case 'start_harvester':
-      return { success: true, message: 'Starting Forge Harvester...', clientAction: { action: 'start_harvest', params: {} } };
+      return { success: true, message: 'Starting Forge Harvester with 100 parallel workers...', clientAction: { action: 'start_harvest', params: {} } };
     case 'stop_harvester':
-      return { success: true, message: 'Stopping Forge Harvester...', clientAction: { action: 'stop_harvest', params: {} } };
-    case 'check_harvest_status':
-      return { success: true, message: 'Checking harvest status...', clientAction: { action: 'check_harvest_status', params: {} } };
+      return { success: true, message: 'Stopping Forge Harvester.', clientAction: { action: 'stop_harvest', params: {} } };
+    case 'check_harvest_status': {
+      const hi = clientState?.harvestInfo;
+      if (hi && hi.length > 5) {
+        return { success: true, message: `Harvest status: ${hi}` };
+      }
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/forge/harvest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'status' }),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return { success: true, message: `Harvest: ${JSON.stringify(data).slice(0, 800)}`, data };
+        }
+      } catch { /* API call failed, return default */ }
+      return { success: true, message: 'Harvester status unavailable — it may not be running. Use start_harvester to begin.' };
+    }
     case 'start_auto_learn':
-      return { success: true, message: 'Starting auto-learner...', clientAction: { action: 'start_auto_learn', params: {} } };
+      return { success: true, message: 'Auto-learner started — will research topics in background and store findings.', clientAction: { action: 'start_auto_learn', params: {} } };
     case 'stop_auto_learn':
-      return { success: true, message: 'Stopping auto-learner...', clientAction: { action: 'stop_auto_learn', params: {} } };
+      return { success: true, message: 'Auto-learner stopped.', clientAction: { action: 'stop_auto_learn', params: {} } };
     case 'check_markets':
-      return { success: true, message: 'Checking markets...', clientAction: { action: 'check_markets', params: {} } };
+      return { success: true, message: 'Market check initiated — results will populate from auto-learner.', clientAction: { action: 'check_markets', params: {} } };
 
     case 'switch_mode':
       return { success: true, message: `Switching to ${args.mode} mode`, clientAction: { action: 'switch_mode', params: { mode: String(args.mode || 'agent') } } };

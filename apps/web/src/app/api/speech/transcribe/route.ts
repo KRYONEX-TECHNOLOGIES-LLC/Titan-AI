@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 
 /**
  * POST /api/speech/transcribe
- * Accepts { audio: base64 } and returns { text: string }
- * Uses Gemini Flash to transcribe audio — no extra API keys needed.
+ * Accepts { audio: base64, mimeType?: string } and returns { text: string }
+ * Uses Gemini Flash multimodal to transcribe audio via data-URI in image_url content part.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { audio } = (await req.json()) as { audio?: string };
-    if (!audio) {
+    const body = (await req.json()) as { audio?: string; mimeType?: string };
+    if (!body.audio) {
       return NextResponse.json({ error: 'No audio data' }, { status: 400 });
     }
+
+    const mimeType = body.mimeType || 'audio/webm';
 
     const openRouterKey = process.env.OPENROUTER_API_KEY || '';
     const litellmBase = process.env.TITAN_LITELLM_BASE_URL || process.env.LITELLM_PROXY_URL || '';
@@ -38,6 +40,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No LLM API configured' }, { status: 500 });
     }
 
+    const dataUri = `data:${mimeType};base64,${body.audio}`;
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
@@ -52,11 +56,8 @@ export async function POST(req: NextRequest) {
             role: 'user',
             content: [
               {
-                type: 'input_audio',
-                input_audio: {
-                  data: audio,
-                  format: 'wav',
-                },
+                type: 'image_url',
+                image_url: { url: dataUri },
               },
               {
                 type: 'text',
@@ -77,8 +78,10 @@ export async function POST(req: NextRequest) {
     }
 
     const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const text = data.choices?.[0]?.message?.content?.trim() || '';
+    const rawText = data.choices?.[0]?.message?.content?.trim() || '';
+    const text = rawText === '""' || rawText === "''" ? '' : rawText;
 
+    console.log('[Speech] Transcribed:', text.slice(0, 80) || '(empty)');
     return NextResponse.json({ text });
   } catch (err) {
     console.error('[Speech] Transcribe error:', err);
