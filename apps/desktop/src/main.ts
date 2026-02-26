@@ -3,11 +3,11 @@ import * as path from 'path';
 import * as http from 'http';
 
 // GPU acceleration + input responsiveness — must be set before app.whenReady()
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('disable-software-rasterization');
-app.commandLine.appendSwitch('disable-renderer-backgrounding');
-app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// app.commandLine.appendSwitch('enable-gpu-rasterization');
+// app.commandLine.appendSwitch('enable-zero-copy');
+// app.commandLine.appendSwitch('disable-software-rasterization');
+// app.commandLine.appendSwitch('disable-renderer-backgrounding');
+// app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 // Web Speech API: Google's speech service rejects non-Chrome user agents.
 // Spoof a standard Chrome UA so webkitSpeechRecognition works in Electron.
 app.commandLine.appendSwitch('enable-features', 'WebSpeechAPI');
