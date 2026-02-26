@@ -17,7 +17,7 @@ async function main(): Promise<void> {
 
   const getArg = (flag: string, defaultVal: string): string => {
     const idx = args.indexOf(flag);
-    return idx !== -1 && args[idx + 1] ? args[idx + 1] : defaultVal;
+    return idx !== -1 && args[idx + 1] ? args[idx + 1]! : defaultVal;
   };
 
   const format = getArg('--format', 'sharegpt');

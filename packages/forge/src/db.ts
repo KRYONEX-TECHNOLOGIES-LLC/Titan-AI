@@ -324,8 +324,8 @@ export class ForgeDB {
       const byCategory: Record<string, { teacher: number; student: number }> = {};
       for (const row of rows) {
         if (!byCategory[row.category]) byCategory[row.category] = { teacher: 0, student: 0 };
-        byCategory[row.category].teacher += Number(row.teacher_score);
-        byCategory[row.category].student += Number(row.student_score);
+        byCategory[row.category]!.teacher += Number(row.teacher_score);
+        byCategory[row.category]!.student += Number(row.student_score);
       }
 
       return {

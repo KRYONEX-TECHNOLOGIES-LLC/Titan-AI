@@ -108,7 +108,7 @@ export class ForgeCollector {
 
     const promptHash = computePromptHash(input.messages);
     // Use the pre-generated client-side ID if provided (preferred), otherwise defer to DB auto-id
-    const preGeneratedId = input.id ?? null;
+    const preGeneratedId: string | undefined = input.id || undefined;
 
     enqueue(async () => {
       // Dedup check: if we already have a high-scoring sample for this prompt, skip
@@ -118,7 +118,7 @@ export class ForgeCollector {
       }
 
       const id = await db.insertSample({
-        id: preGeneratedId ?? undefined,
+        id: preGeneratedId as string,
         session_id: input.sessionId,
         model_id: input.modelId,
         model_tier: tier,

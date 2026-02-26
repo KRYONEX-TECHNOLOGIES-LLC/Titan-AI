@@ -229,7 +229,7 @@ export async function runEvalCLI(): Promise<void> {
   const args = process.argv.slice(2);
   const getArg = (flag: string, def: string) => {
     const idx = args.indexOf(flag);
-    return idx !== -1 && args[idx + 1] ? args[idx + 1] : def;
+    return idx !== -1 && args[idx + 1] ? args[idx + 1]! : def;
   };
 
   const runId = getArg('--run-id', '');

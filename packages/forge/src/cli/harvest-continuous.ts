@@ -176,7 +176,7 @@ async function main() {
 
   while (true) {
     round++;
-    const topic = TOPIC_ROTATION[topicIndex % TOPIC_ROTATION.length];
+    const topic = TOPIC_ROTATION[topicIndex % TOPIC_ROTATION.length] ?? 'general';
     topicIndex++;
 
     console.log(`\n${'═'.repeat(60)}`);
@@ -199,7 +199,7 @@ async function main() {
       consecutiveErrors = 0;
 
       const saved = result.saved ?? 0;
-      const evolved = result.evolved ?? 0;
+      const evolved = ('evolved' in result ? (result as Record<string, unknown>).evolved as number : 0) ?? 0;
       const totalSaved = saved + evolved;
       const newTotal = await getSampleCount();
 
