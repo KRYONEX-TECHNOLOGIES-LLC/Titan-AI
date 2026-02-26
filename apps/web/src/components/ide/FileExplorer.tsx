@@ -424,13 +424,6 @@ export default function FileExplorer({ onFileOpen }: { onFileOpen?: (name: strin
             >
               ↻
             </button>
-            <button
-              title="Open Folder"
-              onClick={() => executeCommand('file.openFolder')}
-              style={{ background: 'transparent', border: 'none', color: '#6c7086', cursor: 'pointer', fontSize: 12, padding: 2 }}
-            >
-              📂
-            </button>
           </div>
         </div>
 

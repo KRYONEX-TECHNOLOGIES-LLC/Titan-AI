@@ -606,6 +606,13 @@ export default function TitanIDE() {
     };
   }, [fileSystem.workspacePath]);
 
+  // Bridge command-registry's file.openFolder to the real useFileSystem.openFolder
+  useEffect(() => {
+    const handler = () => { fileSystem.openFolder(); };
+    window.addEventListener('titan:openFolder', handler);
+    return () => window.removeEventListener('titan:openFolder', handler);
+  }, [fileSystem]);
+
   // Close dropdowns on mousedown outside (mousedown fires before click, so button's stopPropagation works)
   useEffect(() => {
     const handleClose = (e: MouseEvent) => {

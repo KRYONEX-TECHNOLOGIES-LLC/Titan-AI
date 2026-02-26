@@ -92,53 +92,8 @@ function buildRegistry() {
   });
 
   reg({ id: 'file.openFolder', label: 'Open Folder...', category: 'File', keybinding: 'Ctrl+K Ctrl+O',
-    execute: async () => {
-      const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.next', 'dist', 'build', '.cache', 'coverage', '.vscode', '.idea']);
-      const SKIP_EXTENSIONS = new Set(['exe', 'dll', 'so', 'dylib', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'svg', 'woff', 'woff2', 'ttf', 'eot', 'mp3', 'mp4', 'wav', 'avi', 'mov', 'pdf', 'zip', 'tar', 'gz', 'rar', '7z']);
-      const MAX_FILES = 500;
-      let fileCount = 0;
-      const fileContents: Record<string, string> = {};
-      try {
-        const dirHandle = await (window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker();
-        const walkDir = async (handle: FileSystemDirectoryHandle, path: string): Promise<FileNode[]> => {
-          if (fileCount >= MAX_FILES) return [];
-          const nodes: FileNode[] = [];
-          const dirIter = handle as unknown as AsyncIterable<[string, FileSystemHandle]>;
-          for await (const [name, entry] of dirIter) {
-            if (fileCount >= MAX_FILES) break;
-            if (name.startsWith('.') && name !== '.env' && name !== '.gitignore') continue;
-            if (SKIP_DIRS.has(name)) continue;
-            const entryPath = `${path}/${name}`;
-            if (entry.kind === 'directory') {
-              const children = await walkDir(entry as FileSystemDirectoryHandle, entryPath);
-              nodes.push({ name, path: entryPath, type: 'folder', children });
-            } else {
-              const ext = name.split('.').pop()?.toLowerCase() ?? '';
-              if (SKIP_EXTENSIONS.has(ext)) continue;
-              nodes.push({ name, path: entryPath, type: 'file' });
-              try {
-                const file = await (entry as FileSystemFileHandle).getFile();
-                if (file.size <= 500_000) {
-                  const text = await file.text();
-                  fileContents[name] = text;
-                  fileContents[entryPath] = text;
-                  fileCount++;
-                }
-              } catch { /* skip unreadable */ }
-            }
-          }
-          return nodes.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'folder' ? -1 : 1));
-        };
-        const tree = await walkDir(dirHandle, `/${dirHandle.name}`);
-        file().openFolder(`/${dirHandle.name}`, dirHandle.name, tree);
-        if (Object.keys(fileContents).length > 0) {
-          editor().loadFileContents(fileContents);
-        }
-        layout().setSidebarView('explorer');
-        layout().setSidebarVisible(true);
-      } catch {
-        // user cancelled
-      }
+    execute: () => {
+      window.dispatchEvent(new CustomEvent('titan:openFolder'));
     }
   });
 

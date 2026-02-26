@@ -74,10 +74,10 @@ export default function EditorArea({
           ) : (
             <>
               <div className="text-4xl mb-4 opacity-15">T</div>
-              <div className="text-sm text-[#555] mb-4">Use <span className="text-[#808080]">File &gt; Open Folder</span> or <span className="text-[#808080]">Ctrl+O</span> to open a project</div>
-              <button onClick={onNewFile} className="px-4 py-2 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm font-medium transition-colors flex items-center gap-2">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v6H2v2h6v6h2V9h6V7H10V1z"/></svg>
-                New File
+              <div className="text-sm text-[#555] mb-4">Use <span className="text-[#808080] font-semibold">File &gt; Open Folder</span> or <span className="text-[#808080] font-semibold">Ctrl+K Ctrl+O</span> to open a project</div>
+              <button onClick={onOpenFolder} className="px-4 py-2 bg-[#007acc] hover:bg-[#005a9e] text-white rounded text-sm font-medium transition-colors flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 1A1.5 1.5 0 0 0 0 2.5v11A1.5 1.5 0 0 0 1.5 15h13a1.5 1.5 0 0 0 1.5-1.5V5a1.5 1.5 0 0 0-1.5-1.5H7.71L6.85 2.15A.5.5 0 0 0 6.5 2H1.5z"/></svg>
+                Open Folder
               </button>
             </>
           )}
