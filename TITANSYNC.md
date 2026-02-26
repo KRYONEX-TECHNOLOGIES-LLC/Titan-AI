@@ -63,6 +63,8 @@ A husky pre-commit hook runs automatically on every commit:
 | Messy version bumps | Multiple commits each bumping to different versions | System prompt enforces single atomic version bump + tag |
 | manifest.json manually edited | Overwrote CI-managed file, then CI overwrote it back | All prompts now say "manifest.json is auto-updated by CI" |
 | Force-push to main | Destructive history rewrite | All protocol prompts include "NEVER force-push to main" |
+| Out-of-scope variable reference | Edited child component but referenced parent variable (`chat`, `settings`, etc.) | System prompt RULE 8 enforces scope awareness; pre-commit `tsc --noEmit` catches type errors |
+| Code pushed without type check | Build fails on Railway with type errors that were never checked locally | Pre-commit hook now runs `tsc --noEmit` on `apps/web` before every commit |
 
 ### Troubleshooting
 

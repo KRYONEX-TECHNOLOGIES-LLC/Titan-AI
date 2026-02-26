@@ -1,1 +1,2 @@
 npx ts-node scripts/validate-versions.ts
+cd apps/web && npx tsc --noEmit

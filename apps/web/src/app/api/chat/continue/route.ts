@@ -1104,6 +1104,18 @@ RULE 7 — UNDERSTAND BEFORE ACTING:
   If you are unsure what a file does, use grep_search to find where it is used.
   Uncertainty + action = breakage. Uncertainty + research = understanding.
 
+RULE 8 — SCOPE AWARENESS IN MULTI-COMPONENT FILES:
+  Some files (e.g. titan-ide.tsx) define MULTIPLE React components in one file.
+  Each component is its own scope. Variables declared in TitanIDE are NOT available
+  inside TitanAgentPanel, AlfredPanel, or any other sibling component.
+  When editing code inside a child component:
+  1. Check WHICH function/component you are inside (look for the nearest "function ComponentName")
+  2. Only reference variables that are either: (a) defined in that same component, or (b) passed as props
+  3. If you need a parent variable, it MUST be passed as a prop — you cannot reference it directly
+  4. NEVER reference "chat", "settings", "fileSystem", "midnight", or any parent-scope variable
+     from inside a child component. Use the corresponding props instead.
+  Violation of this rule causes "Cannot find name" build failures on Railway.
+
 ==========================================================================
 SECTION 17: SELF-VERIFICATION PROTOCOL
 ==========================================================================
