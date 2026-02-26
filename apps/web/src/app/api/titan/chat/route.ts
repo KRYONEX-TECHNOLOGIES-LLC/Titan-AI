@@ -8,6 +8,9 @@ interface TitanChatRequestBody {
   goal: string;
   sessionId: string;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  workspacePath?: string;
+  fileTree?: string;
+  cartographyContext?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -66,6 +69,11 @@ export async function POST(request: NextRequest) {
             invokeModel,
           },
           DEFAULT_TITAN_CHAT_CONFIG,
+          {
+            workspacePath: body.workspacePath,
+            fileTree: body.fileTree,
+            cartographyContext: body.cartographyContext,
+          },
         );
 
         emit('chat_result', {

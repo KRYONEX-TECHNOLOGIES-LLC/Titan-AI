@@ -5,6 +5,14 @@ import type { ChatMessage, Session } from '@/types/ide';
 import { useLaneStore } from '@/stores/lane-store';
 import { useFileStore } from '@/stores/file-store';
 import { useTitanMemory } from '@/stores/titan-memory';
+import { useCartographyStore } from '@/stores/cartography-store';
+
+function getPhoenixCartographyContext(): string | undefined {
+  try {
+    const ctx = useCartographyStore.getState().getContextForProtocol(3000);
+    return ctx || undefined;
+  } catch { return undefined; }
+}
 
 interface UsePhoenixChatOptions {
   sessions: Session[];
@@ -107,6 +115,7 @@ export function usePhoenixChat({
           openTabs: openTabs || [],
           isDesktop: isDesktop || false,
           osPlatform: osPlatform || 'unknown',
+          cartographyContext: getPhoenixCartographyContext(),
         }),
       });
       if (!response.ok || !response.body) throw new Error(`Phoenix request failed (${response.status})`);

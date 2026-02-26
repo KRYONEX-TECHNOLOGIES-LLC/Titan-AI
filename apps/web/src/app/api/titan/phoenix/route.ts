@@ -11,6 +11,7 @@ interface PhoenixRequestBody {
   openTabs?: string[];
   isDesktop?: boolean;
   osPlatform?: string;
+  cartographyContext?: string;
 }
 
 export const dynamic = 'force-dynamic';
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
           invokeModel,
           workspacePath: body.workspacePath || '',
           fileTree: body.fileTree || '',
+          cartographyContext: body.cartographyContext || '',
         }, DEFAULT_PHOENIX_CONFIG);
 
         emit('phoenix_result', {

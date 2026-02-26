@@ -16,6 +16,7 @@ interface SniperRequestBody {
   workspacePath?: string;
   fileTree?: string;
   openFiles?: string[];
+  cartographyContext?: string;
 }
 
 export const dynamic = 'force-dynamic';
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
           workspacePath: body.workspacePath || '',
           fileTree: body.fileTree || '',
           openFiles: body.openFiles,
+          cartographyContext: body.cartographyContext,
           config: DEFAULT_SNIPER_CONFIG,
           executeTool,
           readFile,

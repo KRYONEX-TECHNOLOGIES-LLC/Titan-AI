@@ -13,6 +13,7 @@ import { useState, useRef, useCallback } from 'react';
 import type { Session, ChatMessage } from '@/types/ide';
 import { useLaneStore } from '@/stores/lane-store';
 import { useFileStore } from '@/stores/file-store';
+import { useCartographyStore } from '@/stores/cartography-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 
 interface UseParallelChatOptions {
@@ -152,6 +153,7 @@ export function useParallelChat({
           gitBranch,
           isDesktop: isDesktop || false,
           osPlatform: osPlatform || 'unknown',
+          cartographyContext: useCartographyStore.getState().getContextForProtocol(3000) || undefined,
         }),
       });
 

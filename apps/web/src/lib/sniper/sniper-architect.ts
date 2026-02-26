@@ -79,13 +79,22 @@ export async function runArchitect(
   config: SniperConfig,
   costTracker: SniperCostTracker,
   emit: (type: string, data: Record<string, unknown>) => void,
+  cartographyContext?: string,
 ): Promise<SniperDAG> {
-  const userMessage = [
+  const contextParts = [
     `## Goal\n${userGoal}`,
     `## Codebase Context\nConventions: ${scanResult.conventions.join(', ')}`,
     `Key files: ${Object.entries(scanResult.keyFiles).map(([k, v]) => `${k}: ${v}`).join('\n')}`,
     `Dependencies: ${scanResult.dependencies.slice(0, 30).join(', ')}`,
     `Patterns: ${scanResult.existingPatterns.join(', ')}`,
+  ];
+
+  if (cartographyContext) {
+    contextParts.push(`## Codebase Cartography Intelligence\n${cartographyContext}`);
+  }
+
+  const userMessage = [
+    ...contextParts,
     `\n## Tasks (${tasks.length} total)\n${JSON.stringify(tasks.map(t => ({
       id: t.id,
       title: t.title,

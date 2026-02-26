@@ -9,11 +9,21 @@
 
 import { useCallback, useRef, useState } from 'react';
 import type { ChatMessage, Session } from '@/types/ide';
+import { useCartographyStore } from '@/stores/cartography-store';
+import { useFileStore } from '@/stores/file-store';
+
+function getTitanChatCartographyContext(): string | undefined {
+  try {
+    const ctx = useCartographyStore.getState().getContextForProtocol(3000);
+    return ctx || undefined;
+  } catch { return undefined; }
+}
 
 interface UseTitanChatOptions {
   sessions: Session[];
   setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
   activeSessionId: string;
+  workspacePath?: string;
 }
 
 export function useTitanChat({
@@ -78,7 +88,14 @@ export function useTitanChat({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({ goal, sessionId, history }),
+        body: JSON.stringify({
+          goal,
+          sessionId,
+          history,
+          workspacePath: useFileStore.getState().workspacePath || undefined,
+          fileTree: useFileStore.getState().fileTree?.map((f: { path: string }) => f.path).join('\n').slice(0, 3000) || undefined,
+          cartographyContext: getTitanChatCartographyContext(),
+        }),
       });
 
       if (!response.ok || !response.body) throw new Error(`Titan Chat request failed (${response.status})`);

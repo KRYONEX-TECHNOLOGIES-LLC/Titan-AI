@@ -40,6 +40,7 @@ export interface SniperOrchestrateOptions {
   workspacePath: string;
   fileTree: string;
   openFiles?: string[];
+  cartographyContext?: string;
   config?: Partial<SniperConfig>;
   executeTool: ToolCallFn;
   readFile?: (path: string) => Promise<string>;
@@ -86,6 +87,7 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
     config,
     costTracker,
     emit,
+    opts.cartographyContext,
   );
 
   // Update DAG ID in emit

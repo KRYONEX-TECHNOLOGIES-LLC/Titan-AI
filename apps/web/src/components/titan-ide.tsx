@@ -59,6 +59,7 @@ const ForgeDashboard = dynamic(() => import('@/components/ide/ForgeDashboard').t
 const MidnightPanel = dynamic(() => import('@/components/ide/MidnightPanel'), { ssr: false });
 const TrainingLabPanel = dynamic(() => import('@/components/ide/TrainingLabPanel'), { ssr: false });
 const BrainObservatoryPanel = dynamic(() => import('@/components/ide/BrainObservatoryPanel'), { ssr: false });
+const CartographyPanel = dynamic(() => import('@/components/ide/CartographyPanel'), { ssr: false });
 
 // Zustand stores
 import { useLayoutStore } from '@/stores/layout-store';
@@ -233,6 +234,32 @@ export default function TitanIDE() {
     if (!mounted) return;
     const { useTitanMemory } = require('@/stores/titan-memory');
     useTitanMemory.getState().setWorkspace(resolvedWorkspacePath);
+  }, [mounted, resolvedWorkspacePath]);
+
+  // Auto-scan codebase cartography when workspace changes (throttled to 30 min)
+  useEffect(() => {
+    if (!mounted || !resolvedWorkspacePath) return;
+    const timer = setTimeout(() => {
+      try {
+        const { useCartographyStore } = require('@/stores/cartography-store');
+        const store = useCartographyStore.getState();
+        const staleMs = 30 * 60 * 1000;
+        const lastScan = store.lastScanAt ? new Date(store.lastScanAt).getTime() : 0;
+        if (Date.now() - lastScan > staleMs) {
+          const fileTree = useFileStore.getState().fileTree?.map((f: { path: string }) => f.path).join('\n') || '';
+          store.scan(resolvedWorkspacePath, fileTree, false).then(() => {
+            try {
+              const { feedCartographyToBrain } = require('@/lib/cartography/brain-feed');
+              const updated = useCartographyStore.getState();
+              if (updated.graph && updated.analysis) {
+                feedCartographyToBrain(updated.graph, updated.analysis);
+              }
+            } catch { /* brain-feed optional */ }
+          }).catch(() => { /* scan failure is non-critical */ });
+        }
+      } catch { /* cartography store may not be available */ }
+    }, 5000);
+    return () => clearTimeout(timer);
   }, [mounted, resolvedWorkspacePath]);
 
   // Auto-create C:\TitanWorkspace if no folder is loaded (Electron only)
@@ -738,6 +765,7 @@ export default function TitanIDE() {
           <ActivityIcon active={activeView === 'alfred'} onClick={() => handleActivityClick('alfred')} title="Alfred — AI Companion"><AlfredIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'training-lab'} onClick={() => handleActivityClick('training-lab')} title="LLM Training Lab"><FlaskIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'brain'} onClick={() => handleActivityClick('brain')} title="Titan Brain Observatory"><BrainIcon /></ActivityIcon>
+          <ActivityIcon active={activeView === 'cartography'} onClick={() => handleActivityClick('cartography')} title="Codebase Cartography"><CartographyIcon /></ActivityIcon>
           <div className="flex-1" />
           <ActivityIcon active={activeView === 'accounts'} onClick={() => handleActivityClick('accounts')} title="Accounts"><AccountIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'settings'} onClick={() => handleActivityClick('settings')} title="Settings"><SettingsGearIcon /></ActivityIcon>
@@ -750,7 +778,7 @@ export default function TitanIDE() {
 
         {/* LEFT PANEL */}
         {activeView && activeView !== 'explorer' && (
-          <div className={`${activeView === 'midnight' || activeView === 'alfred' ? 'w-[600px]' : 'w-[420px]'} bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden transition-all duration-300`}>
+          <div className={`${activeView === 'midnight' || activeView === 'alfred' || activeView === 'cartography' ? 'w-[600px]' : 'w-[420px]'} bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden transition-all duration-300`}>
             {activeView === 'search' && <IDESemanticSearch />}
             {activeView === 'git' && <IDEGitPanel workspacePath={fileSystem.workspacePath} />}
             {activeView === 'debug' && <IDEDebugPanel />}
@@ -816,6 +844,7 @@ export default function TitanIDE() {
             {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} alfred={alfred} />}
             {activeView === 'training-lab' && <TrainingLabPanel />}
             {activeView === 'brain' && <BrainObservatoryPanel />}
+            {activeView === 'cartography' && <CartographyPanel />}
             {activeView === 'accounts' && <AccountsPanel />}
             {activeView === 'settings' && (
               <SettingsPanel
@@ -2087,5 +2116,6 @@ function MoonIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fil
 function AlfredIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="5"/><path d="M3 21v-2a7 7 0 0 1 7-7h4a7 7 0 0 1 7 7v2"/><circle cx="12" cy="8" r="2" fill="currentColor" opacity="0.4"/></svg>; }
 function FlaskIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M10 2v7l-5 8a3 3 0 0 0 2.56 4.5h8.88A3 3 0 0 0 19 17l-5-8V2"/><path d="M8 2h8"/><path d="M7 16h10"/></svg>; }
 function BrainIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 3a3 3 0 0 0-3 3v1a3 3 0 0 0-2 2.83V11a3 3 0 0 0 2 2.83V15a3 3 0 0 0 3 3"/><path d="M15 3a3 3 0 0 1 3 3v1a3 3 0 0 1 2 2.83V11a3 3 0 0 1-2 2.83V15a3 3 0 0 1-3 3"/><path d="M9 18a3 3 0 0 0 3 3 3 3 0 0 0 3-3"/><path d="M9 6a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0z"/></svg>; }
+function CartographyIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.3"/><path d="M8 6h8M6 8v8M18 8v8M8 18h8"/><path d="M8 8l2.5 2.5M13.5 13.5L16 16M8 16l2.5-2.5M13.5 10.5L16 8" opacity="0.5"/></svg>; }
 function AccountIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>; }
 function SettingsGearIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>; }

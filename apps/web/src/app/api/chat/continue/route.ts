@@ -1432,6 +1432,14 @@ Workspace root: ${body.workspacePath}`;
     prompt += `\n\nProject structure (top-level):\n${body.fileTree.slice(0, 3000)}`;
   }
 
+  // Codebase Cartography Intelligence
+  if (body.cartographyContext) {
+    prompt += `\n\n==========================================================================
+CODEBASE CARTOGRAPHY INTELLIGENCE
+==========================================================================
+${body.cartographyContext}`;
+  }
+
   // Tool discipline (desktop with workspace: reduce random file reads)
   if (body.capabilities?.toolsEnabled && body.workspacePath) {
     prompt += `
@@ -1647,6 +1655,7 @@ interface ContinueRequest {
   capabilities?: { runtime: string; workspaceOpen: boolean; toolsEnabled: boolean; reasonIfDisabled?: string };
   sessionId?: string;
   forgeId?: string;
+  cartographyContext?: string;
 }
 
 

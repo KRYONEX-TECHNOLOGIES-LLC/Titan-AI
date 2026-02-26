@@ -22,6 +22,7 @@ interface OrchestrateRequest {
   gitBranch?: string;
   isDesktop?: boolean;
   osPlatform?: string;
+  cartographyContext?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -159,6 +160,10 @@ function buildWorkspaceContext(body: OrchestrateRequest): string {
   if (body.isDesktop) {
     parts.push(`Environment: Titan AI Desktop (Electron)`);
     parts.push(`OS: ${body.osPlatform || 'unknown'}`);
+  }
+
+  if (body.cartographyContext) {
+    parts.push(body.cartographyContext);
   }
 
   return parts.join('\n\n');

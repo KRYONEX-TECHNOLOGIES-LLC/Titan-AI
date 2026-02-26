@@ -4,6 +4,14 @@ import { useCallback, useRef, useState } from 'react';
 import type { ChatMessage, Session } from '@/types/ide';
 import { useLaneStore } from '@/stores/lane-store';
 import { useFileStore } from '@/stores/file-store';
+import { useCartographyStore } from '@/stores/cartography-store';
+
+function getOmegaCartographyContext(): string | undefined {
+  try {
+    const ctx = useCartographyStore.getState().getContextForProtocol(3000);
+    return ctx || undefined;
+  } catch { return undefined; }
+}
 
 interface UseOmegaChatOptions {
   sessions: Session[];
@@ -102,6 +110,7 @@ export function useOmegaChat({
           openTabs: openTabs || [],
           isDesktop: isDesktop || false,
           osPlatform: osPlatform || 'unknown',
+          cartographyContext: getOmegaCartographyContext(),
         }),
       });
       if (!response.ok || !response.body) throw new Error(`Omega request failed (${response.status})`);

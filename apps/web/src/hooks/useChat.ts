@@ -22,6 +22,14 @@ import { usePlanStore } from '@/stores/plan-store';
 import { DESIGN_TEMPLATES, templateToPromptDirective } from '@/lib/plan/design-templates';
 import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
 import { playBellSound } from '@/utils/notification-sound';
+import { useCartographyStore } from '@/stores/cartography-store';
+
+function getCartographyContext(): string | undefined {
+  try {
+    const ctx = useCartographyStore.getState().getContextForProtocol(3000);
+    return ctx || undefined;
+  } catch { return undefined; }
+}
 
 const MAX_TOOL_CALLS = 120;
 const MAX_CONSECUTIVE_FAILURES = 5;
@@ -509,6 +517,7 @@ export function useChat({
         capabilities: { runtime: caps.runtime, workspaceOpen: caps.workspaceOpen, toolsEnabled: caps.toolsEnabled, reasonIfDisabled: caps.reasonIfDisabled },
         sessionId,
         forgeId,
+        cartographyContext: isFirstIteration ? getCartographyContext() : undefined,
       }),
     });
 

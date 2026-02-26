@@ -4,6 +4,14 @@ import { useCallback, useRef, useState } from 'react';
 import type { ChatMessage, Session } from '@/types/ide';
 import { useFileStore } from '@/stores/file-store';
 import { usePlanStore } from '@/stores/plan-store';
+import { useCartographyStore } from '@/stores/cartography-store';
+
+function getSniperCartographyContext(): string | undefined {
+  try {
+    const ctx = useCartographyStore.getState().getContextForProtocol(3000);
+    return ctx || undefined;
+  } catch { return undefined; }
+}
 
 interface UseSniperChatOptions {
   sessions: Session[];
@@ -106,6 +114,7 @@ export function useSniperChat({
           workspacePath: workspacePath || '',
           fileTree: serializeFileTree(),
           openFiles: openTabs || [],
+          cartographyContext: getSniperCartographyContext(),
         }),
       });
 

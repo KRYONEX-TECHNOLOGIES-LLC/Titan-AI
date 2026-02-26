@@ -81,11 +81,18 @@ const REFINER_SYSTEM = `You are the TITAN REFINER — a ruthless quality gate fo
 
 Output ONLY the improved final answer. No meta-commentary. No "I improved X". If the draft is already excellent, output it unchanged.`;
 
+export interface TitanChatContext {
+  workspacePath?: string;
+  fileTree?: string;
+  cartographyContext?: string;
+}
+
 export async function orchestrateTitanChat(
   goal: string,
   history: Array<{ role: 'user' | 'assistant'; content: string }>,
   callbacks: TitanChatCallbacks,
   config: TitanChatConfig,
+  context?: TitanChatContext,
 ): Promise<TitanChatResult> {
   const startMs = Date.now();
   const { onEvent, invokeModel } = callbacks;
@@ -96,10 +103,18 @@ export async function orchestrateTitanChat(
   onEvent('routing', { complexity, pipeline, threshold: config.complexityThreshold });
 
   try {
-    // Build context messages for THINKER — include recent history
+    // Build context messages for THINKER — include recent history + workspace awareness
     const recentHistory = history.slice(-30);
+    let thinkerSystemWithContext = THINKER_SYSTEM;
+    if (context?.workspacePath || context?.fileTree || context?.cartographyContext) {
+      const ctxParts: string[] = [];
+      if (context.workspacePath) ctxParts.push(`Workspace: ${context.workspacePath}`);
+      if (context.fileTree) ctxParts.push(`Project structure:\n${context.fileTree.slice(0, 3000)}`);
+      if (context.cartographyContext) ctxParts.push(`Codebase Cartography Intelligence:\n${context.cartographyContext}`);
+      thinkerSystemWithContext += `\n\n═══ PROJECT CONTEXT ═══\n${ctxParts.join('\n\n')}`;
+    }
     const thinkerMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: THINKER_SYSTEM },
+      { role: 'system', content: thinkerSystemWithContext },
       ...recentHistory,
       { role: 'user', content: goal },
     ];

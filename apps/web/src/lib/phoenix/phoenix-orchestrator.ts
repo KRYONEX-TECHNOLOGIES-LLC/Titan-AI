@@ -85,6 +85,7 @@ export interface PhoenixCallbacks {
   ) => Promise<string>;
   workspacePath?: string;
   fileTree?: string;
+  cartographyContext?: string;
 }
 
 // ── Professional Output Rules (applied to ALL Phoenix roles) ─────────────────
@@ -113,6 +114,7 @@ async function architectDecompose(
   config: PhoenixConfig,
   invokeModel: PhoenixCallbacks['invokeModel'],
   fileTree?: string,
+  cartographyContext?: string,
 ): Promise<{ plan: PhoenixPlan; tokensIn: number; tokensOut: number }> {
   const system = [
     'You are PHOENIX_ARCHITECT — the strategic brain of the Phoenix Protocol inside the Titan AI IDE.',
@@ -124,6 +126,7 @@ async function architectDecompose(
     'If a request seems ambiguous, make the most reasonable interpretation and act.',
     '',
     fileTree ? `═══ PROJECT FILE TREE (loaded in IDE) ═══\n${fileTree.slice(0, 8000)}\n` : '',
+    cartographyContext ? `\n${cartographyContext}\n` : '',
     '',
     'Your job: Decompose the user\'s goal into atomic subtasks that workers can execute independently.',
     'Each subtask MUST include relevantFiles — use the file tree above to find REAL paths.',
@@ -540,7 +543,7 @@ async function executeMediumPipeline(
   callbacks.onEvent('plan_created', { pipeline: 'medium', complexity });
   const hasWorkspace = !!(callbacks.workspacePath);
   const { plan, tokensIn: planIn, tokensOut: planOut } = await architectDecompose(
-    goal, complexity, config, callbacks.invokeModel, callbacks.fileTree,
+    goal, complexity, config, callbacks.invokeModel, callbacks.fileTree, callbacks.cartographyContext,
   );
   costTracker.record(config.models.architect, planIn, planOut);
   callbacks.onEvent('plan_created', { subtaskCount: plan.subtasks.length, planId: plan.id });
@@ -606,7 +609,7 @@ async function executeFullPipeline(
   // ARCHITECT decomposes
   const hasWorkspace = !!(callbacks.workspacePath);
   const { plan, tokensIn: planIn, tokensOut: planOut } = await architectDecompose(
-    goal, complexity, config, callbacks.invokeModel, callbacks.fileTree,
+    goal, complexity, config, callbacks.invokeModel, callbacks.fileTree, callbacks.cartographyContext,
   );
   costTracker.record(config.models.architect, planIn, planOut);
   callbacks.onEvent('plan_created', { subtaskCount: plan.subtasks.length, planId: plan.id, complexity });

@@ -59,6 +59,10 @@ async function buildWorkOrders(goal: string, config: OmegaConfig, callbacks: Ome
     ? `\n═══ PROJECT FILE TREE (loaded in IDE) ═══\n${callbacks.fileTree.slice(0, 8000)}\n`
     : '';
 
+  const cartographySection = callbacks.cartographyContext
+    ? `\n${callbacks.cartographyContext}\n`
+    : '';
+
   const decompositionPrompt = [
     'You are THE OMEGA ARCHITECT — supreme planner of the Omega Protocol inside the Titan AI IDE.',
     '',
@@ -72,6 +76,7 @@ async function buildWorkOrders(goal: string, config: OmegaConfig, callbacks: Ome
     `Project type: ${autopsy.projectType}`,
     `Known entrypoints: ${autopsy.entryPoints.join(', ') || '(none)'}`,
     fileTreeSection,
+    cartographySection,
     '',
     '═══ OUTPUT FORMAT ═══',
     '- Plain text only. NO emojis. NO emoji bullets. Professional, direct, technical language.',

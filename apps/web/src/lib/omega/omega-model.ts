@@ -236,6 +236,7 @@ export interface OmegaCallbacks {
   invokeModel: InvokeModelFn;
   workspacePath?: string;
   fileTree?: string;
+  cartographyContext?: string;
 }
 
 export interface ExecutionStepResult {

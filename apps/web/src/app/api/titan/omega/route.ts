@@ -11,6 +11,7 @@ interface OmegaRequestBody {
   gitBranch?: string;
   isDesktop?: boolean;
   osPlatform?: string;
+  cartographyContext?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
           invokeModel,
           workspacePath: body.workspacePath || '',
           fileTree: body.fileTree || '',
+          cartographyContext: body.cartographyContext || '',
         });
         emit('orchestration_result', {
           ...result,

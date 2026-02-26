@@ -43,6 +43,8 @@ export const TOOL_SAFETY: Record<string, ToolSafety> = {
   read_file: 'instant',
   search_code: 'instant',
   scan_project: 'instant',
+  analyze_codebase: 'instant',
+  query_codebase: 'instant',
   check_markets: 'instant',
   research_topic: 'instant',
   switch_mode: 'instant',
@@ -156,6 +158,35 @@ export const ALFRED_TOOLS: AlfredToolSchema[] = [
       name: 'scan_project',
       description: 'Scan the project structure and return an overview of files, components, and architecture.',
       parameters: { type: 'object', properties: {} },
+    },
+  },
+
+  // ── Codebase Cartography ──
+  {
+    type: 'function',
+    function: {
+      name: 'analyze_codebase',
+      description: 'Run full codebase cartography: dependency graph, hotspot detection, architecture analysis, complexity metrics, and AI-powered insights. Returns architecture summary, risk assessment, and refactoring suggestions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          forceRefresh: { type: 'string', description: 'Set to "true" to force a fresh scan even if cached results exist' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'query_codebase',
+      description: 'Ask a natural language question about the codebase architecture, dependencies, complexity, or patterns. Uses cartography data and LLM intelligence to answer.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'The question about the codebase (e.g. "What are the most complex files?", "Show me circular dependencies", "What patterns does this project use?")' },
+        },
+        required: ['question'],
+      },
     },
   },
 
@@ -569,6 +600,25 @@ export async function executeToolServerSide(
         };
       }
       return { success: true, message: 'No project folder is currently loaded in the IDE. Ask the user to open a folder first.' };
+    }
+
+    case 'analyze_codebase': {
+      const forceRefresh = String(args.forceRefresh || '') === 'true';
+      return {
+        success: true,
+        message: 'Codebase cartography scan initiated. Results will be available momentarily.',
+        clientAction: { action: 'analyze_codebase', params: { forceRefresh: String(forceRefresh) } },
+      };
+    }
+
+    case 'query_codebase': {
+      const question = String(args.question || '');
+      if (!question) return { success: false, message: 'A question is required.' };
+      return {
+        success: true,
+        message: `Querying codebase intelligence: "${question}"`,
+        clientAction: { action: 'query_codebase', params: { question } },
+      };
     }
 
     case 'start_protocol': {
