@@ -15,6 +15,8 @@ const VERSION_FILES = [
   'apps/web/package.json',
 ];
 
+const MANIFEST_FILE = 'apps/web/src/app/api/releases/latest/manifest.json';
+
 interface Result {
   file: string;
   version: string | null;
@@ -29,6 +31,30 @@ function readVersion(relPath: string): Result {
     return { file: relPath, version: pkg.version ?? null };
   } catch (err) {
     return { file: relPath, version: null, error: (err as Error).message };
+  }
+}
+
+function syncManifest(targetVersion: string): void {
+  const fullPath = resolve(ROOT, MANIFEST_FILE);
+  try {
+    const raw = readFileSync(fullPath, 'utf-8');
+    const manifest = JSON.parse(raw);
+    if (manifest.version !== targetVersion) {
+      const oldVersion = manifest.version || '0.0.0';
+      manifest.version = targetVersion;
+      manifest.publishedAt = new Date().toISOString();
+      if (manifest.downloads?.windows?.url) {
+        manifest.downloads.windows.url = manifest.downloads.windows.url.replace(new RegExp(oldVersion.replace(/\./g, '\\.'), 'g'), targetVersion);
+      }
+      if (manifest.downloads?.windows?.checksumUrl) {
+        manifest.downloads.windows.checksumUrl = manifest.downloads.windows.checksumUrl.replace(new RegExp(oldVersion.replace(/\./g, '\\.'), 'g'), targetVersion);
+      }
+      const { writeFileSync } = require('fs');
+      writeFileSync(fullPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
+      console.log(`[validate-versions] Auto-synced manifest.json: ${oldVersion} -> ${targetVersion}`);
+    }
+  } catch (err) {
+    console.warn(`[validate-versions] Warning: Could not sync manifest.json: ${(err as Error).message}`);
   }
 }
 
@@ -61,6 +87,9 @@ function main() {
     console.error('\n   Fix: all 3 files must have the same "version" value.\n');
     process.exit(1);
   }
+
+  // Auto-sync the release manifest with the canonical version
+  syncManifest(canonical);
 
   console.log(`[validate-versions] All versions in sync: ${canonical}`);
 }

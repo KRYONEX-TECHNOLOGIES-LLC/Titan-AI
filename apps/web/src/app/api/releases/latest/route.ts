@@ -1,10 +1,19 @@
 import { NextResponse } from 'next/server';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import manifest from './manifest.json';
+
+function getPackageVersion(): string {
+  try {
+    const raw = readFileSync(resolve(process.cwd(), 'package.json'), 'utf-8');
+    return (JSON.parse(raw) as { version?: string }).version || '';
+  } catch { return ''; }
+}
 
 export async function GET() {
   const owner = process.env.TITAN_GITHUB_OWNER || 'KRYONEX-TECHNOLOGIES-LLC';
   const repo = process.env.TITAN_GITHUB_REPO || 'Titan-AI';
-  const version = process.env.TITAN_DESKTOP_VERSION || manifest.version || '0.1.0';
+  const version = process.env.TITAN_DESKTOP_VERSION || getPackageVersion() || manifest.version || '0.1.0';
   const base =
     process.env.TITAN_RELEASE_BASE_URL ||
     `https://github.com/${owner}/${repo}/releases/download/v${version}`;
