@@ -176,7 +176,7 @@ export default function TitanVoicePopup({ thought, onDismiss, onTellMore, onSnoo
             onMouseOver={(e) => { (e.currentTarget as HTMLElement).style.background = `${accentColor}35`; }}
             onMouseOut={(e) => { (e.currentTarget as HTMLElement).style.background = `${accentColor}20`; }}
           >
-            Tell me more
+            Chat
           </button>
           <button
             onClick={handleSpeak}

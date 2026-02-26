@@ -26,7 +26,19 @@ import { isElectron, electronAPI } from '@/lib/electron';
 import { ToolsStatus } from '@/components/ide/ToolsStatus';
 import { getCapabilities } from '@/lib/agent-capabilities';
 
-const FactoryView = dynamic(() => import('@/components/midnight/FactoryView'), { ssr: false });
+const FactoryView = dynamic(
+  () => import('@/components/midnight/FactoryView').catch((err) => {
+    console.error('[midnight] FactoryView chunk load failed:', err);
+    return { default: ({ onClose }: { onClose?: () => void }) => (
+      <div className="fixed inset-0 z-50 bg-[#1e1e1e] flex items-center justify-center flex-col gap-4">
+        <div className="text-red-400 text-lg font-semibold">Failed to load Factory View</div>
+        <div className="text-[#808080] text-sm">Try refreshing the page. If this persists, check your connection.</div>
+        <button onClick={() => { onClose?.(); window.location.reload(); }} className="px-4 py-2 bg-[#007acc] text-white rounded hover:bg-[#005a9e]">Reload</button>
+      </div>
+    ) } as never;
+  }),
+  { ssr: false, loading: () => <div className="fixed inset-0 z-50 bg-[#1e1e1e] flex items-center justify-center"><div className="text-cyan-400 animate-pulse">Loading Midnight Factory...</div></div> }
+);
 const TrustSlider = dynamic(() => import('@/components/midnight/TrustSlider'), { ssr: false });
 const IDEMenuBar = dynamic(() => import('@/components/ide/MenuBar'), { ssr: false });
 const IDECommandPalette = dynamic(() => import('@/components/ide/CommandPalette'), { ssr: false });
@@ -594,11 +606,16 @@ export default function TitanIDE() {
     };
   }, [fileSystem.workspacePath]);
 
-  // Close dropdowns
+  // Close dropdowns on mousedown outside (mousedown fires before click, so button's stopPropagation works)
   useEffect(() => {
-    const handleClick = () => { setShowPlusDropdown(false); settingsRef.current.setShowModelDropdown(false); };
-    document.addEventListener('click', handleClick);
-    return () => document.removeEventListener('click', handleClick);
+    const handleClose = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (t.closest('[data-dropdown-keep]')) return;
+      setShowPlusDropdown(false);
+      settingsRef.current.setShowModelDropdown(false);
+    };
+    document.addEventListener('mousedown', handleClose);
+    return () => document.removeEventListener('mousedown', handleClose);
   }, []);
 
   // Chat scroll logic is in TitanAgentPanel where the DOM container lives.
@@ -733,6 +750,7 @@ export default function TitanIDE() {
                 attachments={chat.attachments} onAddAttachments={chat.addAttachments} onRemoveAttachment={chat.removeAttachment}
                 capabilities={chat.capabilities} lastToolResult={chat.lastToolResult} onOpenFolder={fileSystem.openFolder}
                 onRenameSession={handleRenameSession} onDeleteSession={handleDeleteSession}
+                onSwitchToAlfred={(text) => { setActiveView('alfred'); setTimeout(() => alfred.sendManual(text), 500); }}
                 hasPendingDiff={pendingDiff !== null}
                 onRejectDiff={() => {
                   const currentDiff = pendingDiffRef.current;
@@ -886,7 +904,7 @@ function ActivityIcon({ children, active, onClick, title }: { children: React.Re
   );
 }
 
-function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode, attachments, onAddAttachments, onRemoveAttachment, capabilities, lastToolResult, onOpenFolder }: {
+function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, currentSession, chatInput, setChatInput, isThinking, isStreaming, activeModel, onNewAgent, onSend, onStop, onKeyDown, onApply, chatEndRef, hasPendingDiff, onRejectDiff, onRenameSession, onDeleteSession, onRetry, onApplyCode, attachments, onAddAttachments, onRemoveAttachment, capabilities, lastToolResult, onOpenFolder, onSwitchToAlfred }: {
   sessions: Session[]; activeSessionId: string; setActiveSessionId: (id: string) => void; currentSession: Session;
   chatInput: string; setChatInput: (v: string) => void; isThinking: boolean; isStreaming: boolean; activeModel: string;
   onNewAgent: () => void; onSend: () => void; onStop: () => void; onKeyDown: (e: React.KeyboardEvent) => void; onApply: () => void; chatEndRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -900,6 +918,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
   capabilities?: import('@/lib/agent-capabilities').AgentCapabilities;
   lastToolResult?: import('@/hooks/useAgentTools').ToolResult | null;
   onOpenFolder?: () => void;
+  onSwitchToAlfred?: (text: string) => void;
 }) {
   const [showFiles, setShowFiles] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -988,11 +1007,11 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
 
   const handleDismissThought = useCallback(() => setActiveThought(null), []);
   const handleTellMoreThought = useCallback((thought: ProactiveThought) => {
-    const prompt = `Tell me more about: ${thought.text.slice(0, 200)}`;
-    setChatInput(prompt);
     setActiveThought(null);
-    setTimeout(() => onSend(), 150);
-  }, [setChatInput, onSend]);
+    if (onSwitchToAlfred) {
+      onSwitchToAlfred(`You just shared this thought: "${thought.text}" — Explain more and give me actionable details.`);
+    }
+  }, [onSwitchToAlfred]);
   const handleSnoozeThoughts = useCallback((durationMs: number) => {
     titanVoice.snoozeThoughts(durationMs);
     setActiveThought(null);

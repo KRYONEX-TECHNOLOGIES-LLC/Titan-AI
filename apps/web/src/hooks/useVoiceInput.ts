@@ -247,24 +247,14 @@ export function useVoiceInput(
           setErrorMessage('Microphone access denied. Check your system permissions.');
           break;
         case 'network':
-          // Native speech needs internet — try once more, then immediately fall back to Whisper
-          if (networkRetryRef.current < 1) {
-            networkRetryRef.current++;
-            console.log('[voice] Network error, retrying once...');
-            setErrorMessage('Connecting to speech service...');
-            setTimeout(() => {
-              if (recognitionRef.current) {
-                try { recognitionRef.current.abort(); } catch { /* ignore */ }
-              }
-              startNativeListening();
-            }, 800);
-            return;
+          // Native speech API unavailable (common in Electron) — skip directly to Whisper
+          console.log('[voice] Native speech unavailable, switching to Whisper immediately');
+          if (recognitionRef.current) {
+            try { recognitionRef.current.abort(); } catch { /* ignore */ }
           }
-          console.log('[voice] Native speech unavailable (no internet), switching to Whisper');
           recognitionRef.current = null;
           setInterimText('');
-          setErrorMessage('Using local speech recognition (Whisper)');
-          setTimeout(() => setErrorMessage(null), 3000);
+          setErrorMessage(null);
           startWhisperRecording();
           return;
         case 'no-speech':

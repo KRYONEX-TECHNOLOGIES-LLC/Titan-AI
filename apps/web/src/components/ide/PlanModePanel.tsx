@@ -6,6 +6,37 @@ import { useCodeDirectory } from '@/stores/code-directory';
 import { useFileStore } from '@/stores/file-store';
 import { DESIGN_TEMPLATES, type DesignTemplate } from '@/lib/plan/design-templates';
 import type { FileNode } from '@/stores/file-store';
+import { isElectron, electronAPI } from '@/lib/electron';
+
+async function ensureProjectFolder(planName: string): Promise<boolean> {
+  const { workspaceOpen, openFolder } = useFileStore.getState();
+  if (workspaceOpen) return true;
+  const safeName = planName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60) || 'titan-project';
+  const timestamp = Date.now().toString(36);
+  const folderName = `${safeName}-${timestamp}`;
+  if (isElectron && electronAPI) {
+    try {
+      const basePath = `C:\\TitanProjects`;
+      await electronAPI.fs.mkdir(basePath).catch(() => {});
+      const fullPath = `${basePath}\\${folderName}`;
+      await electronAPI.fs.mkdir(fullPath);
+      openFolder(fullPath, folderName, []);
+      return true;
+    } catch (e) { console.error('[plan] Failed to create project folder:', e); }
+  }
+  try {
+    const res = await fetch('/api/workspace/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: folderName }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.path) { openFolder(data.path, folderName, []); return true; }
+    }
+  } catch { /* fallback failed */ }
+  return false;
+}
 
 function serializeFileTree(nodes: FileNode[], prefix = '', maxDepth = 4, depth = 0): string {
   if (depth >= maxDepth) return '';
@@ -104,6 +135,11 @@ export function PlanModePanel() {
 
   const handleStartPlan = useCallback(async () => {
     if (totalTasks === 0 || executionRef.current) return;
+
+    const firstTask = Object.values(store.tasks).find(t => t.parentId === null);
+    const projectHint = firstTask?.title || 'project';
+    await ensureProjectFolder(projectHint);
+
     executionRef.current = true;
     store.startExecution();
 
@@ -220,7 +256,7 @@ export function PlanModePanel() {
       store.clearPlan();
       store.setPlanName(result.projectName);
 
-      const allTasks: Array<{ title: string; description: string; phase: number; priority: 'critical' | 'high' | 'medium' | 'low'; tags: string[] }> = [];
+      const allTasks: Array<{ title: string; description: string; phase: number; priority: 'critical' | 'high' | 'medium' | 'low'; tags: string[]; checklist?: Array<{id: string; label: string; checked: boolean}> }> = [];
       result.phases.forEach((phase: any, phaseIdx: number) => {
         phase.tasks.forEach((task: any) => {
           allTasks.push({
@@ -229,6 +265,9 @@ export function PlanModePanel() {
             phase: phaseIdx + 1,
             priority: task.priority,
             tags: task.tags || [],
+            checklist: Array.isArray(task.subtasks)
+              ? task.subtasks.map((s: string, i: number) => ({ id: `sub-${i}`, label: s, checked: false }))
+              : [],
           });
         });
       });

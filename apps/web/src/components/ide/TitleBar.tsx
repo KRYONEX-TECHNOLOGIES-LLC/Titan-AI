@@ -77,7 +77,7 @@ export default function TitleBar(props: TitleBarProps) {
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v6H2v1.5h6V15h1.5V8.5H16V7H9.5V1z"/></svg>
           </button>
           {showPlusDropdown && (
-            <div className="absolute top-full left-0 mt-1 w-[200px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-md shadow-lg py-1 z-50">
+            <div className="absolute top-full left-0 mt-1 w-[200px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-md shadow-lg py-1 z-50" data-dropdown-keep>
               <DropdownItem icon="📄" label="New File" shortcut="Ctrl+N" onClick={() => { onNewFile(); setShowPlusDropdown(false); }} />
               <DropdownItem icon="⬛" label="New Terminal" shortcut="Ctrl+`" onClick={() => { onNewTerminal(); setShowPlusDropdown(false); }} />
               <DropdownItem icon="✨" label="New Agent Session" onClick={() => { onNewAgent(); setShowPlusDropdown(false); }} />
@@ -107,6 +107,7 @@ export default function TitleBar(props: TitleBarProps) {
       {/* Model Pill */}
       <div className="relative">
         <button
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); setShowModelDropdown(!showModelDropdown); }}
           style={activeModel === 'titan-phoenix-protocol' ? {
             display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px',
@@ -131,7 +132,7 @@ export default function TitleBar(props: TitleBarProps) {
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4z"/></svg>
         </button>
         {showModelDropdown && (
-          <div className="absolute top-full right-0 mt-1 w-[320px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute top-full right-0 mt-1 w-[320px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-xl z-50 overflow-hidden" data-dropdown-keep onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
             <div className="p-2 border-b border-[#3c3c3c]">
               <input
                 ref={modelSearchInputRef}

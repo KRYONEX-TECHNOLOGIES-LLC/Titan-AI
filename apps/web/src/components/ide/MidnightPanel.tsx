@@ -438,6 +438,22 @@ export default function MidnightPanel({
         });
       }
 
+      // Open the created folder in the IDE file explorer
+      const fileStore = (await import('@/stores/file-store')).useFileStore.getState();
+      if (!fileStore.workspaceOpen) {
+        if (isElectron && electronAPI) {
+          try {
+            const basePath = `C:\\TitanProjects\\${folderName}`;
+            const exists = await electronAPI.fs.exists(basePath).catch(() => false);
+            const actualPath = exists ? basePath : folderName;
+            const tree = await electronAPI.fs.readDir(actualPath, { recursive: true }).catch(() => []);
+            fileStore.openFolder(actualPath, folderName, tree as Parameters<typeof fileStore.openFolder>[2]);
+          } catch { /* best effort */ }
+        } else {
+          fileStore.openFolder(folderName, folderName, []);
+        }
+      }
+
       await fetch('/api/midnight/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
