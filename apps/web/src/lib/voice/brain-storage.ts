@@ -251,7 +251,7 @@ export function updateIdeaStatus(id: string, status: IdeaStatus) {
 
 // ═══ Brain Context Serializer (for system prompt injection) ═══
 
-export function serializeBrainContext(maxChars = 2000): string {
+export function serializeBrainContext(maxChars = 4000): string {
   const skills = queryBrain('skill').slice(0, 10);
   const knowledge = queryBrain('knowledge').slice(0, 10);
   const mistakes = queryBrain('mistake').slice(0, 5);
@@ -260,25 +260,25 @@ export function serializeBrainContext(maxChars = 2000): string {
   const parts: string[] = [];
 
   if (skills.length > 0) {
-    parts.push('Skills: ' + skills.map(s => s.content.slice(0, 80)).join(' | '));
+    parts.push('Skills: ' + skills.map(s => s.content.slice(0, 200)).join(' | '));
   }
   if (knowledge.length > 0) {
-    parts.push('Knowledge: ' + knowledge.map(k => k.content.slice(0, 80)).join(' | '));
+    parts.push('Knowledge: ' + knowledge.map(k => k.content.slice(0, 200)).join(' | '));
   }
   if (mistakes.length > 0) {
-    parts.push('Mistakes to avoid: ' + mistakes.map(m => m.content.slice(0, 80)).join(' | '));
+    parts.push('Mistakes to avoid: ' + mistakes.map(m => m.content.slice(0, 200)).join(' | '));
   }
   const finance = queryBrain('finance').slice(0, 5);
   if (finance.length > 0) {
-    parts.push('Finance: ' + finance.map(f => f.content.slice(0, 80)).join(' | '));
+    parts.push('Finance: ' + finance.map(f => f.content.slice(0, 200)).join(' | '));
   }
   const strategy = queryBrain('strategy').slice(0, 5);
   if (strategy.length > 0) {
-    parts.push('Strategy: ' + strategy.map(s => s.content.slice(0, 80)).join(' | '));
+    parts.push('Strategy: ' + strategy.map(s => s.content.slice(0, 200)).join(' | '));
   }
   const culture = queryBrain('culture').slice(0, 5);
   if (culture.length > 0) {
-    parts.push('Culture: ' + culture.map(c => c.content.slice(0, 80)).join(' | '));
+    parts.push('Culture: ' + culture.map(c => c.content.slice(0, 200)).join(' | '));
   }
   if (ideas.length > 0) {
     parts.push('Active ideas: ' + ideas.map(i => `${i.title} (${i.status})`).join(', '));

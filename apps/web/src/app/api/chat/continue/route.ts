@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { ZERO_DEFECT_RULES, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 
 const TOOL_DEFINITIONS = [
   {
@@ -1163,6 +1163,8 @@ SECTION 17.5: ZERO-DEFECT CODING (PREVENTION — NOT JUST DETECTION)
 ==========================================================================
 
 ${ZERO_DEFECT_RULES}
+
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}
 
 ==========================================================================
 SECTION 17.6: TASK DECOMPOSITION STANDARD

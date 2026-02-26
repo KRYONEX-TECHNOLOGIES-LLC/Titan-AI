@@ -91,6 +91,97 @@ TASK DECOMPOSITION (MANDATORY):
 - Subtasks are the coder's checklist and the reviewer's scoring matrix.
 - GOOD subtask: "Rate limit: max 3 emails/hour/address" — BAD: "Handle edge cases"`;
 
+export const UNIVERSAL_COMPLETION_CHECKLIST = `
+UNIVERSAL COMPLETION CHECKLIST (MANDATORY — EVERY PROTOCOL, EVERY MODEL, EVERY BUILD):
+
+After ALL code changes are written, BEFORE declaring "done", you MUST run this checklist.
+For each item: CHECK it (verified present) or QUIZ-SKIP it (prove it does not apply).
+
+QUIZ-SKIP RULE: You cannot just skip an item. To skip, you must:
+1. Name 2-3 specific files/locations you checked to confirm the item is irrelevant
+2. State WHY it does not apply to this specific build (e.g., "No forms exist in this project — only static content")
+3. If you cannot name specific files you checked, the item is NOT skippable — implement it
+
+FRONTEND:
+□ All pages/routes are created and accessible
+□ All buttons and interactive elements have click handlers
+□ All forms have validation, submit handlers, and error display
+□ UI is responsive (mobile, tablet, desktop)
+□ Loading states shown during async operations
+□ Error states shown when operations fail
+□ Navigation works between all pages
+□ No dead links or broken routes
+
+BACKEND:
+□ All API endpoints are implemented and return correct data
+□ API error handling returns proper HTTP status codes (400, 401, 403, 404, 500)
+□ Input validation on every endpoint (reject malformed data)
+□ No unhandled promise rejections or uncaught exceptions
+
+DATABASE:
+□ Schema/migrations are created and runnable
+□ Seed data or sample data exists for testing
+□ Foreign keys and constraints are correct
+□ No N+1 query issues in common paths
+
+AUTH:
+□ Login/signup flow works end-to-end
+□ Protected routes/endpoints require authentication
+□ Tokens/sessions expire and refresh correctly
+□ Role-based access control if the spec requires it
+
+API INTEGRATION:
+□ CORS configured for all client origins
+□ Rate limiting on public-facing endpoints
+□ API keys/secrets are in environment variables, never in code
+
+TESTING:
+□ Critical business logic has unit tests
+□ Main user flows have integration or E2E tests
+□ Edge cases are tested (empty inputs, max lengths, invalid data)
+
+DEPLOYMENT:
+□ Environment variables are documented
+□ Production build completes without errors or warnings
+□ README has setup and run instructions
+
+UX:
+□ User actions have visual feedback (toasts, modals, spinners)
+□ Empty states show helpful messages (not blank screens)
+□ Destructive actions have confirmation dialogs
+
+PERFORMANCE:
+□ Images are optimized and lazy-loaded where appropriate
+□ No unnecessary re-renders or expensive computations on every frame
+□ Large lists use virtualization or pagination
+
+SECURITY:
+□ User input is sanitized (XSS prevention)
+□ No secrets, API keys, or credentials in client-side code
+□ SQL injection prevention (parameterized queries)
+
+ACCESSIBILITY:
+□ Images have alt text
+□ Keyboard navigation works for all interactive elements
+□ Color contrast meets WCAG AA minimum`;
+
+export const UNIVERSAL_COMPLETION_CHECKLIST_COMPACT = `
+COMPLETION CHECKLIST (MANDATORY — run after ALL code, before declaring done):
+For each item: CHECK (verified) or QUIZ-SKIP (name 2-3 files you checked + why it doesn't apply).
+You CANNOT blindly skip — prove non-applicability or implement it.
+
+FRONTEND: routes accessible, buttons have handlers, forms validated, responsive, loading/error states, navigation works
+BACKEND: endpoints implemented, proper HTTP status codes, input validation, no unhandled rejections
+DATABASE: schema created, seed data exists, constraints correct
+AUTH: login/signup works E2E, protected routes enforced, tokens expire correctly
+API: CORS configured, rate limiting, secrets in env vars only
+TESTING: unit tests for critical logic, E2E for user flows, edge cases covered
+DEPLOY: env vars documented, production build clean, README has instructions
+UX: visual feedback on actions, empty states handled, destructive actions confirmed
+PERF: images optimized, no unnecessary re-renders, large lists paginated
+SECURITY: input sanitized, no client-side secrets, parameterized queries
+A11Y: alt text on images, keyboard navigation, color contrast meets WCAG AA`;
+
 export const GIT_RULES = `
 GIT RULES (applies to ALL Titan AI commits):
 - Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.

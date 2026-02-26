@@ -4,7 +4,7 @@
 // and produces a final verdict.
 
 import { callModelDirect } from '@/lib/llm-call';
-import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   SniperDAG,
@@ -58,6 +58,13 @@ cs-a11y-alt, cs-a11y-keyboard
 
 Only mark items as checked if they are genuinely addressed by the completed tasks.
 Be honest — this is the last line of defense before shipping.
+
+QUIZ-SKIP RULE: To skip ANY checklist item, you MUST:
+1. Name 2-3 specific files/locations you checked to confirm the item is irrelevant
+2. State WHY it does not apply (e.g., "No forms exist — this is a static promo site")
+3. If you cannot name files you checked, the item is NOT skippable — mark it as FAILED
+
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 ${ZERO_DEFECT_RULES_COMPACT}
 ${GIT_RULES}`;

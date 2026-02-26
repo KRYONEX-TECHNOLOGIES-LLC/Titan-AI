@@ -17,6 +17,7 @@
 import type { Lane, VerifierArtifact, VerifierFinding, ChecklistResult } from './lane-model';
 import { laneStore } from './lane-store';
 import { MODEL_REGISTRY } from '@/lib/model-registry';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 
 // ─── 19-Item Checklist ──────────────────────────────────────────────────────
 
@@ -134,7 +135,14 @@ For each of the 19 items, state: [ID] PASS or [ID] FAIL with brief evidence.
 6. You must NEVER suggest fixes. You find problems. The Coder fixes problems.
 7. You must NEVER approve with caveats. Either it passes all checks or it fails.
 8. You must NEVER read previous verification results. Each verification is independent.
-9. Include evidence: which files you checked, specific lines examined.`;
+9. Include evidence: which files you checked, specific lines examined.
+
+=== UNIVERSAL CODING STANDARDS (Use as additional verification criteria) ===
+${ZERO_DEFECT_RULES_COMPACT}
+${TASK_DECOMPOSITION_RULES_COMPACT}
+
+=== COMPLETION VERIFICATION (The quality gate — verify the worker ran this) ===
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}`;
 }
 
 // ─── LLM Call ───────────────────────────────────────────────────────────────

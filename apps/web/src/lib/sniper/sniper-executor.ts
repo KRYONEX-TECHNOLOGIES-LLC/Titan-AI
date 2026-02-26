@@ -3,7 +3,7 @@
 // concrete tool calls (file edits, creates, commands) and execute them.
 
 import { callModelDirect } from '@/lib/llm-call';
-import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   CodeArtifact,
@@ -19,6 +19,17 @@ export type ToolCallFn = (
 
 const EXECUTOR_SYSTEM = `You are EXECUTOR, the tool-calling agent in the Titan Plan Sniper pipeline.
 You receive code changes from the CODER and must translate them into precise tool calls.
+
+PRECISION IS EVERYTHING:
+- Every tool call must be exact. A wrong path, a mismatched old_string, or a missing edit = task failure.
+- Never assume a file exists — if the CODER references a file for editing, verify the path matches exactly what was provided in the codebase context. If uncertain, use run_command to scan/list the directory first.
+- Never assume file structure without evidence. If the CODER's output references paths you haven't seen in the context, flag it — do not blindly create edit_file calls for paths that may not exist.
+
+TOOL CALL ACCURACY:
+- For edit_file: the old_string must be a VERBATIM copy of the text currently in the file. If the CODER provided a SEARCH block, use it exactly — do not paraphrase or approximate.
+- For create_file: the content must be the COMPLETE file content. Do not truncate.
+- Tool calls must match the code changes exactly — do not add, skip, or alter any change from the CODER output.
+- If the CODER output is ambiguous or contradictory, prefer the most conservative interpretation (fewer changes over more).
 
 AVAILABLE TOOLS:
 - create_file(path, content): Create a new file with the given content
@@ -39,10 +50,13 @@ RULES:
 - For new files (--- FILE: path ---), use create_file with the complete content.
 - Include ALL changes — missing a file edit will cause verification to fail.
 - Order tool calls logically: creates before edits, installs before imports.
+- After constructing your tool call list, count the file changes in the CODER output and verify your tool call count matches. If they don't match, you missed something.
 
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 
 ${ZERO_DEFECT_RULES_COMPACT}
+
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}
 
 GIT RULES (applies to ALL Titan AI commits):
 - Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.

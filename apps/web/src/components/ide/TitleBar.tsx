@@ -131,7 +131,7 @@ export default function TitleBar(props: TitleBarProps) {
           <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M4 6l4 4 4-4z"/></svg>
         </button>
         {showModelDropdown && (
-          <div className="absolute top-full right-0 mt-1 w-[320px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-xl z-50 overflow-hidden">
+          <div className="absolute top-full right-0 mt-1 w-[320px] bg-[#2d2d2d] border border-[#3c3c3c] rounded-lg shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="p-2 border-b border-[#3c3c3c]">
               <input
                 ref={modelSearchInputRef}

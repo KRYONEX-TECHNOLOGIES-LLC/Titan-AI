@@ -21,7 +21,35 @@ import {
 } from './phoenix-model';
 import { routeRequest } from './phoenix-router';
 import { selfHealingVerification, verifyArtifact } from './phoenix-verifier';
-import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
+
+// ── Retry Wrapper ────────────────────────────────────────────────────────────
+
+async function callWithRetry(
+  invokeModel: (model: string, messages: Array<{role: 'system' | 'user' | 'assistant'; content: string}>) => Promise<string>,
+  model: string,
+  messages: Array<{role: 'system' | 'user' | 'assistant'; content: string}>,
+  maxRetries = 3,
+): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await Promise.race([
+        invokeModel(model, messages),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Model call timed out after 30s')), 30000)),
+      ]);
+      return result;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries - 1) {
+        const delay = 1000 * Math.pow(2, attempt);
+        console.warn(`[phoenix] Retry ${attempt + 1}/${maxRetries} after ${delay}ms:`, err instanceof Error ? err.message : err);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  return `[ERROR] Model call failed after ${maxRetries} attempts: ${lastError instanceof Error ? lastError.message : 'unknown error'}`;
+}
 
 // ── Event Types ─────────────────────────────────────────────────────────────
 
@@ -205,7 +233,23 @@ async function executeWorker(
 
   while (iterations < config.maxWorkerIterations) {
     iterations++;
-    const output = await invokeModel(model, messages);
+
+    let output: string;
+    try {
+      output = await callWithRetry(invokeModel, model, messages);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'unknown error';
+      console.error(`[phoenix] executeWorker model call failed for ${subtask.id}:`, errMsg);
+      fullOutput += `[ERROR] Worker model call failed: ${errMsg}\n`;
+      break;
+    }
+
+    if (output.startsWith('[ERROR]')) {
+      console.error(`[phoenix] executeWorker got error response for ${subtask.id}:`, output);
+      fullOutput += output + '\n';
+      break;
+    }
+
     fullOutput += output + '\n';
 
     const toolMatches = output.matchAll(/\{"tool"\s*:\s*"([^"]+)"\s*,\s*"args"\s*:\s*(\{[^}]*\})\}/g);
@@ -220,7 +264,15 @@ async function executeWorker(
       try { toolArgs = JSON.parse(match[2]); } catch { continue; }
 
       const start = Date.now();
-      const result = await executeToolCall(toolName, toolArgs);
+      let result: { success: boolean; output: string; error?: string };
+      try {
+        result = await executeToolCall(toolName, toolArgs);
+      } catch (toolErr) {
+        const toolErrMsg = toolErr instanceof Error ? toolErr.message : 'unknown error';
+        console.error(`[phoenix] Tool call "${toolName}" failed for ${subtask.id}:`, toolErrMsg);
+        result = { success: false, output: `Tool execution error: ${toolErrMsg}`, error: toolErrMsg };
+      }
+
       toolLogs.push({
         tool: toolName,
         args: toolArgs,
@@ -375,7 +427,11 @@ async function judgeArtifact(
     'You only see artifacts that have already passed VERIFIER review.',
     'Your job is to catch subtle issues: architectural problems, maintainability concerns,',
     'edge cases the VERIFIER missed, and ensure the solution is truly production-grade.',
-    'Return strict JSON: {"pass":true,"rationale":"Why this passes/fails","score":9}',
+    '',
+    UNIVERSAL_COMPLETION_CHECKLIST_COMPACT,
+    '',
+    'For each checklist item: verify it is satisfied OR provide the specific files you checked and why it does not apply.',
+    'Return strict JSON: {"pass":true,"rationale":"Why this passes/fails","score":9,"checklistSkips":["item: reason"]}',
     'Only fail if you find a SIGNIFICANT issue. Score 1-10.',
   ].join('\n');
 
@@ -389,11 +445,17 @@ async function judgeArtifact(
   let tokensOut = 0;
 
   try {
-    const output = await invokeModel(config.models.judge, [
+    const output = await callWithRetry(invokeModel, config.models.judge, [
       { role: 'system', content: system },
       { role: 'user', content: user },
     ]);
     tokensOut = estimateTokens(output);
+
+    if (output.startsWith('[ERROR]')) {
+      console.error(`[phoenix] judgeArtifact model error for ${subtask.id}:`, output);
+      return { pass: true, rationale: `Judge skipped due to model error: ${output}`, tokensIn, tokensOut };
+    }
+
     const parsed = tryParseJSON(output);
 
     if (parsed) {
@@ -405,8 +467,10 @@ async function judgeArtifact(
         tokensOut,
       };
     }
-  } catch {
-    // fall through
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : 'unknown error';
+    console.error(`[phoenix] judgeArtifact failed for ${subtask.id}:`, errMsg);
+    return { pass: true, rationale: `Judge fallback (error: ${errMsg})`, tokensIn, tokensOut };
   }
 
   return { pass: true, rationale: 'Judge fallback: accepted (no critical issues detected)', tokensIn, tokensOut };
@@ -650,47 +714,68 @@ export async function orchestratePhoenix(
   const { complexity, pipeline } = routeRequest(goal);
   callbacks.onEvent('complexity_routed', { complexity, pipeline });
 
-  try {
-    let result: { success: boolean; output: string };
+  let result: { success: boolean; output: string };
 
+  try {
     switch (pipeline) {
       case 'simple':
-        result = await executeSimplePipeline(goal, config, callbacks, costTracker);
+        try {
+          result = await executeSimplePipeline(goal, config, callbacks, costTracker);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : 'unknown error';
+          console.error('[phoenix] Simple pipeline failed:', errMsg);
+          callbacks.onEvent('phoenix_error', { stage: 'simple_pipeline', message: errMsg });
+          result = { success: false, output: `[ERROR] Simple pipeline failed: ${errMsg}` };
+        }
         break;
       case 'medium':
-        result = await executeMediumPipeline(goal, complexity, config, callbacks, costTracker);
+        try {
+          result = await executeMediumPipeline(goal, complexity, config, callbacks, costTracker);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : 'unknown error';
+          console.error('[phoenix] Medium pipeline failed:', errMsg);
+          callbacks.onEvent('phoenix_error', { stage: 'medium_pipeline', message: errMsg });
+          result = { success: false, output: `[ERROR] Medium pipeline failed: ${errMsg}` };
+        }
         break;
       case 'full':
-        result = await executeFullPipeline(goal, complexity, config, callbacks, costTracker);
+        try {
+          result = await executeFullPipeline(goal, complexity, config, callbacks, costTracker);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : 'unknown error';
+          console.error('[phoenix] Full pipeline failed:', errMsg);
+          callbacks.onEvent('phoenix_error', { stage: 'full_pipeline', message: errMsg });
+          result = { success: false, output: `[ERROR] Full pipeline failed: ${errMsg}` };
+        }
         break;
     }
-
-    const elapsedMs = Date.now() - startedAt;
-
-    callbacks.onEvent('phoenix_complete', {
-      success: result.success,
-      pipeline,
-      complexity,
-      elapsedMs,
-      cost: costTracker.totalCost,
-      costSummary: costTracker.getSummary(),
-      tokensIn: costTracker.totalTokensIn,
-      tokensOut: costTracker.totalTokensOut,
-    });
-
-    return {
-      success: result.success,
-      output: result.output,
-      pipeline,
-      complexity,
-      elapsedMs,
-      cost: costTracker.totalCost,
-      costBreakdown: costTracker.breakdown,
-    };
   } catch (error) {
-    callbacks.onEvent('phoenix_error', {
-      message: error instanceof Error ? error.message : 'Phoenix orchestration failed',
-    });
-    throw error;
+    const errMsg = error instanceof Error ? error.message : 'unknown error';
+    console.error('[phoenix] Orchestration routing failed:', errMsg);
+    callbacks.onEvent('phoenix_error', { stage: 'routing', message: errMsg });
+    result = { success: false, output: `[ERROR] Phoenix orchestration failed: ${errMsg}` };
   }
+
+  const elapsedMs = Date.now() - startedAt;
+
+  callbacks.onEvent('phoenix_complete', {
+    success: result.success,
+    pipeline,
+    complexity,
+    elapsedMs,
+    cost: costTracker.totalCost,
+    costSummary: costTracker.getSummary(),
+    tokensIn: costTracker.totalTokensIn,
+    tokensOut: costTracker.totalTokensOut,
+  });
+
+  return {
+    success: result.success,
+    output: result.output,
+    pipeline,
+    complexity,
+    elapsedMs,
+    cost: costTracker.totalCost,
+    costBreakdown: costTracker.breakdown,
+  };
 }

@@ -27,6 +27,23 @@ ZERO-DEFECT RULES (MANDATORY):
 - NEVER use out-of-scope variables, add duplicate declarations, remove code you don't understand, or change signatures without updating callers.
 - NEVER deviate outside the project scope.`;
 
+const UNIVERSAL_COMPLETION_CHECKLIST_COMPACT = `
+COMPLETION CHECKLIST (MANDATORY — run after ALL code, before declaring done):
+For each item: CHECK (verified) or QUIZ-SKIP (name 2-3 files you checked + why it doesn't apply).
+You CANNOT blindly skip — prove non-applicability or implement it.
+
+FRONTEND: routes accessible, buttons have handlers, forms validated, responsive, loading/error states, navigation works
+BACKEND: endpoints implemented, proper HTTP status codes, input validation, no unhandled rejections
+DATABASE: schema created, seed data exists, constraints correct
+AUTH: login/signup works E2E, protected routes enforced, tokens expire correctly
+API: CORS configured, rate limiting, secrets in env vars only
+TESTING: unit tests for critical logic, E2E for user flows, edge cases covered
+DEPLOY: env vars documented, production build clean, README has instructions
+UX: visual feedback on actions, empty states handled, destructive actions confirmed
+PERF: images optimized, no unnecessary re-renders, large lists paginated
+SECURITY: input sanitized, no client-side secrets, parameterized queries
+A11Y: alt text on images, keyboard navigation, color contrast meets WCAG AA`;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // FOREMAN — Project Manager / Architect (DeepSeek V3.2 Speciale)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -109,6 +126,8 @@ ${TASK_DECOMPOSITION_RULES_COMPACT}
 
 ${ZERO_DEFECT_RULES_COMPACT}
 
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}
+
 GIT RULES (applies to ALL Titan AI commits):
 - Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.
 - manifest.json is auto-updated by CI. Never edit it manually.
@@ -178,7 +197,9 @@ Before writing complex code:
 - TWO independent Sentinels review your work — sloppy code will be caught
 - If given feedback from a previous attempt, address EVERY point before proceeding
 
-${ZERO_DEFECT_RULES_COMPACT}`;
+${ZERO_DEFECT_RULES_COMPACT}
+
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}`;
 
 export const ALPHA_NERD_SYSTEM_PROMPT = `${NERD_BASE_PROMPT}
 
@@ -333,7 +354,9 @@ You receive a list of findings from The Inspector and apply TARGETED, MINIMAL fi
 - Do NOT refactor code that isn't broken
 - Do NOT change formatting or style beyond what's needed for the fix
 
-${ZERO_DEFECT_RULES_COMPACT}`;
+${ZERO_DEFECT_RULES_COMPACT}
+
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}`;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SENTINEL COUNCIL

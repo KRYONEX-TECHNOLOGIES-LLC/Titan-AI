@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
         emit('voice_thinking', { roles: ['analyzing'] });
 
         const complexity = classifyComplexity(body.message, body.hasImage);
-        const history = (body.conversationHistory || []).slice(-20);
+        const history = (body.conversationHistory || []).slice(-30);
         let contextPrefix = '';
 
         // Pre-processing roles (Scanner, Thinker, Perceiver)
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
           try {
             const scannerOutput = await callModelDirect(VOICE_MODELS.SCANNER, [
               { role: 'system', content: 'You are SCANNER, a code analysis specialist. Analyze the user\'s code question. Return a concise technical analysis (max 200 words). Focus on: file locations, patterns, issues, approach.' },
-              ...history.slice(-6),
+              ...history.slice(-12),
               { role: 'user', content: body.message },
             ], { temperature: 0.1, maxTokens: 1024 });
             if (scannerOutput) {
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
           try {
             const thinkingOutput = await callModelDirect(VOICE_MODELS.THINKER, [
               { role: 'system', content: 'You are THINKER, the deep reasoning engine. Analyze thoroughly, consider multiple angles, creative solutions. Max 300 words, be substantive.' },
-              ...history.slice(-6),
+              ...history.slice(-12),
               { role: 'user', content: body.message },
             ], { temperature: 0.4, maxTokens: 2048 });
             if (thinkingOutput) {

@@ -113,10 +113,10 @@ export function useAlfredAmbient() {
 
     // Build rich context from memory
     let memoryContext = '';
-    try { memoryContext = useTitanMemory.getState().serialize(3000); } catch { /* */ }
+    try { memoryContext = useTitanMemory.getState().serialize(5000); } catch { /* */ }
 
     let brainContext = '';
-    try { brainContext = serializeBrainContext(1500); } catch { /* */ }
+    try { brainContext = serializeBrainContext(4000); } catch { /* */ }
 
     let learnedStrategies = '';
     try {
@@ -130,7 +130,7 @@ export function useAlfredAmbient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          conversationHistory: conversationLog.slice(-12).map(c => ({
+          conversationHistory: conversationLog.slice(-30).map(c => ({
             role: c.role === 'user' ? 'user' : 'assistant',
             content: c.text,
           })),

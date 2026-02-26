@@ -23,6 +23,30 @@ import {
   updateNodeStatus,
 } from './work-order';
 
+async function callWithRetry(
+  fn: () => Promise<string>,
+  maxRetries = 3,
+): Promise<string> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await Promise.race([
+        fn(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timed out after 30s')), 30000)),
+      ]);
+      return result;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries - 1) {
+        const delay = 1000 * Math.pow(2, attempt);
+        console.warn(`[omega] Retry ${attempt + 1}/${maxRetries} after ${delay}ms:`, err instanceof Error ? err.message : err);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  return `[ERROR] Call failed after ${maxRetries} attempts: ${lastError instanceof Error ? lastError.message : 'unknown'}`;
+}
+
 async function buildWorkOrders(goal: string, config: OmegaConfig, callbacks: OmegaCallbacks): Promise<WorkOrderDAG> {
   const autopsy = await performAutopsy(callbacks.executeToolCall, '');
   callbacks.onEvent('autopsy_complete', {
@@ -85,7 +109,26 @@ export async function orchestrateOmega(
 ): Promise<OmegaResult> {
   callbacks.onEvent('orchestration_start', { goal, config });
 
-  const dag = await buildWorkOrders(goal, config, callbacks);
+  let dag: WorkOrderDAG;
+  try {
+    dag = await buildWorkOrders(goal, config, callbacks);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    callbacks.onEvent('error', { phase: 'buildWorkOrders', message: msg });
+    return {
+      success: false,
+      manifestId: 'failed',
+      workOrdersTotal: 0,
+      workOrdersVerified: 0,
+      workOrdersFailed: 0,
+      planStepCount: 0,
+      execution: { success: false, stepsExecuted: 0, results: [] },
+      integrationTest: undefined,
+      summary: `Omega failed during planning: ${msg}`,
+      output: '',
+    };
+  }
+
   const staged = new Map<string, ASTModification[]>();
   const collectedOutputs: string[] = [];
 
@@ -94,47 +137,54 @@ export async function orchestrateOmega(
     if (readyNodes.length === 0) break;
 
     for (const node of readyNodes) {
-      callbacks.onEvent('specialist_dispatched', {
-        workOrderId: node.id,
-        risk: node.predictedRisk,
-      });
-      updateNodeStatus(dag, node.id, 'WORKING');
-      const hasWorkspace = !!(callbacks.workspacePath);
-      const evidence = await executeSpecialist(node, config, callbacks, hasWorkspace);
-      callbacks.onEvent('specialist_complete', {
-        workOrderId: node.id,
-        modifications: evidence.modifications.length,
-      });
-
-      updateNodeStatus(dag, node.id, 'PENDING_VERIFICATION');
-      const verification = await executeSentinel(node, evidence, config, callbacks);
-
-      if (isPass(verification)) {
-        updateNodeStatus(dag, node.id, 'VERIFIED');
-        staged.set(node.id, verification.stagedModifications);
-        updateNodeStatus(dag, node.id, 'STAGED');
-        const evidenceText = evidence.selfAssessment || evidence.modifications.map(m => JSON.stringify(m)).join('\n');
-        if (evidenceText) collectedOutputs.push(evidenceText);
-        callbacks.onEvent('verification_pass', {
+      try {
+        callbacks.onEvent('specialist_dispatched', {
           workOrderId: node.id,
-          stagedModifications: verification.stagedModifications.length,
+          risk: node.predictedRisk,
         });
-      } else {
-        updateNodeStatus(dag, node.id, 'REJECTED');
-        const reworkCount = incrementReworkCount(dag, node.id);
-        callbacks.onEvent('verification_fail', {
+        updateNodeStatus(dag, node.id, 'WORKING');
+        const hasWorkspace = !!(callbacks.workspacePath);
+        const evidence = await executeSpecialist(node, config, callbacks, hasWorkspace);
+        callbacks.onEvent('specialist_complete', {
           workOrderId: node.id,
-          memo: verification,
-          reworkCount,
+          modifications: evidence.modifications.length,
         });
-        if (reworkCount <= config.maxReworkAttempts) {
-          updateNodeStatus(dag, node.id, 'REWORKING');
-          updateNodeStatus(dag, node.id, 'PENDING');
-          callbacks.onEvent('rework_dispatched', { workOrderId: node.id, reworkCount });
+
+        updateNodeStatus(dag, node.id, 'PENDING_VERIFICATION');
+        const verification = await executeSentinel(node, evidence, config, callbacks);
+
+        if (isPass(verification)) {
+          updateNodeStatus(dag, node.id, 'VERIFIED');
+          staged.set(node.id, verification.stagedModifications);
+          updateNodeStatus(dag, node.id, 'STAGED');
+          const evidenceText = evidence.selfAssessment || evidence.modifications.map(m => JSON.stringify(m)).join('\n');
+          if (evidenceText) collectedOutputs.push(evidenceText);
+          callbacks.onEvent('verification_pass', {
+            workOrderId: node.id,
+            stagedModifications: verification.stagedModifications.length,
+          });
         } else {
-          updateNodeStatus(dag, node.id, 'ESCALATED');
-          callbacks.onEvent('escalation', { workOrderId: node.id, reason: 'max_rework_attempts_exceeded' });
+          updateNodeStatus(dag, node.id, 'REJECTED');
+          const reworkCount = incrementReworkCount(dag, node.id);
+          callbacks.onEvent('verification_fail', {
+            workOrderId: node.id,
+            memo: verification,
+            reworkCount,
+          });
+          if (reworkCount <= config.maxReworkAttempts) {
+            updateNodeStatus(dag, node.id, 'REWORKING');
+            updateNodeStatus(dag, node.id, 'PENDING');
+            callbacks.onEvent('rework_dispatched', { workOrderId: node.id, reworkCount });
+          } else {
+            updateNodeStatus(dag, node.id, 'ESCALATED');
+            callbacks.onEvent('escalation', { workOrderId: node.id, reason: 'max_rework_attempts_exceeded' });
+          }
         }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[omega] Work order ${node.id} failed:`, msg);
+        callbacks.onEvent('error', { phase: 'specialist_execution', workOrderId: node.id, message: msg });
+        updateNodeStatus(dag, node.id, 'FAILED');
       }
     }
   }

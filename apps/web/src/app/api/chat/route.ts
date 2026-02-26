@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ModelInfo, MODEL_REGISTRY, normalizeModelId } from '@/lib/model-registry';
 import { scanForThreats, isHighSeverityThreat, PathObfuscator } from '@/lib/security';
-import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 
 const pathObfuscator = new PathObfuscator();
 
@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
 
   systemPrompt += '\n\n' + TASK_DECOMPOSITION_RULES_COMPACT;
   systemPrompt += '\n\n' + ZERO_DEFECT_RULES_COMPACT;
+  systemPrompt += '\n\n' + UNIVERSAL_COMPLETION_CHECKLIST_COMPACT;
 
   if (codeContext) {
     systemPrompt += `

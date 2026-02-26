@@ -16,6 +16,7 @@
 import type { Lane, WorkerArtifact, FileRegion, ToolCallLogEntry } from './lane-model';
 import { laneStore } from './lane-store';
 import { MODEL_REGISTRY } from '@/lib/model-registry';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 
 // ─── Worker System Prompt ───────────────────────────────────────────────────
 
@@ -94,6 +95,10 @@ Adversarial self-disclosure -- tell the Verifier exactly what to check:
 6. Imports of modules that don't exist in the project
 7. Functions longer than 50 lines without decomposition
 
+${ZERO_DEFECT_RULES_COMPACT}
+${TASK_DECOMPOSITION_RULES_COMPACT}
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}
+
 === TOOLS ===
 You have access to: read_file, edit_file, create_file, delete_file, list_directory, grep_search, glob_search, run_command, read_lints
 
@@ -150,7 +155,11 @@ Tell the Verifier exactly what to check.
 1. Placeholder code: // TODO: implement this
 2. Stub functions: function foo() { return null; }
 3. Happy-path-only code: no error handling
-4. Missing type safety: 'any' types without justification`;
+4. Missing type safety: 'any' types without justification
+
+${ZERO_DEFECT_RULES_COMPACT}
+${TASK_DECOMPOSITION_RULES_COMPACT}
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}`;
 }
 
 // ─── LLM Call Infrastructure ────────────────────────────────────────────────

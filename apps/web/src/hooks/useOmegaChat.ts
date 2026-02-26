@@ -148,7 +148,8 @@ export function useOmegaChat({
               const success = payload.success !== false;
               const verified = payload.workOrdersVerified ?? '?';
               const total = payload.workOrdersTotal ?? '?';
-              const header = `**Titan Omega Protocol** — ${success ? 'Complete' : 'Finished with failures'} · ${verified}/${total} work orders verified`;
+              const statusIcon = success ? '✅' : '⚠️';
+              const header = `${statusIcon} **Titan Omega Protocol** — ${success ? 'Complete' : 'Finished with failures'} · **${verified}/${total}** work orders verified`;
               const body = codeOutput
                 ? `${summary}\n\n${codeOutput}`
                 : (summary || statusLines.join('\n'));
@@ -246,27 +247,29 @@ export function useOmegaChat({
 function formatOmegaEventLine(eventType: string, payload: Record<string, unknown>): string {
   switch (eventType) {
     case 'autopsy_complete':
-      return `- Autopsy complete (${String(payload.projectType || 'unknown')} project)`;
+      return `### 🔍 Project Autopsy\n- Type: **${String(payload.projectType || 'unknown')}**`;
     case 'blueprint_complete':
-      return `- Blueprint complete: ${String(payload.workOrderCount || 0)} work orders`;
+      return `\n### 📋 Blueprint Ready\n- **${String(payload.workOrderCount || 0)}** work orders created`;
     case 'scaffolding_complete':
-      return `- Scaffolding complete for ${String(payload.scaffolded || 0)} nodes`;
+      return `- ✅ Scaffolding complete for **${String(payload.scaffolded || 0)}** nodes`;
     case 'specialist_dispatched':
-      return `- Specialist dispatched: ${String(payload.workOrderId)} (${String(payload.risk)})`;
+      return `\n### 🔄 Work Order: \`${String(payload.workOrderId)}\`\n- Risk: **${String(payload.risk)}** · Specialist dispatched`;
     case 'verification_pass':
-      return `- Verification PASS: ${String(payload.workOrderId)}`;
+      return `- ✅ Verified: \`${String(payload.workOrderId)}\``;
     case 'verification_fail':
-      return `- Verification FAIL: ${String(payload.workOrderId)}`;
+      return `- ❌ Verification failed: \`${String(payload.workOrderId)}\``;
     case 'rework_dispatched':
-      return `- Rework dispatched: ${String(payload.workOrderId)} (#${String(payload.reworkCount)})`;
+      return `- 🔄 Rework dispatched: \`${String(payload.workOrderId)}\` (attempt #${String(payload.reworkCount)})`;
     case 'plan_assembled':
-      return `- Plan assembled: ${String(payload.steps || 0)} steps`;
+      return `\n### 📋 Plan Assembled\n- **${String(payload.steps || 0)}** execution steps`;
     case 'plan_step_executed':
-      return `- Step ${String(payload.stepId)}: ${payload.success ? 'OK' : 'FAIL'}`;
+      return payload.success
+        ? `- ✅ Step \`${String(payload.stepId)}\`: **OK**`
+        : `- ❌ Step \`${String(payload.stepId)}\`: **FAIL**`;
     case 'orchestration_complete':
-      return `- Complete: ${String(payload.summary || 'done')}`;
+      return `\n---\n✅ **Orchestration Complete** · ${String(payload.summary || 'done')}`;
     case 'orchestration_error':
-      return `- Error: ${String(payload.message || 'unknown')}`;
+      return `\n❌ **Error:** ${String(payload.message || 'unknown')}`;
     default:
       return '';
   }

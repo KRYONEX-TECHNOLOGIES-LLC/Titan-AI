@@ -32,6 +32,7 @@ import { executeVerifierLane } from './verifier';
 import { attemptMerge } from './merge-arbiter';
 import { resolveConflict, applyResolution } from './conflict-resolver';
 import { MODEL_REGISTRY } from '@/lib/model-registry';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 
 // ─── Supervisor LLM Infrastructure ──────────────────────────────────────────
 
@@ -108,6 +109,10 @@ const DECOMPOSITION_PROMPT = `You are the Supervisor (Governor) of the Titan Gov
 Your job is to decompose a user's high-level goal into a Task Manifest: a Directed Acyclic Graph (DAG) of parallel and sequential subtasks.
 
 Each subtask will be assigned to an independent Worker (Coder) lane. Subtasks that can be done in parallel SHOULD be parallel. Subtasks that depend on another's output must declare that dependency.
+
+${ZERO_DEFECT_RULES_COMPACT}
+${TASK_DECOMPOSITION_RULES_COMPACT}
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}
 
 === RULES ===
 1. Each subtask must be atomic: one clear coding task that a single Coder can complete.

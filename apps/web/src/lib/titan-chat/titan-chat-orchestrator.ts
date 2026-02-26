@@ -10,7 +10,7 @@
  */
 
 import { TitanChatConfig, routeComplexity } from './titan-chat-model';
-import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 
 export type TitanChatEventType =
   | 'chat_start'
@@ -66,7 +66,9 @@ You are the smartest, most capable assistant the user has ever interacted with. 
 
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 
-${ZERO_DEFECT_RULES_COMPACT}`;
+${ZERO_DEFECT_RULES_COMPACT}
+
+${UNIVERSAL_COMPLETION_CHECKLIST_COMPACT}`;
 
 const REFINER_SYSTEM = `You are the TITAN REFINER — a ruthless quality gate for Titan AI responses. You receive a draft answer and your sole job is to make it elite.
 

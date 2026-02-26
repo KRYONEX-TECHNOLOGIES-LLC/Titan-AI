@@ -571,6 +571,19 @@ function TaskItem({
               ))}
             </div>
           )}
+          {task.checklist.length > 0 && !isExpanded && (
+            <div className="mt-1 ml-1 space-y-0.5">
+              {task.checklist.slice(0, 3).map((item) => (
+                <div key={item.id} className="flex items-start gap-1.5 text-[10px] leading-snug">
+                  <span className="shrink-0 mt-[2px]" style={{ color: item.checked ? '#22c55e' : '#555' }}>●</span>
+                  <span className={item.checked ? 'text-[#555] line-through' : 'text-[#808080]'}>{item.label}</span>
+                </div>
+              ))}
+              {task.checklist.length > 3 && (
+                <div className="text-[9px] text-[#555] ml-4">+{task.checklist.length - 3} more</div>
+              )}
+            </div>
+          )}
           {task.checklist.length > 0 && isExpanded && (
             <div className="mt-1 space-y-0.5">
               {task.checklist.map((item) => (

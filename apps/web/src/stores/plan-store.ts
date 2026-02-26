@@ -142,7 +142,7 @@ interface PlanState {
   removeTask: (id: string) => void;
   addSubtask: (parentId: string, title: string) => string;
   reorderTask: (id: string, newOrder: number) => void;
-  bulkAddTasks: (tasks: Array<{ title: string; description: string; phase: number; priority: TaskPriority; tags: string[] }>) => void;
+  bulkAddTasks: (tasks: Array<{ title: string; description: string; phase: number; priority: TaskPriority; tags: string[]; checklist?: ChecklistItem[] }>) => void;
   clearPlan: () => void;
 
   // Execution
@@ -334,7 +334,7 @@ export const usePlanStore = create<PlanState>()(
             subtaskIds: [],
             notes: '',
             errorLog: [],
-            checklist: [],
+            checklist: td.checklist ?? [],
             deepLink: null,
             createdAt: now,
             updatedAt: now,

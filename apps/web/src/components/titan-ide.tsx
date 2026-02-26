@@ -1073,7 +1073,7 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
         return;
       }
 
-      const tasks = data.tasks as Array<{ title: string; description: string; phase: number; priority: 'critical' | 'high' | 'medium' | 'low'; tags: string[] }>;
+      const tasks = data.tasks as Array<{ title: string; description: string; phase: number; priority: 'critical' | 'high' | 'medium' | 'low'; tags: string[]; subtasks?: string[] }>;
 
       if (Array.isArray(tasks) && tasks.length > 0) {
         planStore.bulkAddTasks(tasks.map(t => ({
@@ -1082,6 +1082,9 @@ function TitanAgentPanel({ sessions, activeSessionId, setActiveSessionId, curren
           phase: t.phase || 1,
           priority: t.priority || 'medium',
           tags: Array.isArray(t.tags) ? t.tags : [],
+          checklist: Array.isArray(t.subtasks)
+            ? t.subtasks.map((s, i) => ({ id: `sub-${i}`, label: s, checked: false }))
+            : [],
         })));
         planStore.addReport({ type: 'progress', severity: 'info', title: 'Plan Generated', details: `Created ${tasks.length} tasks from: "${input}"`, taskId: null, resolved: false });
       } else {

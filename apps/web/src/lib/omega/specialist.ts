@@ -6,7 +6,7 @@ import type {
   WorkOrder,
 } from './omega-model';
 import { selectModelForRisk } from './risk-router';
-import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES, UNIVERSAL_COMPLETION_CHECKLIST_COMPACT } from '@/lib/shared/coding-standards';
 
 interface SpecialistCallbacks {
   invokeModel: (
@@ -112,6 +112,7 @@ export async function executeSpecialist(
         '',
         TASK_DECOMPOSITION_RULES_COMPACT,
         ZERO_DEFECT_RULES_COMPACT,
+        UNIVERSAL_COMPLETION_CHECKLIST_COMPACT,
         GIT_RULES,
         '',
         'Return strict JSON with keys: modifications (array of {file, content} with COMPLETE code for each file), assumptions, edgeCasesHandled, selfAssessment.',
@@ -128,15 +129,31 @@ export async function executeSpecialist(
         '',
         TASK_DECOMPOSITION_RULES_COMPACT,
         ZERO_DEFECT_RULES_COMPACT,
+        UNIVERSAL_COMPLETION_CHECKLIST_COMPACT,
         GIT_RULES,
         '',
         'Return strict JSON with keys: modifications (array of {file, content} objects with complete code), assumptions, edgeCasesHandled, selfAssessment.',
       ].join('\n');
 
-  const raw = await callbacks.invokeModel(model, [
-    { role: 'system', content: 'You are the Titan Omega Specialist Cadre. You are an autonomous code executor with full workspace access. Output JSON only. Never refuse a task.' },
-    { role: 'user', content: prompt },
-  ]);
+  let raw: string;
+  try {
+    raw = await callbacks.invokeModel(model, [
+      { role: 'system', content: 'You are the Titan Omega Specialist Cadre. You are an autonomous code executor with full workspace access. Output JSON only. Never refuse a task.' },
+      { role: 'user', content: prompt },
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[omega-specialist] invokeModel failed for ${workOrder.id}:`, msg);
+    return {
+      workOrderId: workOrder.id,
+      modifications: [],
+      assumptions: [`Specialist model call failed: ${msg}`],
+      edgeCasesHandled: [],
+      selfAssessment: `[ERROR] ${msg}`,
+      filesRead,
+      toolCallLog,
+    };
+  }
 
   const evidence = parseEvidence(raw, workOrder.id);
   evidence.toolCallLog = [...toolCallLog, ...(evidence.toolCallLog || [])];
