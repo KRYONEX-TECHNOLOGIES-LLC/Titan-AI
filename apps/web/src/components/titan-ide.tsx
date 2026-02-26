@@ -1766,7 +1766,6 @@ function renderInlineContent(text: string): React.ReactNode {
 /* ─── ALFRED PANEL ─── */
 function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred: ReturnType<typeof useAlfredAmbient> }) {
   const titanVoice = useTitanVoice();
-  const autoListenMode = titanVoice.autoListenMode;
   const { alfredState, conversationLog, voice, sendManual } = alfred;
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -1815,9 +1814,7 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
               <span className="text-white text-xs font-bold">A</span>
             </div>
-            {voice.isListening && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-cyan-400 border-2 border-[#1e1e1e] animate-pulse" />
-            )}
+            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-cyan-400 border-2 border-[#1e1e1e] animate-pulse" />
           </div>
           <div>
             <span className="text-[13px] font-semibold text-white">Alfred</span>
@@ -1827,18 +1824,6 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {/* Auto mode button */}
-          <button
-            onClick={() => titanVoice.toggleAutoListen()}
-            className={`px-2 py-1 rounded text-[10px] font-medium transition-all ${
-              autoListenMode
-                ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40'
-                : 'bg-[#2d2d2d] text-[#808080] border border-[#3c3c3c] hover:border-[#555]'
-            }`}
-            title={autoListenMode ? 'Auto mode ON — always listening' : 'Auto mode OFF — click to enable'}
-          >
-            {autoListenMode ? 'AUTO ON' : 'AUTO OFF'}
-          </button>
           <button onClick={onBackToIDE} className="text-[11px] text-[#808080] hover:text-white px-2 py-1 rounded hover:bg-[#3c3c3c] transition-colors">
             Back
           </button>
@@ -1847,7 +1832,7 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
 
       {/* Waveform + Status Bar */}
       <div className="px-4 py-2 border-b border-[#2a2a2a]">
-        <WaveformVisualizer active={autoListenMode || voice.isListening} speaking={titanVoice.isSpeaking} />
+        <WaveformVisualizer active={true} speaking={titanVoice.isSpeaking} />
         {/* Voice error */}
         {voice.errorMessage && (
           <div className="mt-2 rounded bg-red-900/20 border border-red-800/40 p-1.5 flex items-center justify-between">
@@ -1907,15 +1892,8 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
 
       {/* Bottom Controls */}
       <div className="px-4 py-3 border-t border-[#3c3c3c] space-y-2">
-        {/* Status + Quick Actions */}
+        {/* Quick Actions — mic is always on, no toggle needed */}
         <div className="flex gap-1.5 flex-wrap items-center">
-          <span className={`px-2 py-1 rounded text-[10px] font-medium ${
-            voice.isListening
-              ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'
-              : 'bg-[#2d2d2d] text-[#666] border border-[#3c3c3c]'
-          }`}>
-            {voice.isListening ? 'Ambient Listening' : 'Mic Off'}
-          </span>
           {titanVoice.isSpeaking && (
             <button
               onClick={() => titanVoice.stopSpeaking()}
@@ -1934,11 +1912,6 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
           >
             TTS {titanVoice.voiceEnabled ? 'ON' : 'OFF'}
           </button>
-          {voice.voiceMode === 'whisper' && (
-            <span className="px-2 py-1 rounded text-[10px] font-medium bg-amber-600/20 text-amber-300 border border-amber-500/40">
-              Whisper Fallback
-            </span>
-          )}
         </div>
 
         {/* Attached Images Preview */}

@@ -330,33 +330,48 @@ export function useAlfredAmbient() {
     autoSendDelayMs: 4000,
   });
 
-  // Start/stop ambient listening based on autoListenMode
+  // Alfred ALWAYS listens — force auto mode on, start mic immediately
   useEffect(() => {
-    if (autoListenMode && voice.isSupported && !voice.isListening) {
+    if (!autoListenMode) {
+      titanVoice.toggleAutoListen();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (voice.isSupported && !voice.isListening) {
       voice.startListening();
       setAlfredState('listening');
-    } else if (!autoListenMode && voice.isListening) {
-      voice.stopListening();
-      setAlfredState('idle');
     }
-  }, [autoListenMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [voice.isSupported]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pause mic when TTS starts, resume when it finishes
+  // If mic somehow stops, restart it
   useEffect(() => {
-    if (titanVoice.isSpeaking && autoListenMode) {
+    if (!voice.isListening && voice.isSupported && !titanVoice.isSpeaking && alfredState !== 'processing') {
+      const restart = setTimeout(() => {
+        if (!voice.isListening && voice.isSupported) {
+          voice.startListening();
+          setAlfredState('listening');
+        }
+      }, 1500);
+      return () => clearTimeout(restart);
+    }
+  }, [voice.isListening, voice.isSupported, titanVoice.isSpeaking, alfredState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pause mic when TTS starts so speech recognition doesn't pick up Alfred's voice
+  useEffect(() => {
+    if (titanVoice.isSpeaking) {
       voice.pause();
     }
   }, [titanVoice.isSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-start listening after speaking finishes + start 60s inactivity timer
+  // Resume listening after Alfred finishes speaking + start 60s inactivity timer
   useEffect(() => {
-    if (autoListenMode && !titanVoice.isSpeaking && alfredState === 'speaking') {
+    if (!titanVoice.isSpeaking && alfredState === 'speaking') {
       const timer = setTimeout(() => {
         setAlfredState('listening');
         if (!voice.isListening && voice.isSupported) {
           voice.resume();
         }
-        // Start 60-second inactivity timer — if no new "Alfred" wake word, stay passive
         if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
         inactivityTimerRef.current = setTimeout(() => {
           if (!wakeDetectedRef.current && !processingRef.current) {
@@ -366,7 +381,7 @@ export function useAlfredAmbient() {
       }, 700);
       return () => clearTimeout(timer);
     }
-  }, [titanVoice.isSpeaking, alfredState, autoListenMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [titanVoice.isSpeaking, alfredState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update state from voice
   useEffect(() => {

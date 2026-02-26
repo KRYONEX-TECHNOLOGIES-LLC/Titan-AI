@@ -7,7 +7,7 @@ import { getToolSchema, executeToolServerSide, isToolDangerous, type ToolExecRes
 
 export const dynamic = 'force-dynamic';
 
-const MAX_TOOL_ROUNDS = 3;
+const MAX_TOOL_ROUNDS = 5;
 
 interface VoiceRequestBody {
   message: string;
@@ -51,8 +51,13 @@ export async function POST(request: NextRequest) {
           brainContext = body.brainContext || serializeBrainContext(1500);
         } catch { /* client-only function, skip on server */ }
 
+        const now = new Date();
+        const currentDate = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const currentTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
         const systemPrompt = [
           TITAN_VOICE_PERSONALITY,
+          `\n[CURRENT DATE AND TIME]\nToday is ${currentDate}, ${currentTime}. The current year is ${now.getFullYear()}. You are fully up-to-date. When the user asks you to look up current information, use the current year. Never say you are stuck in a past year.`,
           body.memoryContext ? `\n[PERSISTENT MEMORY]\n${body.memoryContext}\n\nUse this memory to recall user preferences, past decisions, and personal details. Reference them naturally in conversation.` : '',
           body.codeDirectory ? `\n[CODE DIRECTORY]\n${body.codeDirectory}` : '',
           body.projectStatus ? `\n[PROJECT STATUS]\n${body.projectStatus}` : '',
@@ -63,6 +68,8 @@ export async function POST(request: NextRequest) {
           '- You are speaking aloud, so be natural and conversational.',
           '- Reference things you remember about the user from memory.',
           '- You have REAL tool-calling capabilities. When you need to take action, use your tools. Do NOT just describe what you would do — actually call the tool.',
+          '- When a tool returns results, ALWAYS summarize the useful findings for the user. Never just say "I processed your request" — tell them what you found.',
+          '- When the user says "yes", "ok", "proceed", "go ahead", or "do it" — EXECUTE immediately. Do not ask again.',
           '- For dangerous actions (starting protocols, harvester, git), tell the user what you plan to do and they will confirm.',
           '- You are an ultimate conversationalist: witty, insightful, warm, and sharp.',
         ].filter(Boolean).join('\n');
@@ -184,7 +191,20 @@ export async function POST(request: NextRequest) {
         }
 
         if (!finalResponse) {
-          finalResponse = 'I processed your request, sir. Is there anything else?';
+          // Tool loop completed but model never gave text — force a final summarization call
+          try {
+            const summarized = await callModelDirect(
+              VOICE_MODELS.RESPONDER,
+              messages.map(m => ({ role: m.role, content: m.content || '' })),
+              { temperature: 0.3, maxTokens: 4096 },
+            );
+            if (summarized && summarized.trim().length > 5) {
+              finalResponse = summarized;
+            }
+          } catch { /* fallback below */ }
+        }
+        if (!finalResponse) {
+          finalResponse = 'I\'ve completed the action, sir. Let me know if you need details.';
         }
 
         emit('voice_response', {

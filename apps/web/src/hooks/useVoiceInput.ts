@@ -268,12 +268,8 @@ export function useVoiceInput(
           startWhisperRecording();
           return;
         case 'no-speech':
-          if (restartCountRef.current < 5) {
-            restartCountRef.current++;
-          } else {
-            setIsListening(false);
-            setInterimText('');
-          }
+          // No-speech is normal during ambient listening — never kill the mic
+          restartCountRef.current = 0;
           break;
         case 'aborted':
           break;
@@ -293,13 +289,17 @@ export function useVoiceInput(
         return;
       }
 
-      if (recognitionRef.current === recognition && restartCountRef.current < 5) {
-        try {
-          recognition.start();
-          return;
-        } catch {
-          // Fall through to stop
-        }
+      if (recognitionRef.current === recognition) {
+        // Always attempt restart — ambient listening should never die
+        setTimeout(() => {
+          try {
+            recognition.start();
+          } catch {
+            setIsListening(false);
+            setInterimText('');
+          }
+        }, 200);
+        return;
       }
       setIsListening(false);
       setInterimText('');
