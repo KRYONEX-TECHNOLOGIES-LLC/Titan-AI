@@ -633,10 +633,15 @@ export function useChat({
     abortedRef.current = false;
     agentTools.reset();
 
-    // Collect ready attachments before clearing
+    // Collect ready attachments before clearing — strip data URI prefix to get raw base64
     const readyAttachments = attachments
       .filter(a => a.status === 'ready' && a.base64)
-      .map(a => ({ mediaType: a.mediaType, base64: a.base64! }));
+      .map(a => {
+        const raw = a.base64!;
+        const commaIdx = raw.indexOf(',');
+        const base64Only = commaIdx >= 0 ? raw.slice(commaIdx + 1) : raw;
+        return { mediaType: a.mediaType, base64: base64Only };
+      });
     clearAttachments();
 
     const sessionId = activeSessionId;

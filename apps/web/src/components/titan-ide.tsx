@@ -531,6 +531,25 @@ export default function TitanIDE() {
   editorInstanceRef.current = editorInstance;
   applyFilesRef.current = applyFiles;
 
+  // Save state + warn about unsaved changes before window close
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      try {
+        localStorage.setItem('titan-ide-state', JSON.stringify({
+          tabs: tabsRef.current.map(t => ({ name: t.name, icon: t.icon, color: t.color, modified: t.modified })),
+          activeTab: activeTabRef.current,
+        }));
+      } catch { /* ignore */ }
+      const hasUnsaved = tabsRef.current.some(t => t.modified);
+      if (hasUnsaved) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   useEffect(() => {
     if (!isElectron || !electronAPI || !fileSystem.workspacePath) return;
     const wsPath = fileSystem.workspacePath;
@@ -612,6 +631,22 @@ export default function TitanIDE() {
       }
     } catch { /* ignore */ }
   }, [mounted]);
+
+  // Clear tabs, active tab, and persisted state when folder is closed
+  const prevWorkspaceOpenRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const unsub = useFileStore.subscribe((state) => {
+      const wasOpen = prevWorkspaceOpenRef.current;
+      prevWorkspaceOpenRef.current = state.workspaceOpen;
+      if (wasOpen === true && !state.workspaceOpen) {
+        setTabs([]);
+        setActiveTab('');
+        useEditorStore.getState().loadFileContents({});
+        try { localStorage.removeItem('titan-ide-state'); } catch { /* ignore */ }
+      }
+    });
+    return unsub;
+  }, []);
 
   const currentFileLanguage = getLanguageFromFilename(activeTab);
 

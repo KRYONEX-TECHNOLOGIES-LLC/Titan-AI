@@ -247,25 +247,24 @@ export function useVoiceInput(
           setErrorMessage('Microphone access denied. Check your system permissions.');
           break;
         case 'network':
-          // Auto-retry up to 3 times before falling back to Whisper
-          if (networkRetryRef.current < 3) {
+          // Native speech needs internet — try once more, then immediately fall back to Whisper
+          if (networkRetryRef.current < 1) {
             networkRetryRef.current++;
-            console.log(`[voice] Network error, retrying (${networkRetryRef.current}/3)...`);
+            console.log('[voice] Network error, retrying once...');
+            setErrorMessage('Connecting to speech service...');
             setTimeout(() => {
               if (recognitionRef.current) {
-                try {
-                  recognitionRef.current.abort();
-                } catch { /* ignore */ }
+                try { recognitionRef.current.abort(); } catch { /* ignore */ }
               }
               startNativeListening();
-            }, 1000 * networkRetryRef.current);
+            }, 800);
             return;
           }
-          // Fallback to Whisper after 3 failures
-          console.log('[voice] Native speech failed, switching to Whisper fallback');
+          console.log('[voice] Native speech unavailable (no internet), switching to Whisper');
           recognitionRef.current = null;
           setInterimText('');
-          setErrorMessage(null);
+          setErrorMessage('Using local speech recognition (Whisper)');
+          setTimeout(() => setErrorMessage(null), 3000);
           startWhisperRecording();
           return;
         case 'no-speech':

@@ -73,26 +73,12 @@ export default function EditorArea({
             </>
           ) : (
             <>
-              <div className="text-6xl mb-4 opacity-20">📂</div>
-              <div className="text-xl mb-2 text-[#cccccc]">No Files Open</div>
-              <div className="text-sm text-[#555] mb-6">Open a folder, clone a repo, or create a new file to get started</div>
-              <div className="flex flex-wrap gap-3 justify-center">
-                <button onClick={onOpenFolder} className="px-5 py-2.5 bg-[#007acc] hover:bg-[#005a99] text-white rounded text-sm font-medium transition-colors flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H7.707l-1-1A1.5 1.5 0 0 0 5.586 3H1.5z"/></svg>
-                  Open Folder
-                </button>
-                <button onClick={onOpenCloneDialog} className="px-5 py-2.5 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm font-medium transition-colors flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm0 2.122a2.25 2.25 0 1 0-1.5 0v.878A2.25 2.25 0 0 0 5.75 8.5h1.5v2.128a2.251 2.251 0 1 0 1.5 0V8.5h1.5a2.25 2.25 0 0 0 2.25-2.25v-.878a2.25 2.25 0 1 0-1.5 0v.878a.75.75 0 0 1-.75.75h-4.5A.75.75 0 0 1 5 6.25v-.878zm3.75 7.378a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0zm3-8.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0z"/></svg>
-                  Clone Repository
-                </button>
-                <button onClick={onNewFile} className="px-5 py-2.5 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm font-medium transition-colors flex items-center gap-2">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v6H2v2h6v6h2V9h6V7H10V1z"/></svg>
-                  New File
-                </button>
-              </div>
-              <div className="mt-8 text-xs text-[#444]">
-                <span className="text-[#555]">Ctrl+O</span> Open Folder • <span className="text-[#555]">Ctrl+N</span> New File
-              </div>
+              <div className="text-4xl mb-4 opacity-15">T</div>
+              <div className="text-sm text-[#555] mb-4">Use <span className="text-[#808080]">File &gt; Open Folder</span> or <span className="text-[#808080]">Ctrl+O</span> to open a project</div>
+              <button onClick={onNewFile} className="px-4 py-2 bg-[#3c3c3c] hover:bg-[#4a4a4a] text-[#cccccc] rounded text-sm font-medium transition-colors flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v6H2v2h6v6h2V9h6V7H10V1z"/></svg>
+                New File
+              </button>
             </>
           )}
         </div>

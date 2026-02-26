@@ -146,6 +146,7 @@ function buildRegistry() {
     when: 'workspaceOpen',
     execute: () => {
       file().closeFolder();
+      editor().loadFileContents({});
     }
   });
 
