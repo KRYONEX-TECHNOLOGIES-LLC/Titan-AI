@@ -48,6 +48,49 @@ ZERO-DEFECT RULES (MANDATORY):
 - NEVER use out-of-scope variables, add duplicate declarations, remove code you don't understand, or change signatures without updating callers.
 - NEVER deviate outside the project scope.`;
 
+export const TASK_DECOMPOSITION_RULES = `
+TASK DECOMPOSITION STANDARD (MANDATORY FOR ALL PLAN GENERATION):
+
+Every task MUST have subtasks — specific, verifiable acceptance criteria that serve as a checklist
+for the coder and a verification matrix for the reviewer.
+
+STRUCTURE:
+- Top-level task = one independently-buildable feature, system, or module
+- Subtasks = 3-8 specific, verifiable deliverables per task
+- Each subtask answers YES/NO: "Does this exist and work correctly?"
+
+SCALING (NO CEILING — proportional to input complexity):
+- Landing page / static site: 5-8 tasks
+- Multi-page website with forms: 10-15 tasks
+- Full SaaS with auth, DB, payments: 20-35 tasks
+- Enterprise platform with multiple subsystems: 35-60+ tasks
+- If the user described 20 distinct systems, create 20+ tasks. NEVER compress multiple systems into one task.
+
+SUBTASK QUALITY RULES:
+- Each subtask is a single verifiable deliverable
+- NEVER use vague subtasks like "implement the feature" or "add styling" or "handle edge cases"
+- GOOD: "Add rate limiting: max 3 verification emails per hour per address"
+- GOOD: "Create EmailVerificationToken table with userId, token, expiresAt columns"
+- BAD: "Set up the email system" (too vague — what specifically?)
+- BAD: "Handle errors" (which errors? what behavior?)
+
+SUBTASK FORMAT IN JSON:
+{ "title": "Build email verification system", "subtasks": ["Generate crypto random token with 24h expiry", "Store token in EmailVerificationToken table", "Send verification email via provider with clickable link", "GET /verify?token=... validates and sets emailVerifiedAt", "Reject expired or used tokens with clear error", "Rate limit: max 3 per hour per address"] }
+
+WHY THIS MATTERS:
+- The coder uses subtasks as a checklist — nothing gets forgotten
+- The reviewer scores against each subtask — missed subtask = penalty
+- Complex projects stay organized instead of collapsing into vague mega-tasks
+- The AI never "loses focus on little things" because every little thing is explicitly listed`;
+
+export const TASK_DECOMPOSITION_RULES_COMPACT = `
+TASK DECOMPOSITION (MANDATORY):
+- Every task needs 3-8 subtasks as acceptance criteria (specific, verifiable, YES/NO checkable)
+- Scale task count to complexity: static site=5-8, SaaS=20-35, enterprise=35-60+. No ceiling.
+- NEVER compress multiple systems into one task. NEVER use vague subtasks.
+- Subtasks are the coder's checklist and the reviewer's scoring matrix.
+- GOOD subtask: "Rate limit: max 3 emails/hour/address" — BAD: "Handle edge cases"`;
+
 export const GIT_RULES = `
 GIT RULES (applies to ALL Titan AI commits):
 - Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.

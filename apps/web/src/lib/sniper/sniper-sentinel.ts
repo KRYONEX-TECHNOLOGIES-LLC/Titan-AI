@@ -3,7 +3,7 @@
 // Checks each completed task against acceptance criteria, lint, and types.
 
 import { callModelDirect } from '@/lib/llm-call';
-import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   SniperDAGNode,
@@ -43,6 +43,8 @@ OUTPUT FORMAT (JSON):
 }
 
 Be strict but fair. Only fail if there are genuine problems, not style preferences.
+
+${TASK_DECOMPOSITION_RULES_COMPACT}
 
 ${ZERO_DEFECT_RULES_COMPACT}
 

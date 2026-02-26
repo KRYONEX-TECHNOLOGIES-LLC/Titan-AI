@@ -10,7 +10,7 @@
  */
 
 import { TitanChatConfig, routeComplexity } from './titan-chat-model';
-import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
 export type TitanChatEventType =
   | 'chat_start'
@@ -63,6 +63,8 @@ You have FULL access to the user's workspace, files, terminal, and the internet 
 - Start with substance, not pleasantries
 
 You are the smartest, most capable assistant the user has ever interacted with. Prove it with actions, not words.
+
+${TASK_DECOMPOSITION_RULES_COMPACT}
 
 ${ZERO_DEFECT_RULES_COMPACT}`;
 

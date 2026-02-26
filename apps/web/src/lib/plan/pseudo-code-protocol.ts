@@ -12,6 +12,7 @@ export interface PseudoCodeResult {
       description: string;
       priority: 'critical' | 'high' | 'medium' | 'low';
       tags: string[];
+      subtasks: string[];
     }>;
   }>;
 }
@@ -29,7 +30,9 @@ Rules:
 - Be EXHAUSTIVE: if the user mentions "login page", you infer: login form, validation, password reset, session management, protected routes, JWT/cookie handling, rate limiting
 - Be SPECIFIC: "Create user model" → "Create User model with id, email (unique), passwordHash, name, avatar, createdAt, updatedAt, role (enum), emailVerified (boolean)"
 - Be ORDERED: foundations first (DB, auth, API), then UI, then polish (animations, responsive, a11y)
-- Generate 30-200+ tasks depending on project complexity
+- Scale tasks proportionally: static site=5-8, multi-page=10-15, full SaaS=20-35, enterprise=35-60+. No ceiling.
+- Each task MUST have 3-8 subtasks as acceptance criteria (specific, verifiable, YES/NO checkable)
+- NEVER compress multiple systems into one task. NEVER use vague subtasks like "handle edge cases"
 - Each task must be independently verifiable
 
 Return ONLY valid JSON:
@@ -41,7 +44,13 @@ Return ONLY valid JSON:
     {
       "name": "Phase 1: Foundation",
       "tasks": [
-        { "title": "...", "description": "...", "priority": "critical", "tags": ["backend", "database"] }
+        {
+          "title": "...",
+          "description": "...",
+          "priority": "critical",
+          "tags": ["backend", "database"],
+          "subtasks": ["Specific verifiable deliverable 1", "Specific verifiable deliverable 2", "Specific verifiable deliverable 3"]
+        }
       ]
     }
   ]
@@ -79,6 +88,7 @@ export async function parsePseudoCode(input: string): Promise<PseudoCodeResult> 
         description: t.description || '',
         priority: (['critical', 'high', 'medium', 'low'].includes(t.priority) ? t.priority : 'medium') as 'critical' | 'high' | 'medium' | 'low',
         tags: Array.isArray(t.tags) ? t.tags : [],
+        subtasks: Array.isArray(t.subtasks) ? t.subtasks : [],
       })),
     })),
   };

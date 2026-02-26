@@ -236,12 +236,17 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000);
 
-    // SSE stream for real-time protocol events
+    // SSE stream with auto-reconnection and exponential backoff
     let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/midnight/stream');
+    let sseRetryCount = 0;
+    let sseRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let sseStopped = false;
+    const SSE_MAX_RETRIES = 10;
+    const SSE_BASE_DELAY = 1000;
+    const SSE_MAX_DELAY = 30000;
 
-      eventSource.addEventListener('actor_log', (e) => {
+    function attachSSEListeners(source: EventSource) {
+      source.addEventListener('actor_log', (e) => {
         try {
           const data = JSON.parse(e.data);
           const msg = data.message || '';
@@ -255,7 +260,7 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
         } catch { /* ignore */ }
       });
 
-      eventSource.addEventListener('sentinel_log', (e) => {
+      source.addEventListener('sentinel_log', (e) => {
         try {
           const data = JSON.parse(e.data);
           const msg = data.message || '';
@@ -269,7 +274,7 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
         } catch { /* ignore */ }
       });
 
-      eventSource.addEventListener('protocol_squad_active', (e) => {
+      source.addEventListener('protocol_squad_active', (e) => {
         try {
           const data = JSON.parse(e.data);
           if (data.squad) setActiveSquad(data.squad);
@@ -277,7 +282,7 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
         } catch { /* ignore */ }
       });
 
-      eventSource.addEventListener('protocol_escalation', (e) => {
+      source.addEventListener('protocol_escalation', (e) => {
         try {
           const data = JSON.parse(e.data);
           setEscalationLevel(prev => prev + 1);
@@ -289,14 +294,14 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
         } catch { /* ignore */ }
       });
 
-      eventSource.addEventListener('protocol_cost', (e) => {
+      source.addEventListener('protocol_cost', (e) => {
         try {
           const data = JSON.parse(e.data);
           if (data.totalCostUsd) setProtocolCost(data.totalCostUsd);
         } catch { /* ignore */ }
       });
 
-      eventSource.addEventListener('protocol_consensus', (e) => {
+      source.addEventListener('protocol_consensus', (e) => {
         try {
           const data = JSON.parse(e.data);
           setSentinelLines(prev => [...prev.slice(-99), {
@@ -307,7 +312,7 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
         } catch { /* ignore */ }
       });
 
-      eventSource.addEventListener('confidence_update', (e) => {
+      source.addEventListener('confidence_update', (e) => {
         try {
           const data = JSON.parse(e.data);
           if (data.score !== undefined) setConfidenceScore(data.score);
@@ -316,7 +321,7 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
         } catch { /* ignore */ }
       });
 
-      eventSource.addEventListener('verdict', (e) => {
+      source.addEventListener('verdict', (e) => {
         try {
           const data = JSON.parse(e.data);
           setSentinelLines(prev => [...prev.slice(-99), {
@@ -327,16 +332,50 @@ export function FactoryView({ isOpen, onClose, onStop, trustLevel = 3 }: Factory
         } catch { /* ignore */ }
       });
 
-      eventSource.onerror = () => {
-        eventSource?.close();
-        eventSource = null;
+      source.onopen = () => {
+        sseRetryCount = 0;
       };
-    } catch {
-      // SSE not available, fall back to polling only
+
+      source.onerror = () => {
+        source.close();
+        if (sseStopped) return;
+
+        if (sseRetryCount < SSE_MAX_RETRIES) {
+          const delay = Math.min(SSE_BASE_DELAY * Math.pow(2, sseRetryCount), SSE_MAX_DELAY);
+          sseRetryCount++;
+          setActorLines(prev => [...prev.slice(-99), {
+            type: 'info',
+            content: `SSE disconnected — reconnecting in ${Math.round(delay / 1000)}s (attempt ${sseRetryCount}/${SSE_MAX_RETRIES})`,
+            timestamp: new Date(),
+          }]);
+          sseRetryTimer = setTimeout(connectSSE, delay);
+        } else {
+          setActorLines(prev => [...prev.slice(-99), {
+            type: 'error',
+            content: 'SSE connection lost after max retries — using polling fallback',
+            timestamp: new Date(),
+          }]);
+        }
+      };
     }
 
+    function connectSSE() {
+      if (sseStopped) return;
+      try {
+        eventSource?.close();
+        eventSource = new EventSource('/api/midnight/stream');
+        attachSSEListeners(eventSource);
+      } catch {
+        // SSE not available, polling will handle it
+      }
+    }
+
+    connectSSE();
+
     return () => {
+      sseStopped = true;
       clearInterval(interval);
+      if (sseRetryTimer) clearTimeout(sseRetryTimer);
       eventSource?.close();
     };
   }, [isOpen]);

@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ModelInfo, MODEL_REGISTRY, normalizeModelId } from '@/lib/model-registry';
 import { scanForThreats, isHighSeverityThreat, PathObfuscator } from '@/lib/security';
-import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
 const pathObfuscator = new PathObfuscator();
 
@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
 - Use markdown: **bold** for emphasis, \`code\` for identifiers, lists for steps.
 `;
 
+  systemPrompt += '\n\n' + TASK_DECOMPOSITION_RULES_COMPACT;
   systemPrompt += '\n\n' + ZERO_DEFECT_RULES_COMPACT;
 
   if (codeContext) {

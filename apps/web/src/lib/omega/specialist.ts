@@ -6,7 +6,7 @@ import type {
   WorkOrder,
 } from './omega-model';
 import { selectModelForRisk } from './risk-router';
-import { ZERO_DEFECT_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 
 interface SpecialistCallbacks {
   invokeModel: (
@@ -110,6 +110,7 @@ export async function executeSpecialist(
         '- All code must be production-ready and complete',
         '- If the user mentions a module by name, FIND IT in the workspace',
         '',
+        TASK_DECOMPOSITION_RULES_COMPACT,
         ZERO_DEFECT_RULES_COMPACT,
         GIT_RULES,
         '',
@@ -125,6 +126,7 @@ export async function executeSpecialist(
         `Acceptance criteria:\n- ${workOrder.acceptanceCriteria.join('\n- ')}`,
         `Expected files:\n- ${workOrder.outputContract.expectedFiles.join('\n- ') || '(as needed)'}`,
         '',
+        TASK_DECOMPOSITION_RULES_COMPACT,
         ZERO_DEFECT_RULES_COMPACT,
         GIT_RULES,
         '',

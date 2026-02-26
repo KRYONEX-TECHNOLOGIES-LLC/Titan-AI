@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export function useMidnight(mounted: boolean, activeModel: string) {
   const [midnightActive, setMidnightActive] = useState(false);
@@ -11,6 +11,7 @@ export function useMidnight(mounted: boolean, activeModel: string) {
   const [protocolMode, setProtocolMode] = useState(true);
   const [startError, setStartError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const failCountRef = useRef(0);
 
   useEffect(() => {
     if (!mounted) return;
@@ -40,7 +41,7 @@ export function useMidnight(mounted: boolean, activeModel: string) {
     } catch { /* ignore */ }
   }, [mounted]);
 
-  // Poll backend status and sync midnightActive with reality
+  // Poll backend status with 3-strike grace period before closing FactoryView
   useEffect(() => {
     if (!mounted) return;
     const syncStatus = async () => {
@@ -50,11 +51,26 @@ export function useMidnight(mounted: boolean, activeModel: string) {
           const status = await res.json();
           const backendRunning = !!status.running;
           setMidnightActive(backendRunning);
+
           if (!backendRunning && showFactoryView) {
-            setShowFactoryView(false);
+            failCountRef.current += 1;
+            if (failCountRef.current >= 3) {
+              setShowFactoryView(false);
+              failCountRef.current = 0;
+            }
+          } else {
+            failCountRef.current = 0;
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        if (showFactoryView) {
+          failCountRef.current += 1;
+          if (failCountRef.current >= 3) {
+            setShowFactoryView(false);
+            failCountRef.current = 0;
+          }
+        }
+      }
     };
     void syncStatus();
     const interval = setInterval(syncStatus, 8000);

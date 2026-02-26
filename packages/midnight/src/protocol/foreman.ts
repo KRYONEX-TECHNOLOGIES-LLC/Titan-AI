@@ -14,6 +14,7 @@ import { FOREMAN_SYSTEM_PROMPT, generateForemanPrompt } from './prompts.js';
 export interface ForemanTask {
   id: string;
   description: string;
+  subtasks: string[];
   dependencies: string[];
   estimatedLines: number;
   category: string;
@@ -79,6 +80,7 @@ export class Foreman {
         tasks: (parsed.tasks || []).map((t: Record<string, unknown>, i: number) => ({
           id: (t.id as string) || `task-${String(i + 1).padStart(3, '0')}`,
           description: (t.description as string) || '',
+          subtasks: Array.isArray(t.subtasks) ? (t.subtasks as string[]) : [],
           dependencies: (t.dependencies as string[]) || [],
           estimatedLines: (t.estimatedLines as number) || 100,
           category: (t.category as string) || 'backend',

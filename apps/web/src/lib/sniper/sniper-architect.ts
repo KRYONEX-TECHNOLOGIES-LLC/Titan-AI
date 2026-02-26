@@ -3,7 +3,7 @@
 // assign risk levels, identify dependencies, and route to optimal models.
 
 import { callModelDirect } from '@/lib/llm-call';
-import { ZERO_DEFECT_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   ScanResult,
@@ -59,6 +59,7 @@ RULES:
 - Architecture/database tasks should come before code that depends on them.
 - Tests should depend on the code they test.
 - Keep descriptions actionable — tell the CODER exactly what to implement.
+${TASK_DECOMPOSITION_RULES_COMPACT}
 ${ZERO_DEFECT_RULES_COMPACT}
 ${GIT_RULES}`;
 

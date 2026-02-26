@@ -21,7 +21,7 @@ import {
 } from './phoenix-model';
 import { routeRequest } from './phoenix-router';
 import { selfHealingVerification, verifyArtifact } from './phoenix-verifier';
-import { ZERO_DEFECT_RULES_COMPACT } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
 // ── Event Types ─────────────────────────────────────────────────────────────
 
@@ -95,6 +95,7 @@ async function architectDecompose(
     `Rules: max ${config.maxSubtasks} subtasks, complexity 1-10, dependsOn uses task IDs.`,
     'For simple tasks, return a single subtask. Descriptions should be specific enough that a coder can execute without questions.',
     'NEVER create a subtask that says "ask the user" or "clarify with the user".',
+    '\n\n' + TASK_DECOMPOSITION_RULES_COMPACT,
     '\n\n' + ZERO_DEFECT_RULES_COMPACT,
     '\n\nGIT RULES (applies to ALL Titan AI commits):\n- Version lives in 3 files: package.json, apps/desktop/package.json, apps/web/package.json. ALL THREE must match.\n- manifest.json is auto-updated by CI. Never edit it manually.\n- Before ANY commit: verify no broken imports (every import must resolve to a real file/module).\n- Before version bump: verify the code compiles. Never tag broken code.\n- Commit format: "vX.Y.Z: one-line description"\n- After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.\n- NEVER force-push to main.',
   ].join('\n');

@@ -33,6 +33,7 @@ type Snapshot = {
 
 type PlanTask = {
   text: string;
+  subtasks: string[];
   status: 'pending' | 'in_progress' | 'complete' | 'failed';
 };
 
@@ -40,7 +41,7 @@ type GeneratedPlan = {
   projectName: string;
   idea: string;
   techStack: Record<string, unknown>;
-  tasks: string[];
+  tasks: Array<{ title: string; subtasks: string[] }>;
 };
 
 type MidnightProps = {
@@ -120,7 +121,10 @@ export default function MidnightPanel({
         return;
       }
       setGeneratedPlan(data);
-      setPlanTasks(data.tasks.map((t: string) => ({ text: t, status: 'pending' as const })));
+      setPlanTasks(data.tasks.map((t: { title: string; subtasks?: string[] } | string) => {
+        if (typeof t === 'string') return { text: t, subtasks: [], status: 'pending' as const };
+        return { text: t.title, subtasks: t.subtasks || [], status: 'pending' as const };
+      }));
     } catch (err: unknown) {
       setPlanError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -181,51 +185,88 @@ export default function MidnightPanel({
   }, []);
 
   useEffect(() => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
-    }
-    const source = new EventSource('/api/midnight/stream');
-    streamRef.current = source;
-
+    let retryCount = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+    const MAX_RETRIES = 10;
+    const BASE_DELAY = 1000;
+    const MAX_DELAY = 30000;
     const stamp = () => new Date().toLocaleTimeString();
 
-    source.addEventListener('actor_log', (e) => {
-      const payload = JSON.parse((e as MessageEvent).data) as { message?: string };
-      setActorLines((prev) => [...prev.slice(-99), { ts: stamp(), text: String(payload.message || '') }]);
-    });
-    source.addEventListener('sentinel_log', (e) => {
-      const payload = JSON.parse((e as MessageEvent).data) as { message?: string };
-      setSentinelLines((prev) => [...prev.slice(-99), { ts: stamp(), text: String(payload.message || '') }]);
-    });
-    source.addEventListener('confidence_update', (e) => {
-      const payload = JSON.parse((e as MessageEvent).data) as { score?: number; status?: 'healthy' | 'warning' | 'error' };
-      setConfidence(Number(payload.score || 100));
-      setLastStatus(payload.status || 'healthy');
-    });
-    source.addEventListener('task_started', (e) => {
-      const payload = JSON.parse((e as MessageEvent).data) as { description?: string };
-      const ps = usePlanStore.getState();
-      const tasks = Object.values(ps.tasks).filter(t => t.status === 'pending');
-      const match = tasks.find(t => payload.description && t.title.includes(payload.description));
-      if (match) ps.updateTask(match.id, { status: 'in_progress' });
-    });
-    source.addEventListener('task_completed', (e) => {
-      const payload = JSON.parse((e as MessageEvent).data) as { description?: string };
-      const ps = usePlanStore.getState();
-      const tasks = Object.values(ps.tasks).filter(t => t.status === 'in_progress');
-      const match = tasks.find(t => payload.description && t.title.includes(payload.description));
-      if (match) {
-        ps.updateTask(match.id, { status: 'completed', completedAt: Date.now() });
-        ps.markTaskExecuted(match.id, true);
+    function connectSSE() {
+      if (stopped) return;
+      if (streamRef.current) {
+        streamRef.current.close();
+        streamRef.current = null;
       }
-    });
-    source.addEventListener('error', () => {
-      setActorLines((prev) => [...prev.slice(-99), { ts: stamp(), text: 'Stream error — retrying', level: 'warn' }]);
-    });
+
+      const source = new EventSource('/api/midnight/stream');
+      streamRef.current = source;
+
+      source.addEventListener('actor_log', (e) => {
+        const payload = JSON.parse((e as MessageEvent).data) as { message?: string };
+        setActorLines((prev) => [...prev.slice(-99), { ts: stamp(), text: String(payload.message || '') }]);
+      });
+      source.addEventListener('sentinel_log', (e) => {
+        const payload = JSON.parse((e as MessageEvent).data) as { message?: string };
+        setSentinelLines((prev) => [...prev.slice(-99), { ts: stamp(), text: String(payload.message || '') }]);
+      });
+      source.addEventListener('confidence_update', (e) => {
+        const payload = JSON.parse((e as MessageEvent).data) as { score?: number; status?: 'healthy' | 'warning' | 'error' };
+        setConfidence(Number(payload.score || 100));
+        setLastStatus(payload.status || 'healthy');
+      });
+      source.addEventListener('task_started', (e) => {
+        const payload = JSON.parse((e as MessageEvent).data) as { description?: string };
+        const ps = usePlanStore.getState();
+        const tasks = Object.values(ps.tasks).filter(t => t.status === 'pending');
+        const match = tasks.find(t => payload.description && t.title.includes(payload.description));
+        if (match) ps.updateTask(match.id, { status: 'in_progress' });
+      });
+      source.addEventListener('task_completed', (e) => {
+        const payload = JSON.parse((e as MessageEvent).data) as { description?: string };
+        const ps = usePlanStore.getState();
+        const tasks = Object.values(ps.tasks).filter(t => t.status === 'in_progress');
+        const match = tasks.find(t => payload.description && t.title.includes(payload.description));
+        if (match) {
+          ps.updateTask(match.id, { status: 'completed', completedAt: Date.now() });
+          ps.markTaskExecuted(match.id, true);
+        }
+      });
+
+      source.onopen = () => { retryCount = 0; };
+
+      source.addEventListener('error', () => {
+        source.close();
+        streamRef.current = null;
+        if (stopped) return;
+
+        if (retryCount < MAX_RETRIES) {
+          const delay = Math.min(BASE_DELAY * Math.pow(2, retryCount), MAX_DELAY);
+          retryCount++;
+          setActorLines((prev) => [...prev.slice(-99), {
+            ts: stamp(),
+            text: `SSE reconnecting in ${Math.round(delay / 1000)}s (${retryCount}/${MAX_RETRIES})`,
+            level: 'warn',
+          }]);
+          retryTimer = setTimeout(connectSSE, delay);
+        } else {
+          setActorLines((prev) => [...prev.slice(-99), {
+            ts: stamp(),
+            text: 'SSE connection lost — using polling fallback',
+            level: 'error',
+          }]);
+        }
+      });
+    }
+
+    connectSSE();
 
     return () => {
-      source.close();
+      stopped = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      streamRef.current?.close();
+      streamRef.current = null;
     };
   }, []);
 
@@ -326,7 +367,7 @@ export default function MidnightPanel({
   }, []);
 
   const addTask = useCallback(() => {
-    setPlanTasks((prev) => [...prev, { text: '', status: 'pending' }]);
+    setPlanTasks((prev) => [...prev, { text: '', subtasks: [], status: 'pending' }]);
   }, []);
 
   const updateTaskText = useCallback((idx: number, text: string) => {
@@ -342,9 +383,9 @@ export default function MidnightPanel({
     planStore.bulkAddTasks(
       planTasks
         .filter(t => t.text.trim())
-        .map((t, i) => ({
+        .map((t) => ({
           title: t.text,
-          description: '',
+          description: t.subtasks.length > 0 ? `Acceptance criteria:\n${t.subtasks.map(s => `- ${s}`).join('\n')}` : '',
           phase: 1,
           priority: 'medium' as const,
           tags: ['midnight'],
@@ -354,7 +395,13 @@ export default function MidnightPanel({
 
     const tasksText = planTasks
       .filter((t) => t.text.trim())
-      .map((t) => `- [ ] ${t.text}`)
+      .map((t) => {
+        let line = `- [ ] ${t.text}`;
+        if (t.subtasks.length > 0) {
+          line += '\n' + t.subtasks.map(s => `  - [ ] ${s}`).join('\n');
+        }
+        return line;
+      })
       .join('\n');
 
     const ideaMd = `# ${generatedPlan.projectName}\n\n${generatedPlan.idea}`;
@@ -516,7 +563,7 @@ export default function MidnightPanel({
                 onClick={() => void generatePlan()}
                 disabled={isGenerating || instruction.trim().length < 5}
               >
-                {isGenerating ? 'Generating Plan...' : 'Generate Plan'}
+                {isGenerating ? 'Analyzing & Generating Tasks...' : 'Generate Plan'}
               </HudButton>
               {generatedPlan && (
                 <HudButton tone="green" onClick={() => void startBuilding()}>
@@ -553,30 +600,44 @@ export default function MidnightPanel({
               <span>Tasks ({planTasks.length})</span>
               <HudButton tone="green" onClick={addTask}>+ Add Task</HudButton>
             </div>
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            <div className="space-y-2 max-h-80 overflow-y-auto">
               {planTasks.map((task, idx) => (
-                <div key={idx} className="flex items-start gap-2 group">
-                  <span className={`mt-1 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[10px] ${
-                    task.status === 'complete' ? 'bg-emerald-500/30 border-emerald-400/60 text-emerald-300' :
-                    task.status === 'in_progress' ? 'bg-cyan-500/30 border-cyan-400/60 text-cyan-300' :
-                    task.status === 'failed' ? 'bg-red-500/30 border-red-400/60 text-red-300' :
-                    'border-white/20'
-                  }`}>
-                    {task.status === 'complete' ? '✓' : task.status === 'in_progress' ? '▸' : task.status === 'failed' ? '✕' : (idx + 1)}
-                  </span>
-                  <input
-                    type="text"
-                    value={task.text}
-                    onChange={(e) => updateTaskText(idx, e.target.value)}
-                    className="flex-1 bg-transparent border-b border-white/10 text-[12px] text-slate-200 py-0.5 focus:outline-none focus:border-cyan-400/40 placeholder-slate-600"
-                    placeholder="Task description..."
-                  />
-                  <button
-                    onClick={() => removeTask(idx)}
-                    className="opacity-0 group-hover:opacity-100 text-[10px] text-red-400 hover:text-red-300 px-1 transition-opacity"
-                  >
-                    ✕
-                  </button>
+                <div key={idx} className="group">
+                  <div className="flex items-start gap-2">
+                    <span className={`mt-1 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center text-[10px] ${
+                      task.status === 'complete' ? 'bg-emerald-500/30 border-emerald-400/60 text-emerald-300' :
+                      task.status === 'in_progress' ? 'bg-cyan-500/30 border-cyan-400/60 text-cyan-300' :
+                      task.status === 'failed' ? 'bg-red-500/30 border-red-400/60 text-red-300' :
+                      'border-white/20'
+                    }`}>
+                      {task.status === 'complete' ? '✓' : task.status === 'in_progress' ? '▸' : task.status === 'failed' ? '✕' : (idx + 1)}
+                    </span>
+                    <input
+                      type="text"
+                      value={task.text}
+                      onChange={(e) => updateTaskText(idx, e.target.value)}
+                      className="flex-1 bg-transparent border-b border-white/10 text-[12px] text-slate-200 py-0.5 focus:outline-none focus:border-cyan-400/40 placeholder-slate-600 font-medium"
+                      placeholder="Task description..."
+                    />
+                    <button
+                      onClick={() => removeTask(idx)}
+                      className="opacity-0 group-hover:opacity-100 text-[10px] text-red-400 hover:text-red-300 px-1 transition-opacity"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {task.subtasks.length > 0 && (
+                    <div className="ml-6 mt-1 space-y-0.5">
+                      {task.subtasks.map((st, si) => (
+                        <div key={si} className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                          <span className="w-3 h-3 rounded border border-white/10 flex items-center justify-center text-[8px]">
+                            {task.status === 'complete' ? '✓' : '·'}
+                          </span>
+                          <span className="leading-tight">{st}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -4,7 +4,7 @@
 // and produces a final verdict.
 
 import { callModelDirect } from '@/lib/llm-call';
-import { ZERO_DEFECT_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 import type {
   SniperConfig,
   SniperDAG,
@@ -58,6 +58,7 @@ cs-a11y-alt, cs-a11y-keyboard
 
 Only mark items as checked if they are genuinely addressed by the completed tasks.
 Be honest — this is the last line of defense before shipping.
+${TASK_DECOMPOSITION_RULES_COMPACT}
 ${ZERO_DEFECT_RULES_COMPACT}
 ${GIT_RULES}`;
 

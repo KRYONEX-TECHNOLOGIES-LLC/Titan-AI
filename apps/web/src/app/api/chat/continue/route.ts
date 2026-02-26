@@ -5,7 +5,7 @@
  */
 
 import { NextRequest } from 'next/server';
-import { ZERO_DEFECT_RULES } from '@/lib/shared/coding-standards';
+import { ZERO_DEFECT_RULES, TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
 const TOOL_DEFINITIONS = [
   {
@@ -1163,6 +1163,12 @@ SECTION 17.5: ZERO-DEFECT CODING (PREVENTION — NOT JUST DETECTION)
 ==========================================================================
 
 ${ZERO_DEFECT_RULES}
+
+==========================================================================
+SECTION 17.6: TASK DECOMPOSITION STANDARD
+==========================================================================
+
+${TASK_DECOMPOSITION_RULES_COMPACT}
 
 ==========================================================================
 SECTION 18: FORGE HARVESTER AND TRAINING MISSION
