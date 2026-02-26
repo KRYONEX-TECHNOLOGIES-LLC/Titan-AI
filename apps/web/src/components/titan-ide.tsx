@@ -232,7 +232,7 @@ export default function TitanIDE() {
     if (isElectron && electronAPI) {
       void fileSystem.ensureDefaultWorkspace();
     }
-  }, [mounted, fileSystem]);
+  }, [mounted, fileSystem.workspacePath]);
 
   // Debounced file tree refresh
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -491,37 +491,54 @@ export default function TitanIDE() {
     setActiveView(prev => prev === view ? '' : view);
   }, []);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — use refs to avoid re-registering on every render
+  const fileSystemRef = useRef(fileSystem);
+  const settingsRef = useRef(settings);
+  const midnightRef = useRef(midnight);
+  fileSystemRef.current = fileSystem;
+  settingsRef.current = settings;
+  midnightRef.current = midnight;
+
   useEffect(() => {
     const handleKeyboard = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && e.key === 'b') { e.preventDefault(); setActiveView(prev => prev ? '' : 'titan-agent'); }
       else if (ctrl && e.key === 's') { e.preventDefault(); executeCommand('save'); }
       else if (ctrl && e.key === 'n') { e.preventDefault(); executeCommand('newFile'); }
-      else if (ctrl && e.key === 'o' && !e.shiftKey) { e.preventDefault(); fileSystem.openFolder(); }
+      else if (ctrl && e.key === 'o' && !e.shiftKey) { e.preventDefault(); fileSystemRef.current.openFolder(); }
       else if (ctrl && e.key === '`') { e.preventDefault(); setShowTerminal(prev => !prev); }
       else if (ctrl && e.shiftKey && e.key === 'E') { e.preventDefault(); setShowRightPanel(prev => !prev); }
       else if (ctrl && e.shiftKey && e.key === 'F') { e.preventDefault(); setActiveView('search'); }
       else if (ctrl && e.shiftKey && e.key === 'G') { e.preventDefault(); setActiveView('git'); }
       else if (ctrl && e.shiftKey && e.key === 'P') { e.preventDefault(); executeCommand('commandPalette'); }
       else if (e.key === 'Escape') {
-        settings.setShowModelDropdown(false);
+        settingsRef.current.setShowModelDropdown(false);
         setShowPlusDropdown(false);
-        if (midnight.showFactoryView) midnight.setShowFactoryView(false);
+        if (midnightRef.current.showFactoryView) midnightRef.current.setShowFactoryView(false);
       }
     };
     document.addEventListener('keydown', handleKeyboard);
     return () => document.removeEventListener('keydown', handleKeyboard);
-  }, [executeCommand, fileSystem, settings, midnight]);
+  }, [executeCommand]);
 
   // File system watcher -- auto-refresh tree + editor when files change on disk
+  const tabsRef = useRef(tabs);
+  const activeTabRef = useRef(activeTab);
+  const editorInstanceRef = useRef(editorInstance);
+  const applyFilesRef = useRef(applyFiles);
+  tabsRef.current = tabs;
+  activeTabRef.current = activeTab;
+  editorInstanceRef.current = editorInstance;
+  applyFilesRef.current = applyFiles;
+
   useEffect(() => {
     if (!isElectron || !electronAPI || !fileSystem.workspacePath) return;
+    const wsPath = fileSystem.workspacePath;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingChanges = new Set<string>();
 
-    const cleanup = electronAPI.fs.watchFolder(fileSystem.workspacePath, (event: string, filePath: string) => {
+    const cleanup = electronAPI.fs.watchFolder(wsPath, (event: string, filePath: string) => {
       if (event === 'change') {
         pendingChanges.add(filePath);
       }
@@ -531,16 +548,16 @@ export default function TitanIDE() {
         useFileStore.getState().refreshFileTree();
 
         for (const changedPath of pendingChanges) {
-          const relPath = changedPath.replace(fileSystem.workspacePath + '/', '').replace(fileSystem.workspacePath + '\\', '');
+          const relPath = changedPath.replace(wsPath + '/', '').replace(wsPath + '\\', '');
           const fileName = relPath.replace(/\\/g, '/');
-          const isOpen = tabs.some(t => t.name === fileName || t.name === relPath);
+          const isOpen = tabsRef.current.some(t => t.name === fileName || t.name === relPath);
           if (isOpen && electronAPI) {
             try {
               const content = await electronAPI.fs.readFile(changedPath);
-              applyFiles({ [fileName]: content, [relPath]: content });
+              applyFilesRef.current({ [fileName]: content, [relPath]: content });
               useEditorStore.getState().loadFileContents({ [fileName]: content, [relPath]: content });
-              if ((activeTab === fileName || activeTab === relPath) && editorInstance) {
-                const model = editorInstance.getModel();
+              if ((activeTabRef.current === fileName || activeTabRef.current === relPath) && editorInstanceRef.current) {
+                const model = editorInstanceRef.current.getModel();
                 if (model && model.getValue() !== content) {
                   model.setValue(content);
                 }
@@ -556,14 +573,14 @@ export default function TitanIDE() {
       if (debounceTimer) clearTimeout(debounceTimer);
       cleanup();
     };
-  }, [fileSystem.workspacePath, tabs, activeTab, editorInstance, applyFiles]);
+  }, [fileSystem.workspacePath]);
 
   // Close dropdowns
   useEffect(() => {
-    const handleClick = () => { setShowPlusDropdown(false); settings.setShowModelDropdown(false); };
+    const handleClick = () => { setShowPlusDropdown(false); settingsRef.current.setShowModelDropdown(false); };
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
-  }, [settings]);
+  }, []);
 
   // Chat scroll logic is in TitanAgentPanel where the DOM container lives.
 

@@ -21,6 +21,16 @@
   --accent-cyan: #22d3ee;
   --accent-orange: #d97706;
   --accent-purple: #a371f7;
+  /* Aliases used by loading screens and Alfred panel */
+  --titan-background: #0a0a14;
+  --titan-primary: #1e1e2e;
+  --titan-accent: #007acc;
+  --titan-foreground-muted: #808080;
+  --titan-ai-accent: #a371f7;
+}
+
+html {
+  background-color: #0a0a14;
 }
 
 @layer base {

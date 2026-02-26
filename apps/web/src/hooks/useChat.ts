@@ -652,13 +652,13 @@ export function useChat({
 
     // Persistent memory injection — always include for cross-conversation recall
     let memoryPrefix = '';
-    const persistentMemory = useTitanMemory.getState().serialize(3000);
+    const persistentMemory = useTitanMemory.getState().serialize(1500);
     if (persistentMemory) {
       memoryPrefix = `${persistentMemory}\n\n`;
     }
 
     // Code directory injection — gives AI instant knowledge of project structure
-    const codeDir = useCodeDirectory.getState().serialize(2000);
+    const codeDir = useCodeDirectory.getState().serialize(1000);
     if (codeDir) {
       memoryPrefix += `${codeDir}\n\n`;
     }
@@ -678,7 +678,7 @@ export function useChat({
     if (memoryManagerRef.current.shouldReadMemory(msg)) {
       const memory = await agentTools.executeToolCall('memory_read', {});
       if (memory.success && memory.output) {
-        memoryPrefix += `[Architectural Memory]\n${memory.output.slice(0, 4000)}\n\n`;
+        memoryPrefix += `[Architectural Memory]\n${memory.output.slice(0, 2000)}\n\n`;
       }
     }
 
