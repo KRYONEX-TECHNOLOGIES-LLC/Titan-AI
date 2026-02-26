@@ -71,7 +71,6 @@ export default function TitanIDE() {
 
   const titanSession = useSession();
   const { alfredState } = useAlfredAmbient();
-  const chat = useChat();
 
   // Initialize command registry once — use getState directly so we don't
   // subscribe TitanIDE to the entire store (which would re-render on any
