@@ -47,6 +47,7 @@ export function useAlfredAmbient() {
   const sendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processingRef = useRef(false);
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Pending action for "proceed" flow
   const pendingActionRef = useRef<{ action: string; params: Record<string, string>; description: string } | null>(null);
@@ -246,6 +247,9 @@ export function useAlfredAmbient() {
       console.log('[alfred] Wake word detected:', trimmed);
       const afterWake = trimmed.replace(WAKE_WORD, '').trim();
 
+      // Reset inactivity timer on every wake word
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+
       if (!wakeDetectedRef.current) {
         wakeDetectedRef.current = true;
         wakeActivatedAtRef.current = Date.now();
@@ -344,7 +348,7 @@ export function useAlfredAmbient() {
     }
   }, [titanVoice.isSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-start listening after speaking finishes
+  // Re-start listening after speaking finishes + start 60s inactivity timer
   useEffect(() => {
     if (autoListenMode && !titanVoice.isSpeaking && alfredState === 'speaking') {
       const timer = setTimeout(() => {
@@ -352,6 +356,13 @@ export function useAlfredAmbient() {
         if (!voice.isListening && voice.isSupported) {
           voice.resume();
         }
+        // Start 60-second inactivity timer — if no new "Alfred" wake word, stay passive
+        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = setTimeout(() => {
+          if (!wakeDetectedRef.current && !processingRef.current) {
+            setAlfredState('listening');
+          }
+        }, 60000);
       }, 700);
       return () => clearTimeout(timer);
     }
@@ -390,6 +401,7 @@ export function useAlfredAmbient() {
     return () => {
       if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
       if (wakeTimeoutRef.current) clearTimeout(wakeTimeoutRef.current);
+      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     };
   }, []);
 

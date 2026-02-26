@@ -14,7 +14,18 @@ const CACHE_TTL_MS = 300_000;
  * Fetch a URL via server-side proxy and extract readable content.
  */
 export async function fetchAndExtract(url: string): Promise<WebPage> {
-  const cached = PAGE_CACHE.get(url);
+  // Validate URL — if not a valid http/https URL, convert to a search query
+  let targetUrl = url;
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      targetUrl = `https://www.google.com/search?q=${encodeURIComponent(url)}`;
+    }
+  } catch {
+    targetUrl = `https://www.google.com/search?q=${encodeURIComponent(url)}`;
+  }
+
+  const cached = PAGE_CACHE.get(targetUrl);
   if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < CACHE_TTL_MS) {
     return cached;
   }
@@ -22,22 +33,23 @@ export async function fetchAndExtract(url: string): Promise<WebPage> {
   const res = await fetch('/api/web/fetch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url: targetUrl }),
   });
 
   if (!res.ok) {
-    throw new Error(`Browse failed (${res.status})`);
+    const errorData = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(errorData.error || `Browse failed (${res.status})`);
   }
 
   const data = (await res.json()) as { title?: string; content?: string };
   const page: WebPage = {
-    url,
-    title: data.title || url,
+    url: targetUrl,
+    title: data.title || targetUrl,
     content: (data.content || '').slice(0, 8000),
     fetchedAt: new Date().toISOString(),
   };
 
-  PAGE_CACHE.set(url, page);
+  PAGE_CACHE.set(targetUrl, page);
   if (PAGE_CACHE.size > 50) {
     const oldest = PAGE_CACHE.keys().next().value;
     if (oldest) PAGE_CACHE.delete(oldest);

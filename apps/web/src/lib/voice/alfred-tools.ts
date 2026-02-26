@@ -404,16 +404,48 @@ export async function executeToolServerSide(
 ): Promise<ToolExecResult> {
   switch (name) {
     case 'browse_url': {
-      const url = String(args.url || '');
-      if (!url) return { success: false, message: 'URL is required' };
+      const input = String(args.url || '');
+      if (!input) return { success: false, message: 'URL is required' };
+
+      // Check if input is a valid URL — if not, auto-fallback to web_search
+      let targetUrl = input;
+      let isSearch = false;
       try {
-        const res = await fetch(url, {
+        const parsed = new URL(input);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('bad protocol');
+      } catch {
+        isSearch = true;
+        targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(input)}`;
+      }
+
+      try {
+        const res = await fetch(targetUrl, {
           headers: { 'User-Agent': 'TitanAI-Alfred/1.0' },
           signal: AbortSignal.timeout(10000),
         });
         const html = await res.text();
+
+        if (isSearch) {
+          const results: string[] = [];
+          const linkRegex = /<a class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+          const snippetRegex = /<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+          let match;
+          while ((match = snippetRegex.exec(html)) !== null && results.length < 5) {
+            results.push(match[1].replace(/<[^>]+>/g, '').trim());
+          }
+          const links: string[] = [];
+          while ((match = linkRegex.exec(html)) !== null && links.length < 5) {
+            links.push(match[1]);
+          }
+          return {
+            success: true,
+            message: `Searched for "${input}":\n\n${results.length ? results.join('\n\n') : 'No results found.'}`,
+            data: { query: input, resultCount: results.length, topLinks: links },
+          };
+        }
+
         const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-        const title = titleMatch?.[1]?.trim() || url;
+        const title = titleMatch?.[1]?.trim() || targetUrl;
         const textContent = html
           .replace(/<script[\s\S]*?<\/script>/gi, '')
           .replace(/<style[\s\S]*?<\/style>/gi, '')

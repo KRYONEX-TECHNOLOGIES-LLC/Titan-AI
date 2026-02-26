@@ -1742,11 +1742,32 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
 
   // Manual text input
   const [manualInput, setManualInput] = useState('');
+  const [attachedImages, setAttachedImages] = useState<File[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
   const handleManualSend = useCallback(() => {
-    if (!manualInput.trim()) return;
-    sendManual(manualInput.trim());
+    if (!manualInput.trim() && attachedImages.length === 0) return;
+    const text = manualInput.trim();
+    if (attachedImages.length > 0) {
+      const imageNames = attachedImages.map(f => f.name).join(', ');
+      sendManual(text ? `${text}\n[Attached images: ${imageNames}]` : `[Attached images: ${imageNames}]`);
+    } else {
+      sendManual(text);
+    }
     setManualInput('');
-  }, [manualInput, sendManual]);
+    setAttachedImages([]);
+  }, [manualInput, attachedImages, sendManual]);
+
+  const handleImageDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) setAttachedImages(prev => [...prev, ...files]);
+  }, []);
+
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) setAttachedImages(prev => [...prev, ...files]);
+  }, []);
 
   const isProcessing = alfredState === 'processing';
 
@@ -1791,7 +1812,7 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
 
       {/* Waveform + Status Bar */}
       <div className="px-4 py-2 border-b border-[#2a2a2a]">
-        <WaveformVisualizer active={voice.isListening} speaking={titanVoice.isSpeaking} />
+        <WaveformVisualizer active={autoListenMode || voice.isListening} speaking={titanVoice.isSpeaking} />
         {/* Voice error */}
         {voice.errorMessage && (
           <div className="mt-2 rounded bg-red-900/20 border border-red-800/40 p-1.5 flex items-center justify-between">
@@ -1851,21 +1872,15 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
 
       {/* Bottom Controls */}
       <div className="px-4 py-3 border-t border-[#3c3c3c] space-y-2">
-        {/* Quick Action Buttons */}
-        <div className="flex gap-1.5 flex-wrap">
-          <button
-            onClick={() => {
-              if (voice.isListening) voice.stopListening();
-              else voice.startListening();
-            }}
-            className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
-              voice.isListening
-                ? 'bg-red-600/25 text-red-300 border border-red-500/40 hover:bg-red-600/35'
-                : 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-600/30'
-            }`}
-          >
-            {voice.isListening ? 'Stop Mic' : 'Start Mic'}
-          </button>
+        {/* Status + Quick Actions */}
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <span className={`px-2 py-1 rounded text-[10px] font-medium ${
+            voice.isListening
+              ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30'
+              : 'bg-[#2d2d2d] text-[#666] border border-[#3c3c3c]'
+          }`}>
+            {voice.isListening ? 'Ambient Listening' : 'Mic Off'}
+          </span>
           {titanVoice.isSpeaking && (
             <button
               onClick={() => titanVoice.stopSpeaking()}
@@ -1891,8 +1906,43 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
           )}
         </div>
 
+        {/* Attached Images Preview */}
+        {attachedImages.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
+            {attachedImages.map((f, i) => (
+              <div key={i} className="relative group">
+                <div className="w-12 h-12 rounded border border-[#3c3c3c] bg-[#1a1a1a] overflow-hidden">
+                  <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                </div>
+                <button
+                  onClick={() => setAttachedImages(prev => prev.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-[8px] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Text Input */}
-        <div className="flex gap-2">
+        <div
+          className="flex gap-2"
+          onDragOver={e => e.preventDefault()}
+          onDrop={handleImageDrop}
+        >
+          <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
+          <button
+            onClick={() => imageInputRef.current?.click()}
+            className="px-2 py-1.5 rounded-lg bg-[#2d2d2d] border border-[#3c3c3c] text-[#808080] hover:text-white hover:border-[#555] transition-colors text-[12px]"
+            title="Attach image"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          </button>
           <input
             type="text"
             value={manualInput}
@@ -1904,7 +1954,7 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
           />
           <button
             onClick={handleManualSend}
-            disabled={isProcessing || !manualInput.trim()}
+            disabled={isProcessing || (!manualInput.trim() && attachedImages.length === 0)}
             className="px-3 py-1.5 rounded-lg bg-cyan-600 text-white text-[11px] font-medium hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             Send
