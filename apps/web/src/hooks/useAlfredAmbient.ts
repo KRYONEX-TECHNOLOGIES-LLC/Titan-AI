@@ -116,6 +116,12 @@ export function useAlfredAmbient() {
     let brainContext = '';
     try { brainContext = serializeBrainContext(1500); } catch { /* */ }
 
+    let learnedStrategies = '';
+    try {
+      const { getRelevantStrategies } = await import('@/lib/voice/self-improvement');
+      learnedStrategies = getRelevantStrategies(text);
+    } catch { /* self-improvement module not available yet */ }
+
     try {
       const response = await fetch('/api/titan/voice', {
         method: 'POST',
@@ -128,6 +134,7 @@ export function useAlfredAmbient() {
           })),
           memoryContext,
           brainContext,
+          learnedStrategies,
         }),
       });
 
@@ -143,6 +150,7 @@ export function useAlfredAmbient() {
       const decoder = new TextDecoder();
       let buffer = '';
       let responseText = '';
+      const pendingClientActions: Array<{ action: string; params: Record<string, string> }> = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -159,13 +167,36 @@ export function useAlfredAmbient() {
             if (line.startsWith('event:')) eventType = line.slice(6).trim();
             if (line.startsWith('data:')) data += line.slice(5).trim();
           }
-          if (eventType === 'voice_response' && data) {
-            try {
-              const payload = JSON.parse(data) as { content?: string };
+
+          if (!data) continue;
+
+          try {
+            if (eventType === 'voice_response') {
+              const payload = JSON.parse(data) as { content?: string; clientActions?: Array<{ action: string; params: Record<string, string> }> };
               responseText = payload.content || '';
-            } catch { /* skip */ }
-          }
+              if (payload.clientActions) pendingClientActions.push(...payload.clientActions);
+            } else if (eventType === 'voice_tool_call') {
+              const payload = JSON.parse(data) as { name: string; dangerous?: boolean };
+              if (payload.dangerous) {
+                pendingActionRef.current = {
+                  action: payload.name,
+                  params: {},
+                  description: `execute ${payload.name}`,
+                };
+              }
+            }
+          } catch { /* skip malformed events */ }
         }
+      }
+
+      // Execute any client-side actions returned by tool calls
+      if (pendingClientActions.length > 0) {
+        try {
+          const { executeVoiceAction } = await import('@/lib/voice/system-control');
+          for (const ca of pendingClientActions) {
+            await executeVoiceAction(ca.action, ca.params);
+          }
+        } catch { /* client actions are best-effort */ }
       }
 
       if (responseText) {
@@ -184,6 +215,16 @@ export function useAlfredAmbient() {
             `Alfred conversation: ${text.slice(0, 80)}`,
           );
         } catch { /* learning is best-effort */ }
+
+        // Post-conversation self-improvement evaluation
+        try {
+          const { captureExperience, shouldDistill, distillStrategies } = await import('@/lib/voice/self-improvement');
+          const conversationCount = conversationLog.length;
+          captureExperience(text, responseText, true);
+          if (shouldDistill(conversationCount)) {
+            distillStrategies();
+          }
+        } catch { /* self-improvement is best-effort */ }
       } else {
         addToLog('alfred', 'I didn\'t catch a clear response. Try again, sir.');
       }

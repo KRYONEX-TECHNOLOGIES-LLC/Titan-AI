@@ -1,9 +1,13 @@
 import { NextRequest } from 'next/server';
-import { orchestrateVoice } from '@/lib/voice/titan-voice-protocol';
 import { TITAN_VOICE_PERSONALITY } from '@/lib/voice/titan-personality';
 import { serializeBrainContext } from '@/lib/voice/brain-storage';
+import { callModelDirect, callModelWithTools } from '@/lib/llm-call';
+import { VOICE_MODELS, classifyComplexity, type VoiceRole } from '@/lib/voice/titan-voice-protocol';
+import { getToolSchema, executeToolServerSide, isToolDangerous, type ToolExecResult } from '@/lib/voice/alfred-tools';
 
 export const dynamic = 'force-dynamic';
+
+const MAX_TOOL_ROUNDS = 3;
 
 interface VoiceRequestBody {
   message: string;
@@ -14,6 +18,7 @@ interface VoiceRequestBody {
   brainContext?: string;
   codeDirectory?: string;
   projectStatus?: string;
+  learnedStrategies?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -52,46 +57,147 @@ export async function POST(request: NextRequest) {
           body.codeDirectory ? `\n[CODE DIRECTORY]\n${body.codeDirectory}` : '',
           body.projectStatus ? `\n[PROJECT STATUS]\n${body.projectStatus}` : '',
           brainContext ? `\n[BRAIN KNOWLEDGE]\n${brainContext}` : '',
+          body.learnedStrategies ? `\n[LEARNED STRATEGIES]\n${body.learnedStrategies}` : '',
           '\nCONVERSATION RULES:',
           '- Keep spoken responses concise (2-4 sentences) unless the user asks for detail.',
           '- You are speaking aloud, so be natural and conversational.',
-          '- Reference things you remember about the user from memory — their name, preferences, past conversations.',
-          '- When the user tells you something personal (name, preference, opinion), acknowledge it warmly and remember it.',
-          '- You are an ultimate conversationalist: witty, insightful, warm, and sharp. Like a brilliant friend who also happens to be a genius.',
+          '- Reference things you remember about the user from memory.',
+          '- You have REAL tool-calling capabilities. When you need to take action, use your tools. Do NOT just describe what you would do — actually call the tool.',
+          '- For dangerous actions (starting protocols, harvester, git), tell the user what you plan to do and they will confirm.',
+          '- You are an ultimate conversationalist: witty, insightful, warm, and sharp.',
         ].filter(Boolean).join('\n');
 
         emit('voice_thinking', { roles: ['analyzing'] });
 
-        const result = await orchestrateVoice({
-          systemPrompt,
-          userMessage: body.message,
-          conversationHistory: body.conversationHistory,
-          hasImage: body.hasImage,
-          imageBase64: body.imageBase64,
-        });
+        const complexity = classifyComplexity(body.message, body.hasImage);
+        const history = (body.conversationHistory || []).slice(-20);
+        let contextPrefix = '';
 
-        emit('voice_roles', {
-          roles: result.roles,
-          complexity: result.complexity,
-        });
-
-        if (result.scannerOutput) {
-          emit('voice_scanner', { output: result.scannerOutput.slice(0, 500) });
+        // Pre-processing roles (Scanner, Thinker, Perceiver)
+        if (complexity === 'code') {
+          try {
+            const scannerOutput = await callModelDirect(VOICE_MODELS.SCANNER, [
+              { role: 'system', content: 'You are SCANNER, a code analysis specialist. Analyze the user\'s code question. Return a concise technical analysis (max 200 words). Focus on: file locations, patterns, issues, approach.' },
+              ...history.slice(-6),
+              { role: 'user', content: body.message },
+            ], { temperature: 0.1, maxTokens: 1024 });
+            if (scannerOutput) {
+              contextPrefix = `[Code Analysis]\n${scannerOutput}\n\n`;
+              emit('voice_scanner', { output: scannerOutput.slice(0, 500) });
+            }
+          } catch { /* scanner optional */ }
+        } else if (complexity === 'complex' || complexity === 'idea') {
+          try {
+            const thinkingOutput = await callModelDirect(VOICE_MODELS.THINKER, [
+              { role: 'system', content: 'You are THINKER, the deep reasoning engine. Analyze thoroughly, consider multiple angles, creative solutions. Max 300 words, be substantive.' },
+              ...history.slice(-6),
+              { role: 'user', content: body.message },
+            ], { temperature: 0.4, maxTokens: 2048 });
+            if (thinkingOutput) {
+              contextPrefix = `[Deep Analysis]\n${thinkingOutput}\n\n`;
+              emit('voice_thinking_done', { output: thinkingOutput.slice(0, 500) });
+            }
+          } catch { /* thinker optional */ }
         }
-        if (result.thinkingOutput) {
-          emit('voice_thinking_done', { output: result.thinkingOutput.slice(0, 500) });
+
+        // Build messages for the RESPONDER with tool-calling
+        const roles: VoiceRole[] = complexity === 'code' ? ['SCANNER', 'RESPONDER'] :
+          complexity === 'complex' || complexity === 'idea' ? ['THINKER', 'RESPONDER'] :
+          complexity === 'vision' ? ['PERCEIVER', 'RESPONDER'] : ['RESPONDER'];
+
+        emit('voice_roles', { roles, complexity });
+
+        const messages: Array<{ role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown[] }> = [
+          { role: 'system', content: systemPrompt },
+          ...history.map(h => ({ role: h.role, content: h.content })),
+          { role: 'user', content: contextPrefix ? `${contextPrefix}[User]\n${body.message}` : body.message },
+        ];
+
+        const toolSchema = getToolSchema();
+        const clientActions: Array<{ action: string; params: Record<string, string> }> = [];
+        let finalResponse = '';
+
+        // Tool-calling loop: LLM decides tools → execute → feed results → repeat
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          const result = await callModelWithTools(
+            VOICE_MODELS.RESPONDER,
+            messages,
+            toolSchema,
+            { temperature: 0.3, maxTokens: 4096 },
+          );
+
+          if (result.toolCalls.length === 0) {
+            finalResponse = result.content || '';
+            break;
+          }
+
+          // Process each tool call
+          const assistantToolCalls = result.toolCalls.map(tc => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: { name: tc.name, arguments: JSON.stringify(tc.arguments) },
+          }));
+
+          messages.push({
+            role: 'assistant',
+            content: result.content,
+            tool_calls: assistantToolCalls,
+          });
+
+          for (const tc of result.toolCalls) {
+            emit('voice_tool_call', { name: tc.name, args: tc.arguments, dangerous: isToolDangerous(tc.name) });
+
+            let toolResult: ToolExecResult;
+
+            if (isToolDangerous(tc.name)) {
+              toolResult = {
+                success: true,
+                message: `[REQUIRES CONFIRMATION] Action "${tc.name}" needs user approval. Tell the user what you plan to do and ask them to say "proceed".`,
+                clientAction: { action: tc.name, params: tc.arguments as Record<string, string> },
+              };
+            } else {
+              toolResult = await executeToolServerSide(tc.name, tc.arguments);
+            }
+
+            if (toolResult.clientAction) {
+              clientActions.push(toolResult.clientAction);
+            }
+
+            emit('voice_tool_result', { name: tc.name, success: toolResult.success, message: toolResult.message.slice(0, 500) });
+
+            messages.push({
+              role: 'tool',
+              content: JSON.stringify({ success: toolResult.success, result: toolResult.message, data: toolResult.data }),
+              tool_call_id: tc.id,
+            });
+          }
+
+          // If this was the last round and we still have tool calls, do one final call without tools
+          if (round === MAX_TOOL_ROUNDS - 1) {
+            const finalResult = await callModelDirect(
+              VOICE_MODELS.RESPONDER,
+              messages.map(m => ({ role: m.role, content: m.content || '' })),
+              { temperature: 0.3, maxTokens: 4096 },
+            );
+            finalResponse = finalResult;
+          }
+        }
+
+        if (!finalResponse) {
+          finalResponse = 'I processed your request, sir. Is there anything else?';
         }
 
         emit('voice_response', {
-          content: result.response,
-          roles: result.roles,
-          complexity: result.complexity,
+          content: finalResponse,
+          roles,
+          complexity,
+          clientActions: clientActions.length > 0 ? clientActions : undefined,
         });
 
         emit('voice_done', {
           success: true,
-          roles: result.roles,
-          complexity: result.complexity,
+          roles,
+          complexity,
         });
 
       } catch (error) {

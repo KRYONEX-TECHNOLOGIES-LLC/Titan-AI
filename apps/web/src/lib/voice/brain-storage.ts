@@ -134,11 +134,21 @@ export function saveBrainEntryBatch(
 export function queryBrain(category?: BrainCategory, searchTerm?: string): BrainEntry[] {
   let entries = loadFromLS<BrainEntry>(BRAIN_LS_KEY);
   if (category) entries = entries.filter(e => e.category === category);
-  if (searchTerm) {
+  if (!searchTerm) {
+    return entries.sort((a, b) => b.importance - a.importance).slice(0, 50);
+  }
+
+  // Use hybrid search (BM25 + importance weighting) for better relevance
+  try {
+    const { hybridSearchSync } = require('./hybrid-search') as typeof import('./hybrid-search');
+    const results = hybridSearchSync(searchTerm, entries, 50);
+    return results.map(r => r.entry);
+  } catch {
+    // Fallback to simple keyword matching
     const lower = searchTerm.toLowerCase();
     entries = entries.filter(e => e.content.toLowerCase().includes(lower));
+    return entries.sort((a, b) => b.importance - a.importance).slice(0, 50);
   }
-  return entries.sort((a, b) => b.importance - a.importance).slice(0, 50);
 }
 
 export function getBrainStats(): { total: number; byCategory: Record<string, number> } {

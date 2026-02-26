@@ -224,6 +224,79 @@ export async function stopAutoLearn(): Promise<ControlResult> {
 }
 
 /**
+ * Start Phoenix Protocol with a goal.
+ */
+export async function startPhoenix(goal: string): Promise<ControlResult> {
+  try {
+    const res = await fetch('/api/titan/phoenix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: goal, mode: 'phoenix' }),
+    });
+    const data = await res.json();
+    return { success: res.ok, message: data.message || `Phoenix Protocol launched: ${goal}`, data };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to start Phoenix' };
+  }
+}
+
+/**
+ * Start Supreme Protocol with a goal.
+ */
+export async function startSupreme(goal: string): Promise<ControlResult> {
+  try {
+    const res = await fetch('/api/titan/supreme', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: goal, mode: 'supreme' }),
+    });
+    const data = await res.json();
+    return { success: res.ok, message: data.message || `Supreme Protocol launched: ${goal}`, data };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to start Supreme' };
+  }
+}
+
+/**
+ * Start Plan Sniper Protocol with a goal.
+ */
+export async function startSniper(goal: string): Promise<ControlResult> {
+  try {
+    const res = await fetch('/api/titan/sniper', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: goal, mode: 'sniper' }),
+    });
+    const data = await res.json();
+    return { success: res.ok, message: data.message || `Plan Sniper launched: ${goal}`, data };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to start Plan Sniper' };
+  }
+}
+
+/**
+ * Get status of all protocols.
+ */
+export function getProtocolStatus(): ControlResult {
+  try {
+    const plan = usePlanStore.getState();
+    const tasks = Object.values(plan.tasks);
+    const completed = tasks.filter(t => t.status === 'completed').length;
+    const inProgress = tasks.filter(t => t.status === 'in_progress').length;
+    const failed = tasks.filter(t => t.status === 'failed').length;
+    const mode = plan.chatMode || 'agent';
+
+    return {
+      success: true,
+      message: `Mode: ${mode} | Plan "${plan.planName || 'None'}": ${completed}/${tasks.length} done, ${inProgress} active, ${failed} failed`,
+      data: { mode, total: tasks.length, completed, inProgress, failed, planName: plan.planName },
+    };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Failed to get protocol status' };
+  }
+}
+
+/**
  * Check market/finance data (delegates to auto-learner).
  */
 export async function checkMarkets(): Promise<ControlResult> {
@@ -243,6 +316,10 @@ export async function executeVoiceAction(action: string, params: Record<string, 
   switch (action) {
     case 'start_midnight': return startMidnight(params.description);
     case 'stop_midnight': return stopMidnight();
+    case 'start_phoenix': return startPhoenix(params.goal || params.description || '');
+    case 'start_supreme': return startSupreme(params.goal || params.description || '');
+    case 'start_sniper': return startSniper(params.goal || params.description || '');
+    case 'check_protocol_status': return getProtocolStatus();
     case 'scan_project': return scanProject();
     case 'check_status': return checkProjectStatus();
     case 'start_harvest': return startHarvest();
@@ -258,6 +335,37 @@ export async function executeVoiceAction(action: string, params: Record<string, 
     case 'start_auto_learn': return startAutoLearn();
     case 'stop_auto_learn': return stopAutoLearn();
     case 'check_markets': return checkMarkets();
+
+    case 'store_knowledge': {
+      try {
+        const { saveBrainEntry } = await import('./brain-storage');
+        const entry = await saveBrainEntry({
+          content: params.content || '',
+          category: (params.category || 'knowledge') as import('./brain-storage').BrainCategory,
+          source: 'alfred-tool-call',
+          importance: parseInt(params.importance || '5', 10),
+        });
+        return { success: true, message: `Stored: [${entry.category}] "${entry.content.slice(0, 60)}..."` };
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : 'Failed to store knowledge' };
+      }
+    }
+
+    case 'query_knowledge': return searchKnowledge(params.query || '');
+
+    case 'evaluate_performance': {
+      try {
+        const { evaluatePerformance } = await import('./self-improvement');
+        const perf = evaluatePerformance();
+        return {
+          success: true,
+          message: `Performance: ${perf.totalInteractions} interactions, ${Math.round(perf.successRate * 100)}% success. Top areas: ${perf.topTags.join(', ')}. Weak: ${perf.weakAreas.join(', ') || 'none'}. ${perf.recentStrategies} strategies learned.`,
+        };
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : 'Evaluation failed' };
+      }
+    }
+
     default: return { success: false, message: `Unknown action: ${action}` };
   }
 }

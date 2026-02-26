@@ -101,17 +101,23 @@ Titan AI/
 - Error display with dismissible messages
 - Interim text preview while speaking
 
-### Alfred (Titan Voice Protocol)
-- 4-role multi-model orchestrator: PERCEIVER (vision), THINKER (reasoning), RESPONDER (conversation), SCANNER (code analysis)
+### Alfred (Superintelligent Overseer)
+- **LLM-driven tool calling**: 26 tools via OpenAI function-calling API — Alfred's LLM decides which tools to call based on conversation context (not regex matching)
+- 4-role multi-model orchestrator: PERCEIVER (vision), THINKER (reasoning), RESPONDER (conversation + tool calling), SCANNER (code analysis)
+- **Protocol mastery**: Can start/stop/monitor ALL protocols (Phoenix, Supreme, Midnight, Plan Sniper) with intelligent routing — uses Phoenix for routine work, Supreme for critical, Sniper for parallel, Midnight for autonomous
+- **Three-tier safety**: Tier 1 (instant — reads/searches), Tier 2 (confirm — protocol starts, git ops), Tier 3 (forbidden — force push, delete workspace)
+- **Hybrid RAG with RRF**: Brain queries use BM25 sparse + dense embedding retrieval fused with Reciprocal Rank Fusion (k=60) for dramatically better knowledge retrieval
+- **Self-improvement loop**: Experience capture → Strategy distillation (every 10 conversations) → Principle retrieval. Alfred learns what works and injects learned strategies into future conversations
+- **Anti-hallucination protocol**: Never fabricates metrics, benchmarks, or capabilities. Uses tools to verify before claiming
 - **Wake word activation**: Say "Alfred" to activate — responds "Yes sir" and listens for command
-- **Ambient always-on listening**: Runs globally, not just in Alfred panel. Orb indicator in sidebar glows/pulses to show state
-- **Full conversational memory**: Injects persistent memory (preferences, decisions, identity), brain knowledge, and conversation history into every response
-- **Proceed protocol**: Destructive actions require "proceed" / "go ahead" confirmation before execution
+- **Ambient always-on listening**: Runs globally with orb indicator in sidebar
+- **Full conversational memory**: Persistent memory, brain knowledge, learned strategies, and conversation history in every response
+- **Proceed protocol**: Tier 2 actions require "proceed" / "go ahead" confirmation
 - Text-to-speech via Web Speech API with auto-speak toggle
-- Voice commands: "Alfred, start midnight mode", "Alfred, scan the project", "Alfred, check markets", "Alfred, look up [url]", "Alfred, search knowledge [query]", "Alfred, start auto-learning"
+- Voice commands + LLM tool calls for: protocols, harvester, code search, web research, brain queries, git operations, market data, auto-learning
 - Proactive thought engine: AI-generated suggestions with dedup, snooze, and cooldown
 - Persistent brain: Supabase + localStorage for knowledge, skills, ideas, finance, strategy, culture, research
-- **Web browser**: URL fetching and content extraction with caching
+- **Web browser**: URL fetching and content extraction for research
 - **Auto-learner**: Autonomous background learning engine cycling through 15+ topics (tech, finance, strategy, chess, etc.)
 - Async parallel data ingestion pipeline for knowledge harvesting
 - Evolution tracking: level system, milestones, growth stats
@@ -129,7 +135,7 @@ Titan AI/
 7. Learned Skills (auto-extracted how-to knowledge)
 
 ### AI Protocols
-- **Alfred (Titan Voice)**: 4-role voice companion with wake word "Alfred", ambient always-on listening, persistent memory, and conversational AI
+- **Alfred (Superintelligent Overseer)**: 26-tool LLM-driven overseer with hybrid RAG, self-improvement loop, protocol mastery, and 3-tier safety system
 - **Titan Plan Sniper**: 7-role multi-model orchestra (Scanner, Architect, Coder, Executor, Sentinel, Judge) using cost-effective models
 - **Phoenix Protocol**: Multi-agent orchestration with parallel workers
 - **Supreme Protocol**: Specialized 3-worker pipeline with oversight

@@ -333,60 +333,81 @@ Implementation: `useVoiceInput` hook in `apps/web/src/hooks/useVoiceInput.ts`.
 
 ---
 
-## Alfred (Titan Voice Protocol)
+## Alfred (Superintelligent Overseer)
 
-Alfred is the Titan AI voice companion — an always-on, proactive AI with text-to-speech, persistent brain, proactive thought engine, and full system control.
+Alfred is the Titan AI superintelligent overseer — an autonomous learning framework with LLM-driven tool calling, hybrid RAG, self-improvement loops, and fail-safe protocol orchestration.
 
 ### Architecture
 
-4-role multi-model protocol:
+**4-role multi-model protocol + LLM tool calling:**
 - **PERCEIVER** (Qwen3 VL 235B): Vision, multimodal understanding
 - **THINKER** (Qwen3.5 397B MoE): Deep reasoning, idea generation
-- **RESPONDER** (Gemini 2.0 Flash): Fast conversational responses
+- **RESPONDER** (Gemini 2.0 Flash): Conversation + 26-tool function calling
 - **SCANNER** (Devstral 2): Codebase scanning, project health
 
-Complexity-based routing: simple → RESPONDER, code → SCANNER → RESPONDER, complex → THINKER → RESPONDER, vision → PERCEIVER → RESPONDER.
+**Tool-calling loop:** RESPONDER receives 26 tools via OpenAI function-calling API → decides which tools to call based on conversation → executes server-side (web research, brain queries) or emits client-side actions (protocol starts, mode switches) → feeds results back → generates final response.
+
+**Hybrid RAG (RRF):** Brain queries use BM25 sparse keyword + dense embedding retrieval, fused with Reciprocal Rank Fusion (k=60).
+
+**Self-improvement:** Experience capture → Strategy distillation (every 10 conversations) → Principle retrieval injected as [LEARNED STRATEGIES].
+
+**Three-tier safety:**
+| Tier | Examples | Behavior |
+|------|----------|----------|
+| Instant | read, search, browse, query, check status | Execute immediately |
+| Confirm | start/stop protocols, harvester, git ops | Requires "proceed" |
+| Forbidden | force-push, delete workspace, modify build configs | Refused outright |
 
 ### Key files
 
 | File | Purpose |
 |------|---------|
-| `apps/web/src/lib/voice/tts-engine.ts` | TTS engine (SpeechSynthesis) |
+| `apps/web/src/lib/voice/alfred-tools.ts` | **26 tool definitions + safety tiers + server-side execution** |
+| `apps/web/src/lib/voice/hybrid-search.ts` | **BM25 + RRF hybrid search engine** |
+| `apps/web/src/lib/voice/self-improvement.ts` | **Experience capture, strategy distillation, principle retrieval** |
+| `apps/web/src/lib/voice/titan-personality.ts` | Superintelligent personality prompt (tool awareness, protocol mastery, 3-tier safety) |
 | `apps/web/src/lib/voice/titan-voice-protocol.ts` | 4-role model orchestrator |
-| `apps/web/src/lib/voice/titan-personality.ts` | Alfred personality prompt (full system map, git awareness) |
-| `apps/web/src/lib/voice/voice-commands.ts` | Voice command parser (22 commands) |
-| `apps/web/src/lib/voice/brain-storage.ts` | Supabase brain service + SQL (9 categories) |
+| `apps/web/src/lib/voice/brain-storage.ts` | Supabase brain service + hybrid queryBrain (9 categories) |
+| `apps/web/src/lib/voice/system-control.ts` | System control (all protocols, Forge, web, markets, auto-learn, knowledge) |
+| `apps/web/src/lib/voice/voice-commands.ts` | Voice command parser (regex fast-path for simple commands) |
 | `apps/web/src/lib/voice/thought-engine.ts` | Proactive thought system |
 | `apps/web/src/lib/voice/vision.ts` | Screenshot/viewport capture |
-| `apps/web/src/lib/voice/system-control.ts` | System control (Midnight, Plan, Forge, web, markets, auto-learn) |
-| `apps/web/src/lib/voice/knowledge-ingest.ts` | Harvest data → brain pipeline (expanded routing) |
+| `apps/web/src/lib/voice/knowledge-ingest.ts` | Harvest data → brain pipeline |
 | `apps/web/src/lib/voice/evolution-tracker.ts` | Growth & evolution tracking |
-| `apps/web/src/lib/voice/web-browser.ts` | URL fetch + content extraction with caching |
+| `apps/web/src/lib/voice/web-browser.ts` | URL fetch + content extraction |
 | `apps/web/src/lib/voice/auto-learner.ts` | Autonomous background learning engine |
 | `apps/web/src/stores/titan-voice.store.ts` | TTS state (Zustand) |
-| `apps/web/src/hooks/useAlfredAmbient.ts` | Wake word, proceed flow, global listener |
-| `apps/web/src/hooks/useTitanVoiceChat.ts` | Voice protocol chat hook |
-| `apps/web/src/app/api/titan/voice/route.ts` | SSE API endpoint |
-| `apps/web/src/components/ide/TitanVoicePopup.tsx` | Proactive thought popup |
+| `apps/web/src/hooks/useAlfredAmbient.ts` | Wake word, tool-call handling, self-improvement hooks |
+| `apps/web/src/app/api/titan/voice/route.ts` | SSE API with tool-calling loop |
+| `apps/web/src/lib/llm-call.ts` | callModelWithTools (function-calling support) |
 
-### Voice commands
+### Tools (26 total via LLM function calling)
 
-- "Alfred, start midnight mode" — Start Midnight (requires "proceed" to confirm)
-- "Alfred, stop midnight mode" — Stop Midnight (requires "proceed" to confirm)
+Alfred's LLM decides when to call tools — no regex matching needed for complex actions:
+- **Protocol control**: start_protocol, stop_protocol, check_protocol_status (Phoenix, Supreme, Midnight, Sniper)
+- **IDE operations**: read_file, search_code, run_command, scan_project
+- **Web research**: browse_url, web_search, research_topic
+- **Brain/knowledge**: store_knowledge, query_knowledge
+- **Harvester**: start_harvester, stop_harvester, check_harvest_status
+- **Self-improvement**: evaluate_performance, start_auto_learn, stop_auto_learn
+- **Mode control**: switch_mode, start_plan, mute_voice, snooze_thoughts
+- **Finance**: check_markets
+- **Git**: git_commit, git_push
+
+### Voice commands (regex fast-path)
+
+Simple commands still work via wake word + regex:
+- "Alfred, start midnight mode" — Confirm → Start Midnight
 - "Alfred, scan the project" — Code scan
 - "Alfred, what's the status?" — Plan progress
-- "Alfred, start the harvest" — Forge harvester (requires "proceed" to confirm)
-- "Alfred, take a screenshot" — Viewport capture
-- "Alfred, switch to plan/chat/agent mode" — Mode switch
+- "Alfred, proceed / go ahead / do it" — Confirm pending action
 - "Alfred, be quiet" — Mute voice
 - "Alfred, snooze thoughts" — Snooze proactive thoughts
-- "Alfred, proceed / go ahead / do it" — Confirm and execute pending action
-- "Alfred, check markets" — Financial market summary
-- "Alfred, look up [url]" — Browse and extract URL content
-- "Alfred, search knowledge [query]" — Search brain knowledge base
-- "Alfred, start auto-learning" — Start background learning engine
-- "Alfred, stop auto-learning" — Stop background learning engine
-- "Alfred, what do you think?" — Request analysis or opinion
+
+Complex actions now go through LLM tool calling — just ask naturally:
+- "Alfred, start Phoenix to refactor the auth module"
+- "Alfred, research the latest Next.js best practices"
+- "Alfred, how is our harvester doing?"
 
 ### Supabase tables
 
@@ -415,18 +436,27 @@ Polls Forge harvester data every 5 minutes, extracts insights, stores in brain w
 - `culture` — books, movies, entertainment
 - `research` — AI research, arXiv papers, academic
 
-### Proceed Protocol (v0.3.45)
+### Three-Tier Safety (v0.3.47)
 
-Destructive actions require user confirmation before execution:
-1. Alfred suggests an action (e.g. "Ready to start Midnight Mode")
-2. User says "proceed", "go ahead", "do it", or "yes"
-3. Only then does Alfred execute the action
-
-Actions requiring confirmation: start/stop midnight, start/stop harvest, start/stop auto-learn.
+All actions are classified into 3 safety tiers:
+1. **Instant**: Reads, searches, queries, status checks — execute immediately
+2. **Confirm**: Protocol starts/stops, harvester, git operations — require "proceed" / "go ahead"
+3. **Forbidden**: Force-push, delete workspace, modify build configs — refused outright
 
 ---
 
 ## Changelog
+
+### v0.3.47 — Alfred Superintelligence Upgrade (2026-02-24)
+
+- **LLM tool calling**: 26 tools via OpenAI function-calling API — RESPONDER model decides which tools to call based on conversation context, replacing regex for complex actions
+- **Tool-calling loop**: Server-side multi-round tool execution (up to 3 rounds) with SSE streaming of tool calls and results
+- **Hybrid RAG (RRF)**: BM25 sparse keyword scoring + dense embedding retrieval fused with Reciprocal Rank Fusion (k=60) — replaces simple keyword matching in queryBrain
+- **Self-improvement loop**: Experience capture on every conversation → strategy distillation every 10 conversations → principle retrieval injected as [LEARNED STRATEGIES] before each response
+- **Superintelligent personality**: Complete rewrite with tool-calling awareness, protocol mastery guide, 3-tier safety system, anti-hallucination protocol, scope awareness (overseer vs IDE agent), self-improvement directives
+- **Protocol control completion**: Added startPhoenix, startSupreme, startSniper, getProtocolStatus to system-control.ts — Alfred can now start/stop ALL protocols
+- **callModelWithTools**: New function in llm-call.ts supporting OpenRouter/LiteLLM function-calling API with tool_calls parsing
+- **New files**: alfred-tools.ts (tool schema + execution), hybrid-search.ts (BM25 + RRF), self-improvement.ts (experience + strategies)
 
 ### v0.3.45 — Alfred AGI Upgrade (2026-02-24)
 
