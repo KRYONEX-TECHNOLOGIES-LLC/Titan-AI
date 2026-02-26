@@ -54,6 +54,13 @@ function pass1_ruleFilter(items: ScrapedItem[]): ScrapedItem[] {
       if (codeChars / content.length < MIN_CODE_RATIO && item.source === 'stackoverflow') return false;
     }
 
+    // SO noise reduction: reject short/low-quality SO answers
+    if (item.source === 'stackoverflow') {
+      if (content.length < 200) return false;
+      if (/this answer was downvoted/i.test(content)) return false;
+      if (/^(try this|just do|simply use)\b/i.test(content.trim()) && content.length < 400) return false;
+    }
+
     const nonAscii = (content.match(/[^\x00-\x7F]/g) || []).length;
     if (nonAscii / content.length > 0.3) return false;
 
@@ -437,10 +444,15 @@ export async function runFilterPipeline(
   console.log(`[harvester/filter] Pass 1.5 (AI detector): ${afterP1.length} tagged (${aiDetectedCount} AI-detected, penalty -${AI_QUALITY_PENALTY})`);
 
   // Pass 2: AI quality judge (AI penalty already applied to scores)
+  // Academic sources (arXiv, ai-research) get a relaxed threshold since papers are inherently higher quality
+  const RELAXED_SOURCES: Record<string, number> = { arxiv: -1, 'ai-research': -1 };
   const afterP2 = await pass2_aiJudge(afterP1_5);
-  const scoredAbove = afterP2.filter(i => i.aiScore >= minScore);
+  const scoredAbove = afterP2.filter(i => {
+    const sourceRelax = RELAXED_SOURCES[i.source] ?? 0;
+    return i.aiScore >= (minScore + sourceRelax);
+  });
   const aiPenalizedOut = afterP2.filter(i => i.aiDetected && i.aiScore < minScore).length;
-  console.log(`[harvester/filter] Pass 2 (AI judge): ${afterP1_5.length} → ${scoredAbove.length} (score >= ${minScore}, ${aiPenalizedOut} dropped by AI penalty)`);
+  console.log(`[harvester/filter] Pass 2 (AI judge): ${afterP1_5.length} → ${scoredAbove.length} (score >= ${minScore}, arxiv/ai-research >= ${minScore - 1}, ${aiPenalizedOut} dropped by AI penalty)`);
 
   // Pass 3
   const afterP3 = pass3_formatConverter(scoredAbove);

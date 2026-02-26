@@ -419,28 +419,34 @@ async function scrapeMDN(topic: string, limit: number): Promise<ScrapedItem[]> {
     if (paths.length === 0) paths = MDN_PATHS.javascript;
   }
 
-  for (const mdnPath of paths.slice(0, limit)) {
-    await sleep(RATE_LIMIT_MS.mdn);
-    const slug = mdnPath.toLowerCase();
-    const url = `https://raw.githubusercontent.com/mdn/content/main/files/en-us/${slug}/index.md`;
-    try {
-      const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/1.0' } });
-      if (!res.ok) continue;
-      const content = await res.text();
-      if (content.length < 300) continue;
+  const MDN_BATCH_SIZE = 5;
+  const allPaths = paths.slice(0, limit);
+  for (let i = 0; i < allPaths.length; i += MDN_BATCH_SIZE) {
+    const batch = allPaths.slice(i, i + MDN_BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(async (mdnPath, idx) => {
+      await sleep(Math.floor((RATE_LIMIT_MS.mdn / MDN_BATCH_SIZE) * idx));
+      const slug = mdnPath.toLowerCase();
+      const url = `https://raw.githubusercontent.com/mdn/content/main/files/en-us/${slug}/index.md`;
+      try {
+        const res = await fetch(url, { headers: { 'User-Agent': 'TitanForge-Harvester/1.0' } });
+        if (!res.ok) return null;
+        const content = await res.text();
+        if (content.length < 300) return null;
 
-      const titleMatch = content.match(/^title:\s*(.+)$/m);
-      const title = titleMatch?.[1]?.replace(/['"]/g, '') || mdnPath.split('/').pop() || 'MDN Doc';
+        const titleMatch = content.match(/^title:\s*(.+)$/m);
+        const title = titleMatch?.[1]?.replace(/['"]/g, '') || mdnPath.split('/').pop() || 'MDN Doc';
 
-      items.push({
-        source: 'mdn',
-        source_url: `https://developer.mozilla.org/en-US/docs/${mdnPath}`,
-        title: `MDN: ${title}`,
-        raw_content: content,
-        language: slug.includes('css') ? 'css' : 'javascript',
-        tags: ['mdn', 'documentation', 'web-standards'],
-      });
-    } catch { /* skip */ }
+        return {
+          source: 'mdn' as const,
+          source_url: `https://developer.mozilla.org/en-US/docs/${mdnPath}`,
+          title: `MDN: ${title}`,
+          raw_content: content,
+          language: slug.includes('css') ? 'css' : 'javascript',
+          tags: ['mdn', 'documentation', 'web-standards'],
+        };
+      } catch { return null; }
+    }));
+    items.push(...batchResults.filter((r): r is ScrapedItem => r !== null));
   }
 
   return items;

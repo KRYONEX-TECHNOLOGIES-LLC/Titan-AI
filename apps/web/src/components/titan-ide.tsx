@@ -1546,59 +1546,79 @@ function WaveformVisualizer({ active, speaking }: { active: boolean; speaking: b
   const animFrameRef = useRef<number>(0);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const speakingRef = useRef(speaking);
+  const drawingRef = useRef(false);
+  speakingRef.current = speaking;
 
+  // Acquire stream once and keep it alive for the session
   useEffect(() => {
-    if (!active || typeof window === 'undefined') return;
-    let cleanup = false;
+    if (typeof window === 'undefined') return;
+    let cancelled = false;
 
     (async () => {
       try {
+        if (streamRef.current) return;
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (cleanup) { stream.getTracks().forEach(t => t.stop()); return; }
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
         const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
         const src = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 128;
         src.connect(analyser);
         analyserRef.current = analyser;
-
-        const draw = () => {
-          if (cleanup) return;
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const c = canvas.getContext('2d');
-          if (!c) return;
-          const data = new Uint8Array(analyser.frequencyBinCount);
-          analyser.getByteFrequencyData(data);
-          const w = canvas.width;
-          const h = canvas.height;
-          c.clearRect(0, 0, w, h);
-          const barW = Math.max(2, (w / data.length) - 1);
-          for (let i = 0; i < data.length; i++) {
-            const v = data[i]! / 255;
-            const barH = Math.max(2, v * h * 0.9);
-            const x = i * (barW + 1);
-            const gradient = c.createLinearGradient(x, h, x, h - barH);
-            gradient.addColorStop(0, speaking ? '#3b82f6' : '#06b6d4');
-            gradient.addColorStop(1, speaking ? '#8b5cf6' : '#22d3ee');
-            c.fillStyle = gradient;
-            c.fillRect(x, h - barH, barW, barH);
-          }
-          animFrameRef.current = requestAnimationFrame(draw);
-        };
-        draw();
       } catch { /* mic access denied */ }
     })();
 
     return () => {
-      cleanup = true;
+      cancelled = true;
       cancelAnimationFrame(animFrameRef.current);
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
       analyserRef.current = null;
+      audioCtxRef.current?.close().catch(() => {});
+      audioCtxRef.current = null;
     };
-  }, [active, speaking]);
+  }, []);
+
+  // Start/stop the draw loop based on active — no stream re-acquisition
+  useEffect(() => {
+    if (active && analyserRef.current && !drawingRef.current) {
+      drawingRef.current = true;
+      const analyser = analyserRef.current;
+      const draw = () => {
+        if (!drawingRef.current) return;
+        const canvas = canvasRef.current;
+        if (!canvas) { animFrameRef.current = requestAnimationFrame(draw); return; }
+        const c = canvas.getContext('2d');
+        if (!c) { animFrameRef.current = requestAnimationFrame(draw); return; }
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(data);
+        const w = canvas.width;
+        const h = canvas.height;
+        c.clearRect(0, 0, w, h);
+        const barW = Math.max(2, (w / data.length) - 1);
+        const isSpeaking = speakingRef.current;
+        for (let i = 0; i < data.length; i++) {
+          const v = data[i]! / 255;
+          const barH = Math.max(2, v * h * 0.9);
+          const x = i * (barW + 1);
+          const gradient = c.createLinearGradient(x, h, x, h - barH);
+          gradient.addColorStop(0, isSpeaking ? '#3b82f6' : '#06b6d4');
+          gradient.addColorStop(1, isSpeaking ? '#8b5cf6' : '#22d3ee');
+          c.fillStyle = gradient;
+          c.fillRect(x, h - barH, barW, barH);
+        }
+        animFrameRef.current = requestAnimationFrame(draw);
+      };
+      draw();
+    } else if (!active) {
+      drawingRef.current = false;
+      cancelAnimationFrame(animFrameRef.current);
+    }
+  }, [active]);
 
   if (!active) return null;
 
@@ -1616,6 +1636,96 @@ function WaveformVisualizer({ active, speaking }: { active: boolean; speaking: b
       </div>
     </div>
   );
+}
+
+/* ─── ALFRED RICH MESSAGE RENDERER ─── */
+const URL_RE = /(https?:\/\/[^\s<>"')\]]+)/g;
+const CODE_BLOCK_RE = /```(\w*)\n?([\s\S]*?)```/g;
+const FILE_PATH_RE = /(?:^|\s)((?:apps|packages|src|lib|hooks|components)\/[\w\-/.]+\.\w+)/g;
+
+function renderAlfredMessage(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+
+  const codeBlocks: Array<{ start: number; end: number; lang: string; code: string }> = [];
+  let match: RegExpExecArray | null;
+  const codeRe = new RegExp(CODE_BLOCK_RE.source, 'g');
+  while ((match = codeRe.exec(text)) !== null) {
+    codeBlocks.push({ start: match.index, end: match.index + match[0].length, lang: match[1] || '', code: match[2] || '' });
+  }
+
+  for (const block of codeBlocks) {
+    if (block.start > lastIndex) {
+      parts.push(<span key={key++}>{renderInlineContent(text.slice(lastIndex, block.start))}</span>);
+    }
+    parts.push(
+      <pre key={key++} className="my-1 rounded bg-[#0d1117] border border-[#30363d] p-2 overflow-x-auto text-[11px] text-[#c9d1d9] font-mono">
+        {block.lang && <div className="text-[9px] text-[#8b949e] mb-1">{block.lang}</div>}
+        <code>{block.code}</code>
+      </pre>
+    );
+    lastIndex = block.end;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(<span key={key++}>{renderInlineContent(text.slice(lastIndex))}</span>);
+  }
+
+  return parts.length > 0 ? parts : renderInlineContent(text);
+}
+
+function renderInlineContent(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let lastIdx = 0;
+  let key = 0;
+
+  type Marker = { start: number; end: number; type: 'url' | 'filepath'; value: string };
+  const markers: Marker[] = [];
+
+  let m: RegExpExecArray | null;
+  const urlRe = new RegExp(URL_RE.source, 'g');
+  while ((m = urlRe.exec(text)) !== null) {
+    markers.push({ start: m.index, end: m.index + m[0].length, type: 'url', value: m[0] });
+  }
+  const fileRe = new RegExp(FILE_PATH_RE.source, 'g');
+  while ((m = fileRe.exec(text)) !== null) {
+    const offset = m[0].length - m[1].length;
+    markers.push({ start: m.index + offset, end: m.index + m[0].length, type: 'filepath', value: m[1] });
+  }
+
+  markers.sort((a, b) => a.start - b.start);
+  const filtered: Marker[] = [];
+  let lastEnd = 0;
+  for (const mk of markers) {
+    if (mk.start >= lastEnd) { filtered.push(mk); lastEnd = mk.end; }
+  }
+
+  for (const mk of filtered) {
+    if (mk.start > lastIdx) {
+      parts.push(<span key={key++}>{text.slice(lastIdx, mk.start)}</span>);
+    }
+    if (mk.type === 'url') {
+      parts.push(
+        <a key={key++} href={mk.value} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline break-all">
+          {mk.value}
+        </a>
+      );
+    } else {
+      parts.push(
+        <span key={key++} className="inline-block bg-[#1a1a2e] border border-cyan-800/40 rounded px-1.5 py-0.5 text-[10px] font-mono text-cyan-300">
+          {mk.value}
+        </span>
+      );
+    }
+    lastIdx = mk.end;
+  }
+
+  if (lastIdx < text.length) {
+    parts.push(<span key={key++}>{text.slice(lastIdx)}</span>);
+  }
+
+  return parts.length > 0 ? <>{parts}</> : text;
 }
 
 /* ─── ALFRED PANEL ─── */
@@ -1712,7 +1822,7 @@ function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred:
                 ? 'bg-blue-600/20 border border-blue-500/30'
                 : 'bg-[#252526] border border-[#3c3c3c]'
             }`}>
-              <p className="text-[12px] text-[#e0e0e0] leading-relaxed whitespace-pre-wrap">{entry.text}</p>
+              <div className="text-[12px] text-[#e0e0e0] leading-relaxed whitespace-pre-wrap">{entry.role === 'alfred' ? renderAlfredMessage(entry.text) : entry.text}</div>
               <span className="text-[9px] text-[#666] mt-1 block">{entry.time}</span>
             </div>
             {entry.role === 'user' && (

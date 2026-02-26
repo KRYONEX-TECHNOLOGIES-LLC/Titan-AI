@@ -42,6 +42,7 @@ export function useAlfredAmbient() {
 
   // Wake word state
   const wakeDetectedRef = useRef(false);
+  const wakeActivatedAtRef = useRef(0);
   const pendingTranscript = useRef('');
   const sendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -242,22 +243,22 @@ export function useAlfredAmbient() {
 
     // Check for wake word
     if (WAKE_WORD.test(trimmed)) {
-      // Strip "Alfred" from the beginning to get the actual command
+      console.log('[alfred] Wake word detected:', trimmed);
       const afterWake = trimmed.replace(WAKE_WORD, '').trim();
 
       if (!wakeDetectedRef.current) {
         wakeDetectedRef.current = true;
+        wakeActivatedAtRef.current = Date.now();
         const activation = pickRandom(ACTIVATION_PHRASES);
         addToLog('alfred', activation);
         titanVoice.speak(activation, 9);
         setAlfredState('activated');
 
-        // If there's text after "Alfred", treat it as the command
         if (afterWake.length > 3) {
           pendingTranscript.current = afterWake;
         }
 
-        // Timeout: if no follow-up after 8s, go back to idle
+        // Extended timeout: 12s for user to follow up after "Alfred"
         if (wakeTimeoutRef.current) clearTimeout(wakeTimeoutRef.current);
         wakeTimeoutRef.current = setTimeout(() => {
           if (pendingTranscript.current.trim().length > 3) {
@@ -269,11 +270,32 @@ export function useAlfredAmbient() {
             wakeDetectedRef.current = false;
             setAlfredState('listening');
           }
-        }, 8000);
+        }, 12000);
       } else if (afterWake.length > 3) {
-        // Already activated, append additional text
         pendingTranscript.current += ' ' + afterWake;
       }
+      return;
+    }
+
+    // Secondary detection: if we're within 3s of activation and get a transcript
+    // (covers mic-restart edge cases where wake state was cleared)
+    if (!wakeDetectedRef.current && wakeActivatedAtRef.current > 0 && (Date.now() - wakeActivatedAtRef.current) < 3000) {
+      console.log('[alfred] Secondary wake window — treating as command:', trimmed);
+      wakeDetectedRef.current = true;
+      pendingTranscript.current = trimmed;
+      if (sendTimerRef.current) clearTimeout(sendTimerRef.current);
+      sendTimerRef.current = setTimeout(() => {
+        const full = pendingTranscript.current.trim();
+        pendingTranscript.current = '';
+        wakeDetectedRef.current = false;
+        wakeActivatedAtRef.current = 0;
+        if (wakeTimeoutRef.current) clearTimeout(wakeTimeoutRef.current);
+        if (full.length > 2) {
+          void sendToAlfred(full);
+        } else {
+          setAlfredState('listening');
+        }
+      }, 2000);
       return;
     }
 
@@ -315,15 +337,22 @@ export function useAlfredAmbient() {
     }
   }, [autoListenMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pause mic when TTS starts, resume when it finishes
+  useEffect(() => {
+    if (titanVoice.isSpeaking && autoListenMode) {
+      voice.pause();
+    }
+  }, [titanVoice.isSpeaking]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Re-start listening after speaking finishes
   useEffect(() => {
     if (autoListenMode && !titanVoice.isSpeaking && alfredState === 'speaking') {
       const timer = setTimeout(() => {
         setAlfredState('listening');
         if (!voice.isListening && voice.isSupported) {
-          voice.startListening();
+          voice.resume();
         }
-      }, 600);
+      }, 700);
       return () => clearTimeout(timer);
     }
   }, [titanVoice.isSpeaking, alfredState, autoListenMode]); // eslint-disable-line react-hooks/exhaustive-deps

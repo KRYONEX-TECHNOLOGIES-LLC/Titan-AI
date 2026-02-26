@@ -51,6 +51,10 @@ export function useVoiceInput(
   const autoSendDelay = options?.autoSendDelayMs ?? 2000;
   onAutoSendRef.current = options?.onAutoSend;
 
+  // Pause/resume for TTS coordination — blocks onend auto-restart
+  const pausedRef = useRef(false);
+  const stopTimestampRef = useRef(0);
+
   // Whisper fallback refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -282,6 +286,14 @@ export function useVoiceInput(
     };
 
     recognition.onend = () => {
+      // Don't auto-restart if paused (TTS is speaking) or recently stopped
+      const recentlyStoppedMs = Date.now() - stopTimestampRef.current;
+      if (pausedRef.current || recentlyStoppedMs < 300) {
+        setIsListening(false);
+        setInterimText('');
+        return;
+      }
+
       if (recognitionRef.current === recognition && restartCountRef.current < 5) {
         try {
           recognition.start();
@@ -305,10 +317,13 @@ export function useVoiceInput(
   }, [onTranscript, autoSendDelay]);
 
   const startListening = useCallback(() => {
+    pausedRef.current = false;
+    restartCountRef.current = 0;
     startNativeListening();
   }, [startNativeListening]);
 
   const stopListening = useCallback(() => {
+    stopTimestampRef.current = Date.now();
     // Stop native
     const rec = recognitionRef.current;
     recognitionRef.current = null;
@@ -337,6 +352,24 @@ export function useVoiceInput(
 
   const clearError = useCallback(() => setErrorMessage(null), []);
 
+  const pause = useCallback(() => {
+    pausedRef.current = true;
+    stopTimestampRef.current = Date.now();
+    const rec = recognitionRef.current;
+    recognitionRef.current = null;
+    if (rec) {
+      try { rec.abort(); } catch { /* ignore */ }
+    }
+    setIsListening(false);
+    setInterimText('');
+  }, []);
+
+  const resume = useCallback(() => {
+    pausedRef.current = false;
+    restartCountRef.current = 0;
+    startNativeListening();
+  }, [startNativeListening]);
+
   return {
     isListening,
     interimText,
@@ -347,5 +380,7 @@ export function useVoiceInput(
     startListening,
     stopListening,
     toggleListening,
+    pause,
+    resume,
   };
 }
