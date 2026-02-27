@@ -8,6 +8,123 @@ import { DESIGN_TEMPLATES, type DesignTemplate } from '@/lib/plan/design-templat
 import type { FileNode } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 
+interface PlanToolCall {
+  id: string;
+  tool: string;
+  args: Record<string, unknown>;
+}
+
+async function executeToolOnServer(tool: string, args: Record<string, unknown>, workspacePath?: string): Promise<{ success: boolean; output: string; error?: string }> {
+  try {
+    const res = await fetch('/api/agent/tools', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool, args, workspacePath }),
+    });
+    if (!res.ok) return { success: false, output: '', error: `HTTP ${res.status}` };
+    return await res.json();
+  } catch (e) {
+    return { success: false, output: '', error: e instanceof Error ? e.message : 'Tool execution failed' };
+  }
+}
+
+async function streamTaskExecution(
+  taskPrompt: string,
+  model: string,
+  workspacePath: string | undefined,
+  onToolCall: (tc: PlanToolCall) => void,
+  onToolResult: (tc: PlanToolCall, result: { success: boolean; output: string; error?: string }) => void,
+  onToken: (text: string) => void,
+): Promise<{ success: boolean; error?: string }> {
+  const MAX_TOOL_ROUNDS = 8;
+  let messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = [
+    { role: 'user', content: taskPrompt },
+  ];
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const res = await fetch('/api/chat/continue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, model, workspacePath }),
+    });
+
+    if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+    if (!res.body) return { success: false, error: 'No response body' };
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const toolCalls: PlanToolCall[] = [];
+    let assistantText = '';
+    let done = false;
+
+    while (true) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (!data || data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          const eventType = parsed.type || parsed.event;
+          const payload = parsed.payload || parsed.data || parsed;
+
+          if (eventType === 'token' && payload.token) {
+            assistantText += payload.token;
+            onToken(payload.token);
+          } else if (eventType === 'tool_call') {
+            const tc: PlanToolCall = {
+              id: payload.id || `tc_${Date.now()}`,
+              tool: payload.tool || payload.name,
+              args: payload.args || payload.arguments || {},
+            };
+            toolCalls.push(tc);
+            onToolCall(tc);
+          } else if (eventType === 'done') {
+            done = true;
+          } else if (eventType === 'error') {
+            return { success: false, error: payload.message || payload.error || 'Stream error' };
+          }
+        } catch {
+          // skip unparseable lines
+        }
+      }
+    }
+
+    if (toolCalls.length === 0) {
+      return { success: true };
+    }
+
+    const toolResults: Array<{ role: string; content: string; tool_call_id: string; name: string }> = [];
+    for (const tc of toolCalls) {
+      const result = await executeToolOnServer(tc.tool, tc.args, workspacePath);
+      onToolResult(tc, result);
+      toolResults.push({
+        role: 'tool',
+        content: JSON.stringify({ success: result.success, output: (result.output || '').slice(0, 4000), error: result.error }),
+        tool_call_id: tc.id,
+        name: tc.tool,
+      });
+    }
+
+    messages = [
+      ...messages,
+      { role: 'assistant', content: assistantText || '', tool_calls: toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.tool, arguments: JSON.stringify(tc.args) } })) },
+      ...toolResults,
+    ];
+    assistantText = '';
+  }
+
+  return { success: true };
+}
+
 async function ensureProjectFolder(planName: string): Promise<boolean> {
   const { workspaceOpen, openFolder } = useFileStore.getState();
   if (workspaceOpen) return true;
@@ -191,39 +308,95 @@ export function PlanModePanel() {
       ps.setCurrentTask(task.id);
       ps.updateTask(task.id, { status: 'in_progress' });
 
-      try {
-        const chatRes = await fetch('/api/chat/continue', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [
-              { role: 'user', content: `[Plan Mode Task ${index + 1}/${pendingTasks.length}] Execute this task for "${ps.planName || 'the project'}":\n\nTask: ${task.title}\nDescription: ${task.description}\nPriority: ${task.priority}\nTags: ${task.tags.join(', ')}\n\nImplement this task now. Read the relevant files, make the changes, and verify they work.` },
-            ],
-            model: 'google/gemini-2.0-flash-001',
-            workspacePath: useFileStore.getState().workspacePath || undefined,
-          }),
-        });
+      const wsPath = useFileStore.getState().workspacePath || undefined;
+      const codeDir = useCodeDirectory.getState().directory;
+      const codeDirContext = codeDir && codeDir.scannedAt > 0
+        ? `\n\n[PROJECT STRUCTURE]\n${JSON.stringify(codeDir, null, 2).slice(0, 3000)}`
+        : '';
 
-        if (chatRes.ok) {
+      const subtasksStr = task.checklist.length > 0
+        ? `\nSubtasks/checklist:\n${task.checklist.map((c, i) => `  ${i + 1}. ${c.label}`).join('\n')}`
+        : '';
+
+      const taskPrompt = `[Plan Mode Task ${index + 1}/${pendingTasks.length}] Execute this task for "${ps.planName || 'the project'}":
+
+Task: ${task.title}
+Description: ${task.description}
+Priority: ${task.priority}
+Tags: ${task.tags.join(', ')}${subtasksStr}${codeDirContext}
+
+You MUST use tools to implement this task. Create files, write code, run commands as needed.
+Do NOT just describe what to do — actually do it using create_file, edit_file, run_command, etc.
+After making changes, verify they work by reading back the files you created/edited.`;
+
+      try {
+        const result = await streamTaskExecution(
+          taskPrompt,
+          'google/gemini-2.0-flash-001',
+          wsPath,
+          (tc) => {
+            ps.addReport({
+              type: 'progress', severity: 'info',
+              title: `Tool: ${tc.tool}`,
+              details: JSON.stringify(tc.args).slice(0, 200),
+              taskId: task.id, resolved: true,
+            });
+          },
+          (tc, res) => {
+            if (!res.success) {
+              usePlanStore.getState().addReport({
+                type: 'error', severity: 'warning',
+                title: `Tool failed: ${tc.tool}`,
+                details: res.error || res.output.slice(0, 200) || 'Unknown error',
+                taskId: task.id, resolved: false,
+              });
+            }
+          },
+          () => {},
+        );
+
+        if (result.success) {
           usePlanStore.getState().updateTask(task.id, { status: 'completed', completedAt: Date.now() });
           usePlanStore.getState().markTaskExecuted(task.id, true);
+          if (task.checklist.length > 0) {
+            const checked = task.checklist.map(c => ({ ...c, checked: true }));
+            usePlanStore.getState().updateTask(task.id, { checklist: checked });
+          }
         } else {
           usePlanStore.getState().updateTask(task.id, { status: 'failed' });
           usePlanStore.getState().markTaskExecuted(task.id, false);
           usePlanStore.getState().addReport({
             type: 'error', severity: 'warning',
             title: `Task failed: ${task.title}`,
-            details: `HTTP ${chatRes.status}`,
+            details: result.error || 'Unknown error',
             taskId: task.id, resolved: false,
           });
         }
-      } catch {
+      } catch (err) {
         usePlanStore.getState().updateTask(task.id, { status: 'failed' });
         usePlanStore.getState().markTaskExecuted(task.id, false);
+        usePlanStore.getState().addReport({
+          type: 'error', severity: 'warning',
+          title: `Task crashed: ${task.title}`,
+          details: err instanceof Error ? err.message : 'Unknown error',
+          taskId: task.id, resolved: false,
+        });
       }
 
-      // Yield to UI thread, then continue with next task
-      setTimeout(() => void executeNext(index + 1), 50);
+      // Refresh file tree after each task so next task sees created files
+      try {
+        if (isElectron && electronAPI && wsPath) {
+          const rawTree = await electronAPI.fs.readDir(wsPath);
+          if (rawTree) {
+            const normalised = (rawTree as Array<{ name: string; path: string; type: string; size?: number; children?: unknown[] }>).map(
+              (n) => ({ ...n, type: n.type === 'directory' ? 'folder' as const : 'file' as const }),
+            ) as FileNode[];
+            useFileStore.getState().setFileTree(normalised);
+          }
+        }
+      } catch { /* best effort */ }
+
+      setTimeout(() => void executeNext(index + 1), 100);
     };
 
     void executeNext(0);
