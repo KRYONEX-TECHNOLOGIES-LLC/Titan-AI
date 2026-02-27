@@ -267,6 +267,78 @@ pnpm dev:desktop
 
 ---
 
+---
+
+## PART 6: VERSION RELEASE — THE NON-NEGOTIABLE ORDER
+
+**This section applies when releasing a new version of Titan Desktop (version bump + tag + CI build).**
+
+### THE IRON RULE: COMMIT BEFORE TAG
+
+The release pipeline breaks catastrophically if you push a tag before committing the version bump. This has happened before (v0.3.67 and v0.3.68) and caused 404 download links on the landing page.
+
+**Why it breaks:**
+- electron-builder reads the version from `package.json` at the commit the tag points to
+- If you create a tag on a commit where `package.json` still has the OLD version, CI builds with the OLD version
+- But the manifest update reads the version from the tag name and writes a download URL for the NEW version
+- The .exe has the OLD version filename, the download link has the NEW version filename → 404
+
+### THE EXACT SEQUENCE (every step is mandatory, order is mandatory)
+
+```powershell
+# 1. Bump version in EXACTLY 3 files (must all match):
+#    - package.json (root)
+#    - apps/desktop/package.json
+#    - apps/web/package.json
+#    Do NOT edit manifest.json (CI updates it automatically)
+
+# 2. Stage and commit
+git add -A
+git commit -m "vX.Y.Z: description of what changed"
+
+# 3. Verify the commit contains the version bump
+git log --oneline -1
+git show HEAD:package.json | Select-String "version"
+# ^ Must show the NEW version. If it shows the old version, you forgot to stage.
+
+# 4. Push to main
+git push origin main
+
+# 5. ONLY NOW create and push the tag
+git tag -a vX.Y.Z -m "vX.Y.Z: description"
+git push origin vX.Y.Z
+
+# 6. Verify CI started
+gh run list --workflow=release-desktop.yml --limit=3
+```
+
+### WHAT TO DO IF YOU ALREADY PUSHED A TAG WITHOUT COMMITTING
+
+```powershell
+# Delete the broken tag (local + remote)
+git tag -d vX.Y.Z
+git push origin --delete vX.Y.Z
+
+# Now commit the version bump properly
+git add -A
+git commit -m "vX.Y.Z: description"
+git push origin main
+
+# Re-create and push the tag
+git tag -a vX.Y.Z -m "vX.Y.Z: description"
+git push origin vX.Y.Z
+```
+
+### CHECKLIST — VERIFY BEFORE TELLING MATEO IT'S DONE
+
+- [ ] `git show HEAD:package.json` shows the new version (not the old one)
+- [ ] `git push origin main` succeeded (exit code 0)
+- [ ] `git push origin vX.Y.Z` showed `* [new tag]`
+- [ ] `gh run list` shows Release Desktop as in_progress or completed
+- [ ] After ~10 min: `gh release view vX.Y.Z` shows the release with .exe asset
+
+---
+
 **This file lives at the repo root. Any AI assistant can read it with:**
 
 ```

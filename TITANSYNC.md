@@ -58,6 +58,7 @@ A husky pre-commit hook runs automatically on every commit:
 
 | Mistake | What happened | Prevention |
 |---------|---------------|------------|
+| **TAG BEFORE COMMIT (FATAL)** | Bumped 3 package.json locally but pushed the tag WITHOUT committing first. Tag pointed to old commit where package.json was the old version. CI built the old version, manifest pointed to new version → 404 on download. This happened on v0.3.67 AND v0.3.68. | **IRON RULE: COMMIT and PUSH to main BEFORE creating any tag. The tag must point to a commit that already contains the version bump. If you skip the commit, the entire pipeline produces garbage.** |
 | Version mismatch | Bumped only 2 of 3 package.json files | `validate-versions.ts` pre-commit hook blocks mismatched commits |
 | Broken imports | Created files importing `../../config/ajv` which didn't exist | System prompt RULE 6 now requires verifying all imports resolve |
 | Messy version bumps | Multiple commits each bumping to different versions | System prompt enforces single atomic version bump + tag |
@@ -65,6 +66,27 @@ A husky pre-commit hook runs automatically on every commit:
 | Force-push to main | Destructive history rewrite | All protocol prompts include "NEVER force-push to main" |
 | Out-of-scope variable reference | Edited child component but referenced parent variable (`chat`, `settings`, etc.) | System prompt RULE 8 enforces scope awareness; pre-commit `tsc --noEmit` catches type errors |
 | Code pushed without type check | Build fails on Railway with type errors that were never checked locally | Pre-commit hook now runs `tsc --noEmit` on `apps/web` before every commit |
+
+### FATAL RELEASE MISTAKE — TAG BEFORE COMMIT (v0.3.67/v0.3.68 incident)
+
+**What happened:** The version was bumped in the 3 package.json files locally, but the changes were NEVER committed. Then a git tag was created and pushed. The tag pointed to an old commit where package.json still had the old version. CI checked out that commit, electron-builder read the OLD version from package.json, built the .exe with the WRONG filename, and created a GitHub Release under the WRONG version. Meanwhile, the manifest update step read the version from the tag and wrote a download URL pointing to a file that didn't exist. Result: 404 on the landing page download button.
+
+**The IRON RULE (non-negotiable):**
+```
+1. Bump version in 3 package.json files
+2. git add -A
+3. git commit -m "vX.Y.Z: description"    ← THIS MUST HAPPEN BEFORE ANY TAG
+4. git push origin main                     ← THIS MUST SUCCEED BEFORE ANY TAG
+5. git tag -a vX.Y.Z -m "vX.Y.Z: desc"   ← ONLY after commit is on remote
+6. git push origin vX.Y.Z                  ← NOW the tag triggers CI correctly
+```
+
+**How to verify you didn't make this mistake:**
+```bash
+git log --oneline -1   # The top commit message should contain your version number
+git show HEAD:package.json | grep version  # Should show the NEW version, not the old one
+```
+If the top commit doesn't contain your version bump, DO NOT create a tag. Commit first.
 
 ### Troubleshooting
 

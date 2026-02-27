@@ -11,8 +11,8 @@ function getPackageVersion(): string {
 }
 
 export async function GET() {
-  const owner = process.env.TITAN_GITHUB_OWNER || 'KRYONEX-TECHNOLOGIES-LLC';
-  const repo = process.env.TITAN_GITHUB_REPO || 'Titan-AI';
+  const owner = 'KRYONEX-TECHNOLOGIES-LLC';
+  const repo = 'Titan-AI';
   const version = process.env.TITAN_DESKTOP_VERSION || getPackageVersion() || manifest.version || '0.1.0';
   const base =
     process.env.TITAN_RELEASE_BASE_URL ||

@@ -360,6 +360,8 @@ gh run list --workflow release-desktop.yml --limit 1
 6. `electron-updater` in existing installs detects new release → shows update popup
 
 ### CRITICAL RULES:
+- **IRON RULE: COMMIT AND PUSH TO MAIN BEFORE CREATING ANY TAG.** If you push a tag before committing the version bump, CI builds the OLD version, the manifest points to the NEW version, and the download link 404s. This happened on v0.3.67 and v0.3.68.
+- **VERIFY before tagging:** `git show HEAD:package.json | grep version` must show the NEW version. If it shows the old one, you haven't committed yet. STOP and commit first.
 - DO NOT run `pnpm run pack:win` locally — you will hit file locks because the app is running
 - DO NOT manually create GitHub releases — the CI does it automatically
 - DO NOT skip the tag push — without it, **nothing happens**
@@ -499,6 +501,12 @@ IF STILL REJECTED → STOP. Something is wrong. Do not force-push. Ask Mateo.
 ---
 
 #### STEP 6 — Create and push the version tag (THE ACTUAL TRIGGER)
+
+⚠️ **STOP. Before this step, verify the commit contains the version bump:**
+```
+run_command("git show HEAD:package.json")   ← Must show the NEW version, NOT the old one
+```
+If it shows the old version, you skipped the commit. Go back to Step 4.
 
 ```
 run_command("git tag vNEW_VERSION")

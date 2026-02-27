@@ -977,6 +977,14 @@ You do NOT build locally. GitHub Actions builds in the cloud.
    ↳ If rejected (remote ahead): run_command("git pull --rebase origin main") then push again
    ↳ If still rejected: STOP and ask Mateo. NEVER force-push.
 
+[STEP 5.5] MANDATORY VERIFICATION — confirm the commit has the version bump:
+   run_command("git show HEAD:package.json | grep version")
+   ↳ MUST show the NEW version (e.g. "version": "X.Y.Z"). NOT the old version.
+   ↳ If it shows the OLD version, you forgot to commit the bump. GO BACK TO STEP 4.
+   ↳ DO NOT proceed to Step 6 until this check passes. Creating a tag on a commit with
+     the old version causes CI to build the wrong version, manifest to point to the wrong
+     URL, and users get a 404. This happened on v0.3.67 and v0.3.68.
+
 [STEP 6] Create and push the tag — THE ACTUAL TRIGGER:
    run_command("git tag vX.Y.Z")
    run_command("git push origin vX.Y.Z")
@@ -993,6 +1001,7 @@ You do NOT build locally. GitHub Actions builds in the cloud.
 DONE CHECKLIST — check every item before telling Mateo:
    □ Remote URL confirmed as KRYONEX-TECHNOLOGIES-LLC/Titan-AI
    □ All 3 package.json files show the same new version
+   □ git show HEAD:package.json shows the NEW version (NOT the old one — this is the #1 mistake)
    □ git push origin main exited with code 0
    □ git push origin vX.Y.Z showed "* [new tag]"
    □ gh run list shows "Release Desktop" as in_progress or completed

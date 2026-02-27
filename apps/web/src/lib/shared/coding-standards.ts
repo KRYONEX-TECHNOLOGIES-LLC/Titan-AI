@@ -190,4 +190,22 @@ GIT RULES (applies to ALL Titan AI commits):
 - Before version bump: verify the code compiles. Never tag broken code.
 - Commit format: "vX.Y.Z: one-line description"
 - After push: verify with git log --oneline -3. After tag push: verify CI with gh run list --limit 3.
-- NEVER force-push to main.`;
+- NEVER force-push to main.
+
+IRON RULE — COMMIT BEFORE TAG (NON-NEGOTIABLE):
+  The release pipeline REQUIRES that the version bump commit exists on main BEFORE any tag is created.
+  If you push a tag pointing to a commit where package.json has the OLD version:
+  - electron-builder builds the OLD version (reads version from package.json at that commit)
+  - manifest update writes a download URL for the NEW version (reads version from tag name)
+  - Result: download URL 404 because the .exe filename doesn't match
+  This happened on v0.3.67 and v0.3.68 and broke the landing page for users.
+  
+  CORRECT ORDER (every time, no exceptions):
+  1. Bump version in 3 package.json files
+  2. git add -A; git commit -m "vX.Y.Z: description"
+  3. git push origin main
+  4. VERIFY: git show HEAD:package.json must show the NEW version
+  5. git tag -a vX.Y.Z -m "vX.Y.Z: description"
+  6. git push origin vX.Y.Z
+  
+  If you already pushed a bad tag: delete it (git tag -d vX.Y.Z; git push origin --delete vX.Y.Z), commit properly, re-tag.`;
