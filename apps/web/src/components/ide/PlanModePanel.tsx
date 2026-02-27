@@ -4,125 +4,50 @@ import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { usePlanStore, type PlanTask, type TaskStatus, type MemoryEntry, type ManagerReport, type FinalChecklist, type ExecutionStatus } from '@/stores/plan-store';
 import { useCodeDirectory } from '@/stores/code-directory';
 import { useFileStore } from '@/stores/file-store';
-import { DESIGN_TEMPLATES, type DesignTemplate } from '@/lib/plan/design-templates';
+import { DESIGN_TEMPLATES, templateToPromptDirective, type DesignTemplate } from '@/lib/plan/design-templates';
 import type { FileNode } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
 
-interface PlanToolCall {
-  id: string;
-  tool: string;
-  args: Record<string, unknown>;
+interface ExecuteResult {
+  success: boolean;
+  logs?: Array<{ tool: string; args: Record<string, unknown>; success: boolean; output: string; error?: string }>;
+  filesCreated?: string[];
+  verificationResults?: Array<{ attempt: number; passed: boolean; feedback: string }>;
+  verified?: boolean;
+  error?: string;
 }
 
-async function executeToolOnServer(tool: string, args: Record<string, unknown>, workspacePath?: string): Promise<{ success: boolean; output: string; error?: string }> {
+async function executeTaskOnServer(
+  taskPrompt: string,
+  workspacePath: string,
+  designDirective?: string,
+  previousFiles?: string[],
+  systemContext?: string,
+): Promise<ExecuteResult> {
   try {
-    const res = await fetch('/api/agent/tools', {
+    const res = await fetch('/api/plan/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tool, args, workspacePath }),
+      body: JSON.stringify({ taskPrompt, model: 'google/gemini-2.0-flash-001', workspacePath, designDirective, previousFiles, systemContext }),
     });
-    if (!res.ok) return { success: false, output: '', error: `HTTP ${res.status}` };
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { success: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
+    }
     return await res.json();
   } catch (e) {
-    return { success: false, output: '', error: e instanceof Error ? e.message : 'Tool execution failed' };
+    return { success: false, error: e instanceof Error ? e.message : 'Execution failed' };
   }
 }
 
-async function streamTaskExecution(
-  taskPrompt: string,
-  model: string,
-  workspacePath: string | undefined,
-  onToolCall: (tc: PlanToolCall) => void,
-  onToolResult: (tc: PlanToolCall, result: { success: boolean; output: string; error?: string }) => void,
-  onToken: (text: string) => void,
-): Promise<{ success: boolean; error?: string }> {
-  const MAX_TOOL_ROUNDS = 8;
-  let messages: Array<{ role: string; content: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = [
-    { role: 'user', content: taskPrompt },
-  ];
-
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    const res = await fetch('/api/chat/continue', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, model, workspacePath }),
-    });
-
-    if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
-    if (!res.body) return { success: false, error: 'No response body' };
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    const toolCalls: PlanToolCall[] = [];
-    let assistantText = '';
-    let done = false;
-
-    while (true) {
-      const { value, done: streamDone } = await reader.read();
-      if (streamDone) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (!data || data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          const eventType = parsed.type || parsed.event;
-          const payload = parsed.payload || parsed.data || parsed;
-
-          if (eventType === 'token' && payload.token) {
-            assistantText += payload.token;
-            onToken(payload.token);
-          } else if (eventType === 'tool_call') {
-            const tc: PlanToolCall = {
-              id: payload.id || `tc_${Date.now()}`,
-              tool: payload.tool || payload.name,
-              args: payload.args || payload.arguments || {},
-            };
-            toolCalls.push(tc);
-            onToolCall(tc);
-          } else if (eventType === 'done') {
-            done = true;
-          } else if (eventType === 'error') {
-            return { success: false, error: payload.message || payload.error || 'Stream error' };
-          }
-        } catch {
-          // skip unparseable lines
-        }
-      }
-    }
-
-    if (toolCalls.length === 0) {
-      return { success: true };
-    }
-
-    const toolResults: Array<{ role: string; content: string; tool_call_id: string; name: string }> = [];
-    for (const tc of toolCalls) {
-      const result = await executeToolOnServer(tc.tool, tc.args, workspacePath);
-      onToolResult(tc, result);
-      toolResults.push({
-        role: 'tool',
-        content: JSON.stringify({ success: result.success, output: (result.output || '').slice(0, 4000), error: result.error }),
-        tool_call_id: tc.id,
-        name: tc.tool,
-      });
-    }
-
-    messages = [
-      ...messages,
-      { role: 'assistant', content: assistantText || '', tool_calls: toolCalls.map(tc => ({ id: tc.id, type: 'function', function: { name: tc.tool, arguments: JSON.stringify(tc.args) } })) },
-      ...toolResults,
-    ];
-    assistantText = '';
-  }
-
-  return { success: true };
+function getDesignDirective(): string | undefined {
+  const memories = usePlanStore.getState().memories;
+  const designMemory = memories.find(m => m.pinned && m.title.startsWith('Design Template:'));
+  if (!designMemory) return undefined;
+  const templateName = designMemory.title.replace('Design Template: ', '');
+  const template = DESIGN_TEMPLATES.find(t => t.name === templateName);
+  if (!template) return designMemory.content;
+  return templateToPromptDirective(template);
 }
 
 async function ensureProjectFolder(planName: string): Promise<boolean> {
@@ -280,21 +205,38 @@ export function PlanModePanel() {
 
     store.setExecutionStatus('executing');
 
-    // Phase 2: Execute tasks via the real agent API (non-blocking via setTimeout chain)
+    // Phase 2: Execute tasks via dedicated server-side execute route
     const pendingTasks = Object.values(store.tasks)
       .filter(t => t.parentId === null && t.status === 'pending')
       .sort((a, b) => a.phase - b.phase || a.order - b.order);
+
+    const allCreatedFiles: string[] = [];
 
     const executeNext = async (index: number) => {
       if (index >= pendingTasks.length) {
         usePlanStore.getState().setExecutionStatus('done');
         usePlanStore.getState().setCurrentTask(null);
+        usePlanStore.getState().setPlanExecuting(false);
         executionRef.current = false;
+
+        // Final file tree refresh
+        try {
+          if (isElectron && electronAPI && useFileStore.getState().workspacePath) {
+            const rawTree = await electronAPI.fs.readDir(useFileStore.getState().workspacePath!);
+            if (rawTree) {
+              const normalised = (rawTree as Array<{ name: string; path: string; type: string; size?: number; children?: unknown[] }>).map(
+                (n) => ({ ...n, type: n.type === 'directory' ? 'folder' as const : 'file' as const }),
+              ) as FileNode[];
+              useFileStore.getState().setFileTree(normalised);
+            }
+          }
+        } catch { /* best effort */ }
         return;
       }
 
       const currentExec = usePlanStore.getState().execution;
       if (currentExec.status === 'idle') {
+        usePlanStore.getState().setPlanExecuting(false);
         executionRef.current = false;
         return;
       }
@@ -308,52 +250,70 @@ export function PlanModePanel() {
       ps.setCurrentTask(task.id);
       ps.updateTask(task.id, { status: 'in_progress' });
 
-      const wsPath = useFileStore.getState().workspacePath || undefined;
+      const wsPath = useFileStore.getState().workspacePath || '';
       const codeDir = useCodeDirectory.getState().directory;
-      const codeDirContext = codeDir && codeDir.scannedAt > 0
-        ? `\n\n[PROJECT STRUCTURE]\n${JSON.stringify(codeDir, null, 2).slice(0, 3000)}`
-        : '';
+      const fileTree = useFileStore.getState().fileTree;
+      const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
 
       const subtasksStr = task.checklist.length > 0
-        ? `\nSubtasks/checklist:\n${task.checklist.map((c, i) => `  ${i + 1}. ${c.label}`).join('\n')}`
+        ? `\n\nSUBTASKS (each must be completed):\n${task.checklist.map((c, i) => `  ${i + 1}. ${c.label}`).join('\n')}`
         : '';
 
-      const taskPrompt = `[Plan Mode Task ${index + 1}/${pendingTasks.length}] Execute this task for "${ps.planName || 'the project'}":
+      const taskPrompt = `[TASK ${index + 1} of ${pendingTasks.length}] for project "${ps.planName || 'project'}"
 
-Task: ${task.title}
-Description: ${task.description}
-Priority: ${task.priority}
-Tags: ${task.tags.join(', ')}${subtasksStr}${codeDirContext}
+TASK: ${task.title}
+DESCRIPTION: ${task.description}
+PRIORITY: ${task.priority}
+TAGS: ${task.tags.join(', ')}${subtasksStr}
 
-You MUST use tools to implement this task. Create files, write code, run commands as needed.
-Do NOT just describe what to do — actually do it using create_file, edit_file, run_command, etc.
-After making changes, verify they work by reading back the files you created/edited.`;
+INSTRUCTIONS:
+1. First call list_directory to understand the current project structure.
+2. For EACH file needed, call create_file with the COMPLETE file contents. No placeholders.
+3. If modifying an existing file, call read_file first, then edit_file.
+4. After creating all files, call read_file on each to verify they exist and have correct content.
+5. If you need to install packages, call run_command with the appropriate npm/pnpm command.
+6. Write production-quality code with proper imports, types, error handling, and styling.`;
+
+      const designDirective = getDesignDirective();
+      const systemContext = `\nCURRENT FILE TREE:\n${treeStr}\n${codeDir && codeDir.scannedAt > 0 ? `\nPROJECT ANALYSIS:\n${JSON.stringify(codeDir, null, 2).slice(0, 2000)}` : ''}`;
+
+      ps.addReport({
+        type: 'progress', severity: 'info',
+        title: `Starting: ${task.title}`,
+        details: `Task ${index + 1}/${pendingTasks.length}`,
+        taskId: task.id, resolved: true,
+      });
 
       try {
-        const result = await streamTaskExecution(
-          taskPrompt,
-          'google/gemini-2.0-flash-001',
-          wsPath,
-          (tc) => {
-            ps.addReport({
-              type: 'progress', severity: 'info',
-              title: `Tool: ${tc.tool}`,
-              details: JSON.stringify(tc.args).slice(0, 200),
-              taskId: task.id, resolved: true,
+        const result = await executeTaskOnServer(taskPrompt, wsPath, designDirective, [...allCreatedFiles], systemContext);
+
+        if (result.logs) {
+          for (const log of result.logs) {
+            usePlanStore.getState().addReport({
+              type: log.success ? 'progress' : 'error',
+              severity: log.success ? 'info' : 'warning',
+              title: `${log.success ? '✓' : '✗'} ${log.tool}`,
+              details: log.success ? (log.output || '').slice(0, 200) : (log.error || log.output || '').slice(0, 300),
+              taskId: task.id, resolved: log.success,
             });
-          },
-          (tc, res) => {
-            if (!res.success) {
-              usePlanStore.getState().addReport({
-                type: 'error', severity: 'warning',
-                title: `Tool failed: ${tc.tool}`,
-                details: res.error || res.output.slice(0, 200) || 'Unknown error',
-                taskId: task.id, resolved: false,
-              });
-            }
-          },
-          () => {},
-        );
+          }
+        }
+
+        if (result.filesCreated) {
+          allCreatedFiles.push(...result.filesCreated);
+        }
+
+        if (result.verificationResults) {
+          for (const vr of result.verificationResults) {
+            usePlanStore.getState().addReport({
+              type: vr.passed ? 'final_check' : 'snitch',
+              severity: vr.passed ? 'info' : 'warning',
+              title: vr.passed ? `Verification passed (attempt ${vr.attempt + 1})` : `Verification failed (attempt ${vr.attempt + 1})`,
+              details: vr.feedback.slice(0, 400),
+              taskId: task.id, resolved: vr.passed,
+            });
+          }
+        }
 
         if (result.success) {
           usePlanStore.getState().updateTask(task.id, { status: 'completed', completedAt: Date.now() });
@@ -368,7 +328,7 @@ After making changes, verify they work by reading back the files you created/edi
           usePlanStore.getState().addReport({
             type: 'error', severity: 'warning',
             title: `Task failed: ${task.title}`,
-            details: result.error || 'Unknown error',
+            details: result.error || 'Server returned failure',
             taskId: task.id, resolved: false,
           });
         }
@@ -376,29 +336,17 @@ After making changes, verify they work by reading back the files you created/edi
         usePlanStore.getState().updateTask(task.id, { status: 'failed' });
         usePlanStore.getState().markTaskExecuted(task.id, false);
         usePlanStore.getState().addReport({
-          type: 'error', severity: 'warning',
+          type: 'error', severity: 'critical',
           title: `Task crashed: ${task.title}`,
           details: err instanceof Error ? err.message : 'Unknown error',
           taskId: task.id, resolved: false,
         });
       }
 
-      // Refresh file tree after each task so next task sees created files
-      try {
-        if (isElectron && electronAPI && wsPath) {
-          const rawTree = await electronAPI.fs.readDir(wsPath);
-          if (rawTree) {
-            const normalised = (rawTree as Array<{ name: string; path: string; type: string; size?: number; children?: unknown[] }>).map(
-              (n) => ({ ...n, type: n.type === 'directory' ? 'folder' as const : 'file' as const }),
-            ) as FileNode[];
-            useFileStore.getState().setFileTree(normalised);
-          }
-        }
-      } catch { /* best effort */ }
-
-      setTimeout(() => void executeNext(index + 1), 100);
+      setTimeout(() => void executeNext(index + 1), 200);
     };
 
+    store.setPlanExecuting(true);
     void executeNext(0);
   }, [store, totalTasks]);
 

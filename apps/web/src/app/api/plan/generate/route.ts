@@ -2,9 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callModelDirect } from '@/lib/llm-call';
 import { TASK_DECOMPOSITION_RULES_COMPACT } from '@/lib/shared/coding-standards';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
-const PLAN_SYSTEM_PROMPT = `You are a senior software architect specializing in project planning and task decomposition. Given a user's project idea, produce a comprehensive plan with hierarchical task + subtask architecture.
+async function webSearch(query: string): Promise<string> {
+  try {
+    const encoded = encodeURIComponent(query);
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
+      headers: { 'User-Agent': 'Titan AI Agent/1.0' },
+    });
+    const html = await res.text();
+    const results: string[] = [];
+    const titleMatches = html.matchAll(/<a[^>]*class="result__a"[^>]*>([\s\S]*?)<\/a>/g);
+    for (const m of titleMatches) {
+      const text = m[1].replace(/<[^>]+>/g, '').trim();
+      if (text) results.push(text);
+    }
+    const snippetMatches = html.matchAll(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g);
+    for (const m of snippetMatches) {
+      const text = m[1].replace(/<[^>]+>/g, '').trim();
+      if (text) results.push(text);
+    }
+    return results.slice(0, 10).join('\n') || 'No results found';
+  } catch {
+    return 'Search unavailable';
+  }
+}
+
+function buildPlanSystemPrompt(researchContext: string): string {
+  return `You are a world-class software architect specializing in project planning. Given a user's project idea, produce a COMPREHENSIVE plan with hierarchical tasks and subtasks. You must be EXHAUSTIVE — never skip a step, never leave anything vague.
+
+${researchContext ? `RESEARCH CONTEXT (use this to make correct technology decisions):\n${researchContext}\n` : ''}
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -21,23 +48,24 @@ Return ONLY valid JSON with this exact structure:
   "tasks": [
     {
       "title": "Clear, actionable top-level task name",
-      "description": "Detailed description of what needs to be done, specific about files, components, APIs",
+      "description": "Detailed description: WHICH files to create/edit, WHAT code to write, HOW it connects to other parts",
       "phase": 1,
       "priority": "critical",
       "tags": ["relevant", "tech", "tags"],
       "subtasks": [
-        "Specific verifiable deliverable 1",
-        "Specific verifiable deliverable 2",
-        "Specific verifiable deliverable 3"
+        "Create <filepath> with <specific content/purpose>",
+        "Install <package> and configure in <filepath>",
+        "Implement <function/component> that does <specific behavior>"
       ]
     }
   ]
 }
 
 PHASE VALUES:
-- 1 = Setup/foundation/scaffolding
-- 2 = Core features/backend/API
-- 3 = Frontend/UI/polish/testing
+- 1 = Setup/foundation/scaffolding (project init, package.json, configs, folder structure)
+- 2 = Core features/backend/API (database, routes, business logic, auth)
+- 3 = Frontend/UI/components (pages, components, styling, interactions)
+- 4 = Integration/testing/polish (connecting everything, tests, responsive, error handling)
 
 PRIORITY VALUES: "critical" | "high" | "medium" | "low"
 
@@ -46,48 +74,121 @@ SCALING RULES (NO HARDCODED CEILING):
 - Multi-page website with forms: 10-15 tasks
 - Full SaaS with auth, DB, payments: 20-35 tasks
 - Enterprise platform with multiple subsystems: 35-60+ tasks
-- Let the user's description drive the count. NEVER compress multiple unrelated systems into a single task.
+- Let the user's description drive the count. NEVER compress unrelated systems into one task.
 
-SUBTASK RULES:
-- Each task gets 3-8 subtasks as acceptance criteria
-- Each subtask must be a single, verifiable YES/NO deliverable
-- GOOD: "Create EmailVerificationToken table with userId, token, expiresAt columns"
-- GOOD: "Rate limit: max 3 verification emails per hour per address"
-- BAD: "Set up the email system" (too vague)
-- BAD: "Handle errors" (which errors? what behavior?)
+SUBTASK RULES (MANDATORY — enforced by system):
+- Each task MUST have at least 3 subtasks, up to 8.
+- Each subtask MUST specify a file path or concrete action.
+- Each subtask must be a single, verifiable YES/NO deliverable.
+- GOOD: "Create src/components/Header.tsx with logo, nav links (Home, About, Contact), and responsive hamburger menu"
+- GOOD: "Create src/lib/db.ts with Prisma client initialization and connection pooling"
+- GOOD: "Add rate limiting middleware in src/middleware/rateLimit.ts: max 100 req/min per IP"
+- BAD: "Set up the email system" (too vague — which files? which service?)
+- BAD: "Handle errors" (which errors? what behavior? what files?)
+- BAD: "Style the page" (which page? what styles? which file?)
+
+MANDATORY TASK TYPES (include when relevant):
+1. SETUP TASK: Initialize project, create package.json with ALL dependencies, tsconfig.json, .gitignore, folder structure
+2. CONFIG TASK: Tailwind config, ESLint, database config, environment variables (.env.example)
+3. DESIGN SYSTEM TASK: If a design template is selected, create the CSS variables, theme file, global styles
+4. DATABASE TASK: Schema definition, migrations, seed data
+5. API TASK: Each major API endpoint or resource gets its own task
+6. COMPONENT TASK: Each major UI component or page
+7. INTEGRATION TASK: Connecting frontend to backend, state management
+8. FINAL VERIFICATION TASK: "Run full test suite and verify all features work end-to-end"
 
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 
 ORDERING:
-- Setup/scaffolding and database schema first
-- Core backend logic and API routes next
-- Frontend components and pages after
-- Integration, testing, and polish last
-- Include a final "Run full test suite and verify all features" task
+- Setup/scaffolding and database schema first (Phase 1)
+- Core backend logic and API routes next (Phase 2)
+- Frontend components and pages after (Phase 3)
+- Integration, testing, and polish last (Phase 4)
 
-COVERAGE: frontend, backend, database schema, auth, API routes, components, pages, state management, testing, deployment, UI/UX polish, error handling, responsive design.
+COVERAGE CHECKLIST (include tasks for ALL that apply):
+frontend, backend, database schema, auth, API routes, components, pages, layouts, navigation, state management, testing, deployment config, UI/UX polish, error handling, responsive design, loading states, empty states, form validation, environment variables, README.
+
 Each task should be completable in a single coding session.
-Be specific. Do NOT wrap in markdown code fences. Return raw JSON only.`;
+Be SPECIFIC about file paths. Do NOT wrap in markdown code fences. Return raw JSON only.`;
+}
+
+function extractTechTerms(prompt: string): string[] {
+  const techPatterns = [
+    /\b(react|next\.?js|vue|angular|svelte|remix|astro|nuxt)\b/gi,
+    /\b(express|fastify|django|flask|rails|spring|laravel|nest\.?js)\b/gi,
+    /\b(typescript|javascript|python|rust|go|java|ruby|php)\b/gi,
+    /\b(tailwind|bootstrap|material[- ]?ui|chakra|shadcn|radix)\b/gi,
+    /\b(postgres|mysql|mongodb|sqlite|redis|supabase|firebase|prisma|drizzle)\b/gi,
+    /\b(auth|oauth|jwt|stripe|payments|websocket|graphql|rest|trpc)\b/gi,
+    /\b(docker|kubernetes|vercel|railway|netlify|aws|gcp|azure)\b/gi,
+  ];
+  const terms = new Set<string>();
+  for (const pattern of techPatterns) {
+    const matches = prompt.matchAll(pattern);
+    for (const m of matches) terms.add(m[0].toLowerCase());
+  }
+  return [...terms];
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { prompt, projectName } = body as { prompt: string; projectName?: string };
+  const { prompt, projectName, designTemplate } = body as { prompt: string; projectName?: string; designTemplate?: string };
   if (!prompt?.trim()) {
     return NextResponse.json({ error: 'Missing prompt' }, { status: 400 });
   }
 
-  const userPrompt = projectName
-    ? `Project name: ${projectName}\n\nUser's request:\n${prompt}\n\nGenerate the full project plan as JSON.`
-    : `User's request:\n${prompt}\n\nGenerate the full project plan as JSON. Derive a short project name from the description.`;
+  let researchContext = '';
+  try {
+    const techTerms = extractTechTerms(prompt);
+    if (techTerms.length > 0) {
+      const searchQueries = [
+        `${techTerms.slice(0, 3).join(' ')} project setup guide 2026 best practices`,
+      ];
+      if (techTerms.includes('next.js') || techTerms.includes('nextjs')) {
+        searchQueries.push('Next.js 15 app router setup 2026');
+      }
+      if (techTerms.includes('prisma')) {
+        searchQueries.push('Prisma ORM setup guide 2026');
+      }
+      if (techTerms.includes('tailwind')) {
+        searchQueries.push('Tailwind CSS v4 setup 2026');
+      }
+
+      const searchResults = await Promise.allSettled(
+        searchQueries.slice(0, 3).map(q => webSearch(q))
+      );
+      const validResults = searchResults
+        .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled' && r.value !== 'Search unavailable')
+        .map(r => r.value);
+
+      if (validResults.length > 0) {
+        researchContext = validResults.join('\n---\n').slice(0, 4000);
+      }
+    }
+  } catch {
+    // Research is best-effort, continue without it
+  }
+
+  const systemPrompt = buildPlanSystemPrompt(researchContext);
+
+  let userPrompt = projectName
+    ? `Project name: ${projectName}\n\nUser's request:\n${prompt}`
+    : `User's request:\n${prompt}\n\nDerive a short project name from the description.`;
+
+  if (designTemplate) {
+    userPrompt += `\n\nDESIGN TEMPLATE SELECTED: ${designTemplate}\nInclude a "Design System Setup" task in Phase 1 that creates CSS variables, theme file, and global styles matching this template.`;
+  }
+
+  userPrompt += '\n\nGenerate the full project plan as JSON. Be EXHAUSTIVE — do not skip any step.';
 
   try {
     const raw = await callModelDirect(
       'google/gemini-2.0-flash-001',
       [
-        { role: 'system', content: PLAN_SYSTEM_PROMPT },
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      { temperature: 0.3, maxTokens: 16000 },
+      { temperature: 0.3, maxTokens: 32000 },
     );
 
     const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
@@ -109,14 +210,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No tasks in plan', raw: cleaned }, { status: 422 });
     }
 
-    const normalizedTasks = (plan.tasks as Record<string, unknown>[]).map((t) => ({
-      title: (t.title as string) || 'Untitled task',
-      description: (t.description as string) || '',
-      phase: (t.phase as number) || 1,
-      priority: (t.priority as string) || 'medium',
-      tags: Array.isArray(t.tags) ? t.tags : [],
-      subtasks: Array.isArray(t.subtasks) ? (t.subtasks as unknown[]).filter((s: unknown) => typeof s === 'string') : [],
-    }));
+    const normalizedTasks = (plan.tasks as Record<string, unknown>[]).map((t) => {
+      let subtasks = Array.isArray(t.subtasks) ? (t.subtasks as unknown[]).filter((s: unknown) => typeof s === 'string') : [];
+      if (subtasks.length < 3) {
+        const desc = (t.description as string) || '';
+        const title = (t.title as string) || '';
+        while (subtasks.length < 3) {
+          subtasks.push(`Implement and verify: ${title} - part ${subtasks.length + 1} (${desc.slice(0, 80)})`);
+        }
+      }
+      return {
+        title: (t.title as string) || 'Untitled task',
+        description: (t.description as string) || '',
+        phase: (t.phase as number) || 1,
+        priority: (t.priority as string) || 'medium',
+        tags: Array.isArray(t.tags) ? t.tags : [],
+        subtasks: subtasks as string[],
+      };
+    });
 
     return NextResponse.json({
       projectName: plan.projectName || projectName || 'Untitled Project',

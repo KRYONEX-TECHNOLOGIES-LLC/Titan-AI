@@ -176,6 +176,10 @@ interface PlanState {
   replaceChecklist: (items: FinalChecklist[]) => void;
   resetChecklist: () => void;
 
+  // Plan Executing Flag (used to suppress file watcher during execution)
+  planExecuting: boolean;
+  setPlanExecuting: (v: boolean) => void;
+
   // Computed
   totalTasks: () => number;
   completedTasks: () => number;
@@ -455,6 +459,10 @@ export const usePlanStore = create<PlanState>()(
       },
       replaceChecklist: (items) => set({ finalChecklist: items }),
       resetChecklist: () => set({ finalChecklist: [...COMMON_SENSE_RULES] }),
+
+      // Plan Executing Flag
+      planExecuting: false,
+      setPlanExecuting: (v) => set({ planExecuting: v }),
 
       // Computed
       totalTasks: () => {

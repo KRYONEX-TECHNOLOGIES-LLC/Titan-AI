@@ -603,6 +603,8 @@ export default function TitanIDE() {
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
+        if (usePlanStore.getState().planExecuting) return;
+
         useFileStore.getState().refreshFileTree();
 
         for (const changedPath of pendingChanges) {

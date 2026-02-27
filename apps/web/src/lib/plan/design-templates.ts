@@ -247,12 +247,69 @@ export function templateToCSS(template: DesignTemplate): string {
 }
 
 export function templateToPromptDirective(template: DesignTemplate): string {
-  return [
-    `DESIGN TEMPLATE: ${template.name} (${template.tier})`,
-    `STYLE: ${template.style}`,
-    `COLORS: primary=${template.colors.primary}, secondary=${template.colors.secondary}, accent=${template.colors.accent}, bg=${template.colors.background}`,
-    `FONT: ${template.fontFamily}`,
-    `RADIUS: ${template.borderRadius}`,
-    `DIRECTIVE: Apply this visual style to ALL UI elements. Use these exact colors, font, and border-radius. Create a cohesive ${template.tier}-tier design.`,
-  ].join('\n');
+  const isDark = template.colors.background.startsWith('#0') || template.colors.background.startsWith('#1') || template.colors.background.startsWith('rgba');
+
+  const cssVarsBlock = Object.entries(template.cssVars)
+    .map(([k, v]) => `  ${k}: ${v};`)
+    .join('\n');
+
+  return `DESIGN SYSTEM: ${template.name} (${template.tier} tier)
+VISUAL STYLE: ${template.style}
+COLOR MODE: ${isDark ? 'dark' : 'light'}
+
+EXACT COLORS (use these hex values):
+  --color-primary: ${template.colors.primary};       /* buttons, links, active states */
+  --color-secondary: ${template.colors.secondary};    /* secondary actions, borders */
+  --color-accent: ${template.colors.accent};          /* highlights, badges, callouts */
+  --color-background: ${template.colors.background};  /* page background */
+  --color-surface: ${template.colors.surface};        /* card/panel backgrounds */
+  --color-text: ${template.colors.text};              /* body text */
+  --color-muted: ${template.colors.muted};            /* placeholder text, disabled */
+
+TYPOGRAPHY:
+  font-family: ${template.fontFamily};
+  heading-weight: 700;
+  body-weight: 400;
+  base-size: 16px;
+  scale: 1.25 (h1=2.441rem, h2=1.953rem, h3=1.563rem, h4=1.25rem);
+  line-height: 1.6 (body), 1.2 (headings);
+
+SPACING SCALE (use consistently):
+  xs=4px, sm=8px, md=16px, lg=24px, xl=32px, 2xl=48px, 3xl=64px;
+  padding-card: 24px; padding-section: 48px 24px; gap-grid: 24px;
+
+BORDER & SHAPE:
+  border-radius: ${template.borderRadius};
+  border-radius-sm: calc(${template.borderRadius} / 2);
+  border-radius-lg: calc(${template.borderRadius} * 1.5);
+  border-radius-full: 9999px; /* pills, avatars */
+
+CUSTOM CSS VARIABLES:
+${cssVarsBlock}
+
+COMPONENT PATTERNS:
+  BUTTONS:
+    - Primary: bg=${template.colors.primary}, text=white, border-radius=${template.borderRadius}, padding=10px 20px, hover=brightness(1.1), transition=150ms
+    - Secondary: bg=transparent, border=1px solid ${template.colors.secondary}, text=${template.colors.text}, hover=bg ${template.colors.surface}
+    - Danger: bg=#ef4444, text=white
+  CARDS:
+    - bg=${template.colors.surface}, border-radius=${template.borderRadius}, padding=24px, ${template.cssVars['--shadow'] ? `box-shadow=${template.cssVars['--shadow']}` : 'border=1px solid rgba(128,128,128,0.15)'}
+    ${template.cssVars['--blur'] ? `- backdrop-filter: ${template.cssVars['--blur']}` : ''}
+  INPUTS:
+    - bg=${isDark ? 'rgba(255,255,255,0.05)' : template.colors.surface}, border=1px solid ${template.colors.muted}40, border-radius=${template.borderRadius}, padding=10px 14px
+    - focus: border-color=${template.colors.primary}, ring=2px ${template.colors.primary}30
+  NAV/HEADER:
+    - bg=${template.colors.surface}, border-bottom=1px solid ${template.colors.muted}20, height=64px, padding=0 24px
+  BADGES:
+    - bg=${template.colors.accent}20, text=${template.colors.accent}, border-radius=9999px, padding=2px 10px, font-size=12px
+
+MANDATORY RULES:
+  1. Use EXACT hex colors above. Do not approximate or pick different colors.
+  2. All interactive elements need hover/focus states with smooth transitions.
+  3. Use the spacing scale consistently — no random pixel values.
+  4. Every page must have proper padding, never content touching edges.
+  5. Use ${template.fontFamily} for all text — do not switch fonts.
+  6. Cards should have consistent padding, shadows, and border-radius throughout.
+  7. Forms: labels above inputs, proper spacing, visible focus rings, error states in red.
+  8. Responsive: stack layouts on mobile (<768px), horizontal on desktop.`;
 }
