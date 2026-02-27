@@ -23,18 +23,22 @@ npx ts-node scripts/validate-versions.ts
 #    - apps/web/package.json
 #    NOTE: manifest.json is auto-updated by CI. Do NOT manually edit it.
 
-# 2. Commit your changes
+# 2. Sync the lockfile (MANDATORY if any package.json changed)
+pnpm install
+#    This regenerates pnpm-lock.yaml. CI uses --frozen-lockfile and REJECTS stale lockfiles.
+
+# 3. Commit your changes
 git add -A
 git commit -m "v0.X.XX: description of changes"
 
-# 3. Push to main
+# 4. Push to main
 git push origin main
 
-# 4. Create and push a version tag (triggers desktop build + manifest update)
+# 5. Create and push a version tag (triggers desktop build + manifest update)
 git tag -a v0.X.XX -m "v0.X.XX: description"
 git push origin v0.X.XX
 
-# 5. Monitor the pipeline
+# 6. Monitor the pipeline
 gh run list --workflow=release-desktop.yml --limit=3
 gh run view <run-id> --log-failed   # if it fails
 ```
@@ -66,6 +70,7 @@ A husky pre-commit hook runs automatically on every commit:
 | Force-push to main | Destructive history rewrite | All protocol prompts include "NEVER force-push to main" |
 | Out-of-scope variable reference | Edited child component but referenced parent variable (`chat`, `settings`, etc.) | System prompt RULE 8 enforces scope awareness; pre-commit `tsc --noEmit` catches type errors |
 | Code pushed without type check | Build fails on Railway with type errors that were never checked locally | Pre-commit hook now runs `tsc --noEmit` on `apps/web` before every commit |
+| **Stale pnpm-lock.yaml (FATAL)** | Removed deps from `apps/web/package.json` but never ran `pnpm install` to update `pnpm-lock.yaml`. CI uses `--frozen-lockfile` which fails if lockfile doesn't match package.json. This killed v0.3.68 CI on the first attempt. | **After ANY change to ANY `package.json` (adding, removing, or changing deps), run `pnpm install` locally and commit the updated `pnpm-lock.yaml`. CI uses `--frozen-lockfile` which rejects mismatched lockfiles.** |
 
 ### FATAL RELEASE MISTAKE — TAG BEFORE COMMIT (v0.3.67/v0.3.68 incident)
 
@@ -91,7 +96,8 @@ If the top commit doesn't contain your version bump, DO NOT create a tag. Commit
 ### Troubleshooting
 
 - If desktop build fails with TypeScript errors, check `apps/desktop/src/` for strict null issues
-- The CI pipeline uses `pnpm install --frozen-lockfile` — run `pnpm install` locally first if you added deps
+- **If CI fails with `ERR_PNPM_OUTDATED_LOCKFILE`**: the `pnpm-lock.yaml` doesn't match a `package.json`. Run `pnpm install` locally (NOT `--frozen-lockfile`), commit the updated lockfile, and push again. This is the #1 cause of CI failures after dependency changes.
+- The CI pipeline uses `pnpm install --frozen-lockfile` — run `pnpm install` locally first if you added OR removed deps
 - Railway auto-deploys on push to main (watches `apps/web/**`)
 - If pre-commit hook blocks your commit: run `npx ts-node scripts/validate-versions.ts` to see which files mismatch
 

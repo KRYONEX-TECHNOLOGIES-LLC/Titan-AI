@@ -208,4 +208,18 @@ IRON RULE — COMMIT BEFORE TAG (NON-NEGOTIABLE):
   5. git tag -a vX.Y.Z -m "vX.Y.Z: description"
   6. git push origin vX.Y.Z
   
-  If you already pushed a bad tag: delete it (git tag -d vX.Y.Z; git push origin --delete vX.Y.Z), commit properly, re-tag.`;
+  If you already pushed a bad tag: delete it (git tag -d vX.Y.Z; git push origin --delete vX.Y.Z), commit properly, re-tag.
+
+LOCKFILE RULE — ALWAYS SYNC pnpm-lock.yaml (NON-NEGOTIABLE):
+  CI runs pnpm install --frozen-lockfile. If pnpm-lock.yaml doesn't match any package.json, CI FAILS instantly.
+  After ANY change to ANY package.json (adding deps, removing deps, changing versions):
+  1. Run: pnpm install (locally, without --frozen-lockfile)
+  2. Commit the updated pnpm-lock.yaml alongside the package.json changes
+  3. Never push package.json changes without the matching lockfile update
+  This killed v0.3.68 CI on its first attempt (stale entries for removed deps y-webrtc, yjs).
+  
+  HOW TO FIX if CI fails with ERR_PNPM_OUTDATED_LOCKFILE:
+  1. Run: pnpm install (locally)
+  2. git add pnpm-lock.yaml; git commit -m "fix: sync pnpm-lock.yaml"
+  3. git push origin main
+  4. If a tag was already pushed and failed: delete it, re-tag after the fix commit.`;

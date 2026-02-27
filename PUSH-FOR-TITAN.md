@@ -329,9 +329,45 @@ git tag -a vX.Y.Z -m "vX.Y.Z: description"
 git push origin vX.Y.Z
 ```
 
+### LOCKFILE RULE — ALWAYS SYNC pnpm-lock.yaml
+
+CI uses `pnpm install --frozen-lockfile`. If `pnpm-lock.yaml` doesn't match any `package.json`, **CI fails instantly** with `ERR_PNPM_OUTDATED_LOCKFILE`.
+
+**After ANY change to ANY `package.json`** (adding, removing, or changing deps):
+
+```powershell
+# 1. Regenerate the lockfile
+pnpm install
+
+# 2. Commit the lockfile WITH the package.json changes
+git add pnpm-lock.yaml
+git add package.json apps/desktop/package.json apps/web/package.json
+git commit -m "description"
+```
+
+**If CI already failed because of a stale lockfile:**
+
+```powershell
+# Fix locally
+pnpm install
+git add pnpm-lock.yaml
+git commit -m "fix: sync pnpm-lock.yaml"
+git push origin main
+
+# If a tag was already pushed and failed:
+git tag -d vX.Y.Z
+git push origin --delete vX.Y.Z
+# Then re-tag after the fix
+git tag -a vX.Y.Z -m "vX.Y.Z: description"
+git push origin vX.Y.Z
+```
+
+This killed v0.3.68 on its first CI attempt (stale entries for removed deps `y-webrtc`, `yjs`).
+
 ### CHECKLIST — VERIFY BEFORE TELLING MATEO IT'S DONE
 
 - [ ] `git show HEAD:package.json` shows the new version (not the old one)
+- [ ] `pnpm-lock.yaml` is committed and in sync (run `pnpm install` if any deps changed)
 - [ ] `git push origin main` succeeded (exit code 0)
 - [ ] `git push origin vX.Y.Z` showed `* [new tag]`
 - [ ] `gh run list` shows Release Desktop as in_progress or completed

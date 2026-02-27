@@ -963,6 +963,14 @@ You do NOT build locally. GitHub Actions builds in the cloud.
    Mismatch = broken auto-update. Fix before continuing.
    NOTE: manifest.json is auto-updated by CI. Do NOT manually edit it.
 
+[STEP 2.5] LOCKFILE SYNC (MANDATORY if ANY package.json changed):
+   CI uses pnpm install --frozen-lockfile. If pnpm-lock.yaml doesn't match package.json, CI FAILS.
+   After adding, removing, or changing ANY dependency in ANY package.json:
+   run_command("pnpm install")            ← regenerates pnpm-lock.yaml
+   ↳ This killed v0.3.68 CI on first attempt (stale entries for removed deps y-webrtc, yjs).
+   ↳ ALWAYS commit pnpm-lock.yaml alongside package.json changes.
+   ↳ If CI fails with ERR_PNPM_OUTDATED_LOCKFILE: run pnpm install locally, commit, push, delete bad tag, re-tag.
+
 [STEP 3] Stage and verify:
    run_command("git add -A")
    run_command("git status")              ← confirm only expected files staged
@@ -1002,6 +1010,7 @@ DONE CHECKLIST — check every item before telling Mateo:
    □ Remote URL confirmed as KRYONEX-TECHNOLOGIES-LLC/Titan-AI
    □ All 3 package.json files show the same new version
    □ git show HEAD:package.json shows the NEW version (NOT the old one — this is the #1 mistake)
+   □ pnpm-lock.yaml is committed and in sync (run pnpm install if any deps changed — #2 mistake)
    □ git push origin main exited with code 0
    □ git push origin vX.Y.Z showed "* [new tag]"
    □ gh run list shows "Release Desktop" as in_progress or completed

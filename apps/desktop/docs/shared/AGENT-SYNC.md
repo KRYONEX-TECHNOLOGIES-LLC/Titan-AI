@@ -369,6 +369,7 @@ gh run list --workflow release-desktop.yml --limit 1
 - DO NOT push a tag on code that doesn't compile — verify `tsc` first
 - DO NOT forget Step 6 — **always confirm** the pipeline started
 - DO NOT push tags in someone else's project — self-project rules ONLY apply here
+- **LOCKFILE RULE:** After ANY change to ANY `package.json` (add, remove, or change deps), run `pnpm install` locally and commit the updated `pnpm-lock.yaml`. CI uses `--frozen-lockfile` which REJECTS stale lockfiles. This killed v0.3.68 CI (stale entries for removed deps `y-webrtc`, `yjs`). If CI fails with `ERR_PNPM_OUTDATED_LOCKFILE`: fix lockfile locally, commit, push, delete bad tag, re-tag.
 
 ### When to release:
 - After fixing bugs that affect user experience
