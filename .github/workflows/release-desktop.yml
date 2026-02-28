@@ -122,10 +122,23 @@ jobs:
         run: |
           echo "[CI] Flattening pnpm symlinks in standalone output..."
           node apps/desktop/scripts/prepare-standalone.js
+          echo "[CI] Stripping desktop-only packages from standalone..."
+          cd apps/web/.next/standalone
+          rm -rf node_modules/@titan/mcp-servers \
+                 node_modules/@titan/mcp \
+                 node_modules/@titan/filesystem \
+                 node_modules/@titan/terminal \
+                 node_modules/@titan/forge \
+                 node_modules/playwright \
+                 node_modules/playwright-core \
+                 node_modules/@playwright \
+                 packages/forge \
+                 packages/mcp
+          FILECOUNT=$(find . -type f | wc -l)
+          echo "[CI] Standalone after strip: ${FILECOUNT} files"
+          cd ..
           echo "[CI] Creating tar archive of standalone..."
-          cd apps/web/.next
           tar -cf web-server-standalone.tar -C standalone .
-          FILECOUNT=$(find standalone -type f | wc -l)
           TARSIZE=$(du -sh web-server-standalone.tar | cut -f1)
           echo "[CI] Standalone: ${FILECOUNT} files -> 1 tar archive (${TARSIZE})"
 

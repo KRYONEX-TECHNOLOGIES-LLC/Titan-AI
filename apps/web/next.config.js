@@ -46,7 +46,7 @@ const nextConfig = {
 
     return config;
   },
-  serverExternalPackages: [],
+  serverExternalPackages: ['@titan/mcp-servers', 'playwright', 'playwright-core'],
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',
@@ -54,8 +54,14 @@ const nextConfig = {
     outputFileTracingExcludes: {
       '*': [
         'packages/forge/**',
+        'packages/mcp/**',
         '**/playwright/**',
+        '**/playwright-core/**',
         '**/@playwright/**',
+        '**/@titan/mcp-servers/**',
+        '**/@titan/mcp/**',
+        '**/@titan/filesystem/**',
+        '**/@titan/terminal/**',
         '**/trainer/**',
         '**/__tests__/**',
         '**/test/**',

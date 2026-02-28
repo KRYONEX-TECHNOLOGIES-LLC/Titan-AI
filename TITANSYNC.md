@@ -518,6 +518,19 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.85 — Strip Desktop-Only Packages from Standalone (2026-02-28)
+
+**Root cause:** v0.3.84 extraction failed with "Can't create '\\?\...\@titan\mcp-servers'" because:
+1. `@titan/mcp-servers` (Playwright browser automation) was traced into the Next.js standalone output
+2. Windows `tar.exe` with `\\?\` long path prefix can't handle `@` in directory names
+3. Playwright alone adds thousands of files and hundreds of MB to the archive
+
+**Fix:**
+- Added `@titan/mcp-servers`, `playwright`, `playwright-core` to `serverExternalPackages` in next.config.js
+- Added `packages/mcp/**`, `@titan/mcp-servers`, `@titan/mcp`, `@titan/filesystem`, `@titan/terminal` to `outputFileTracingExcludes`
+- Added explicit `rm -rf` step in CI workflow to strip desktop-only packages from standalone BEFORE creating the tar archive
+- This is a belt-and-suspenders approach: Next.js trace exclusions prevent tracing, and CI rm -rf guarantees they're gone
+
 ### v0.3.84 — Fix Extraction Permissions (2026-02-28)
 
 **Root cause:** v0.3.83 failed with "tar exited with code 1" because `perMachine: true` installs to `C:\Program Files\` which is read-only for non-admin processes. The tar extraction tried to write to `process.resourcesPath` (inside Program Files) and was denied.
