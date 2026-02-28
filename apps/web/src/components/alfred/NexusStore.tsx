@@ -26,6 +26,7 @@ const BUILT_IN_ADDONS: BuiltInAddon[] = [
   { id: 'nexus-seo-analyzer', name: 'SEO Analyzer', description: 'Analyze pages for SEO, meta tags, performance, and accessibility', icon: '📊', category: 'Research', author: 'Kryonex Technologies' },
   { id: 'nexus-social-media', name: 'Social Media Manager', description: 'Schedule posts, track analytics, and manage multiple platforms', icon: '📱', category: 'Communication', author: 'Kryonex Technologies' },
   { id: 'nexus-data-scraper', name: 'Data Scraper', description: 'Extract structured data from websites with smart selectors', icon: '🕷️', category: 'Custom', author: 'Kryonex Technologies' },
+  { id: 'nexus-movie-picker', name: 'Movie & Entertainment', description: 'Find movies, shows, and entertainment based on mood and preferences', icon: '🎬', category: 'Research', author: 'Kryonex Technologies' },
 ];
 
 function seedBuiltIns() {

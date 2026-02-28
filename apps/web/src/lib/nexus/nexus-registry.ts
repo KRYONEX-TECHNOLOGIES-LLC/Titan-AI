@@ -302,6 +302,83 @@ For cameras, use device_command with action "snapshot" to capture an image.`,
     tools: [],
     status: 'available',
   },
+  {
+    id: 'nexus-code-review',
+    name: 'Code Review',
+    description: 'Automated PR review with style checks and vulnerability scanning.',
+    author: 'Kryonex Technologies',
+    version: '1.0.0',
+    pricing: 'free',
+    category: 'devops',
+    permissions: ['web'],
+    skillInstructions: `When asked to review code or a pull request:
+1. Use read_file to inspect the changed files. If a PR URL is provided, use browse_url to fetch the diff.
+2. Check for: security vulnerabilities (SQL injection, XSS, hardcoded secrets), performance issues (N+1 queries, unbounded loops), style inconsistencies, missing error handling, missing tests.
+3. Rate the overall quality on a scale of 1-10.
+4. Present findings grouped by severity: Critical, Warning, Suggestion.
+5. For each finding, show the file, line, issue, and a concrete fix.
+6. Summarize: "X critical issues, Y warnings, Z suggestions. Overall quality: N/10."`,
+    tools: [],
+    status: 'available',
+  },
+  {
+    id: 'nexus-seo-analyzer',
+    name: 'SEO Analyzer',
+    description: 'Analyze pages for SEO, meta tags, performance, and accessibility.',
+    author: 'Kryonex Technologies',
+    version: '1.0.0',
+    pricing: 'free',
+    category: 'research',
+    permissions: ['web', 'browser'],
+    skillInstructions: `When asked to analyze a page for SEO:
+1. Use browse_url to fetch the page HTML.
+2. Check for: title tag (50-60 chars ideal), meta description (150-160 chars), H1 tag presence, image alt attributes, canonical URL, Open Graph tags, robots.txt compliance, structured data (JSON-LD).
+3. Check performance indicators: large images without lazy loading, render-blocking scripts, excessive DOM depth.
+4. Check accessibility: color contrast, ARIA labels, form labels, keyboard navigation hints.
+5. Score each category (SEO, Performance, Accessibility) out of 100.
+6. Present a prioritized list of fixes with estimated impact (High/Medium/Low).`,
+    tools: [],
+    status: 'available',
+  },
+  {
+    id: 'nexus-social-media',
+    name: 'Social Media Manager',
+    description: 'Schedule posts, track analytics, and manage multiple platforms.',
+    author: 'Kryonex Technologies',
+    version: '1.0.0',
+    pricing: 'free',
+    category: 'communication',
+    permissions: ['web', 'browser', 'messaging'],
+    skillInstructions: `When asked to manage social media:
+1. Ask for: platform (Twitter/X, LinkedIn, Instagram, etc.), action (post, schedule, analyze, track).
+2. For posting: help draft the content, suggest hashtags (3-5 relevant ones), recommend optimal posting time based on platform.
+3. For scheduling: use browse_url to navigate to the platform's scheduling interface, or suggest tools like Buffer/Hootsuite.
+4. For analytics: use web_search to find the account's public metrics, or browse_url to access analytics dashboards.
+5. Always preview the post content before publishing: "Post: [content]. Platform: X. Schedule: 2pm EST. Proceed?"
+6. Never post without explicit user confirmation.`,
+    tools: [],
+    status: 'available',
+  },
+  {
+    id: 'nexus-data-scraper',
+    name: 'Data Scraper',
+    description: 'Extract structured data from websites with smart selectors.',
+    author: 'Kryonex Technologies',
+    version: '1.0.0',
+    pricing: 'free',
+    category: 'custom',
+    permissions: ['web', 'browser'],
+    skillInstructions: `When asked to scrape or extract data from a website:
+1. Ask for: target URL, what data to extract (prices, emails, product names, etc.), output format (JSON, CSV, table).
+2. Use browse_url to load the page. Use browser_get_text or browser_evaluate to extract content with CSS selectors or XPath.
+3. For paginated data: detect "next page" buttons and iterate with browser_click + browser_get_text.
+4. Clean and structure the extracted data into the requested format.
+5. Present a preview of the first 5-10 rows before extracting the full dataset.
+6. Respect robots.txt. Warn the user if the site disallows scraping. Add reasonable delays between requests.
+7. NEVER scrape login-protected content without the user explicitly providing credentials.`,
+    tools: [],
+    status: 'available',
+  },
 ];
 
 for (const addon of BUILTIN_ADDONS) {

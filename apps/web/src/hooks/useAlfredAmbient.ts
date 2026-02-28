@@ -207,6 +207,12 @@ export function useAlfredAmbient() {
       learnedStrategies = getRelevantStrategies(text);
     } catch { /* self-improvement module not available yet */ }
 
+    let nexusSkills = '';
+    try {
+      const { nexusRegistry } = await import('@/lib/nexus/nexus-registry');
+      nexusSkills = nexusRegistry.getSkillInstructions();
+    } catch { /* nexus not available */ }
+
     // Pre-load system state so tools return real data instead of placeholders
     let systemState: Record<string, unknown> = {};
     try {
@@ -240,6 +246,7 @@ export function useAlfredAmbient() {
           memoryContext: memoryContext + getPendingTasksContext(),
           brainContext,
           learnedStrategies,
+          nexusSkills,
           systemState,
           workspacePath: useFileStore.getState().workspacePath || '',
           workspaceName: useFileStore.getState().workspaceName || '',
