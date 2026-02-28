@@ -5,9 +5,16 @@
  * Used by all multi-agent protocol routes (Phoenix, Supreme, Omega, v2) so
  * they don't go through the chat endpoint which adds its own system prompt
  * and flattens messages into a single concatenated string.
+ *
+ * Includes retry with exponential backoff for transient failures (429, 5xx, network, timeout)
+ * so long-running plan/voice tasks don't fail on a single blip.
  */
 
 import { MODEL_REGISTRY, normalizeModelId } from '@/lib/model-registry';
+
+const LLM_REQUEST_TIMEOUT_MS = 120_000;
+const LLM_RETRY_ATTEMPTS = 3;
+const LLM_RETRY_DELAY_MS = 1000;
 
 function envValue(...names: string[]): string {
   for (const name of names) {
@@ -23,6 +30,41 @@ function resolveProviderModelId(modelId: string): string {
   if (entry) return entry.providerModelId;
   if (modelId.includes('/')) return modelId;
   return modelId;
+}
+
+function isRetryableError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/429|rate limit/i.test(msg)) return true;
+  if (/502|503|504|500|timeout|econnrefused|enotfound|fetch failed|network/i.test(msg)) return true;
+  return false;
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  timeoutMs = LLM_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= LLM_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) return res;
+      const text = await res.text().catch(() => '');
+      lastError = new Error(`LLM call failed (${res.status}): ${text.slice(0, 300)}`);
+      if (![429, 500, 502, 503, 504].includes(res.status)) throw lastError;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (!isRetryableError(lastError) && attempt === 1) throw lastError;
+    }
+    if (attempt < LLM_RETRY_ATTEMPTS) {
+      const delay = LLM_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastError ?? new Error('LLM request failed after retries');
 }
 
 export async function callModelDirect(
@@ -59,21 +101,19 @@ export async function callModelDirect(
     throw new Error('No LLM provider configured (need OPENROUTER_API_KEY or TITAN_LITELLM_BASE_URL)');
   }
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: providerModelId,
-      messages,
-      temperature: temp,
-      ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`LLM call failed (${response.status}): ${text.slice(0, 300)}`);
-  }
+  const response = await fetchWithRetry(
+    apiUrl,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: providerModelId,
+        messages,
+        temperature: temp,
+        ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
+      }),
+    },
+  );
 
   const json = await response.json() as {
     choices?: Array<{ message?: { content?: string } }>;
@@ -131,18 +171,21 @@ export async function callModelWithTools(
     throw new Error('No LLM provider configured');
   }
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: providerModelId,
-      messages,
-      tools,
-      tool_choice: 'auto',
-      temperature: temp,
-      ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
-    }),
-  });
+  const response = await fetchWithRetry(
+    apiUrl,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: providerModelId,
+        messages,
+        tools,
+        tool_choice: 'auto',
+        temperature: temp,
+        ...(options?.maxTokens ? { max_tokens: options.maxTokens } : {}),
+      }),
+    },
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');

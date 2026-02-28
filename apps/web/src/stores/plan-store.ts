@@ -123,6 +123,8 @@ export interface PlanExecution {
   scanProgress: number;
   completedTaskIds: string[];
   failedTaskIds: string[];
+  /** Persisted list of files created so far this run; used to resume with full context. */
+  persistedCreatedFiles: string[];
 }
 
 // ── Store Interface ──
@@ -147,7 +149,7 @@ interface PlanState {
 
   // Execution
   execution: PlanExecution;
-  startExecution: () => void;
+  startExecution: (resume?: boolean) => void;
   pauseExecution: () => void;
   resumeExecution: () => void;
   stopExecution: () => void;
@@ -155,6 +157,7 @@ interface PlanState {
   setCurrentTask: (taskId: string | null) => void;
   markTaskExecuted: (taskId: string, success: boolean) => void;
   setScanProgress: (pct: number) => void;
+  appendCreatedFiles: (paths: string[]) => void;
 
   // Memory Bank
   memories: MemoryEntry[];
@@ -353,14 +356,16 @@ export const usePlanStore = create<PlanState>()(
       clearPlan: () => set({
         tasks: {}, phases: [], planName: '', memories: [], reports: [],
         finalChecklist: [...COMMON_SENSE_RULES],
-        execution: { status: 'idle', currentTaskId: null, startedAt: null, pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [] },
+        execution: { status: 'idle', currentTaskId: null, startedAt: null, pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [], persistedCreatedFiles: [] },
       }),
 
       // Execution
-      execution: { status: 'idle', currentTaskId: null, startedAt: null, pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [] },
+      execution: { status: 'idle', currentTaskId: null, startedAt: null, pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [], persistedCreatedFiles: [] },
 
-      startExecution: () => set(state => ({
-        execution: { ...state.execution, status: 'scanning', startedAt: Date.now(), pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [] },
+      startExecution: (resume = false) => set(state => ({
+        execution: resume
+          ? { ...state.execution, status: 'executing', pausedAt: null, error: null }
+          : { ...state.execution, status: 'scanning', startedAt: Date.now(), pausedAt: null, error: null, scanProgress: 0, completedTaskIds: [], failedTaskIds: [], persistedCreatedFiles: [] },
       })),
 
       pauseExecution: () => set(state => ({
@@ -393,6 +398,13 @@ export const usePlanStore = create<PlanState>()(
 
       setScanProgress: (pct) => set(state => ({
         execution: { ...state.execution, scanProgress: pct },
+      })),
+
+      appendCreatedFiles: (paths) => set(state => ({
+        execution: {
+          ...state.execution,
+          persistedCreatedFiles: [...state.execution.persistedCreatedFiles, ...paths],
+        },
       })),
 
       // Memory

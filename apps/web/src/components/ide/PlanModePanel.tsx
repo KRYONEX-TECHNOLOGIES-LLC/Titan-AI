@@ -7,6 +7,7 @@ import { useFileStore } from '@/stores/file-store';
 import { DESIGN_TEMPLATES, templateToPromptDirective, type DesignTemplate } from '@/lib/plan/design-templates';
 import type { FileNode } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
+import { getHiveContext } from '@/lib/hive-memory';
 
 interface ExecuteResult {
   success: boolean;
@@ -34,7 +35,9 @@ async function executeTaskOnServer(
       const text = await res.text().catch(() => '');
       return { success: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
     }
-    return await res.json();
+    const data = await res.json().catch(() => null);
+    if (!data || typeof data !== 'object') return { success: false, error: 'Invalid response from executor' };
+    return data as ExecuteResult;
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : 'Execution failed' };
   }
@@ -175,7 +178,7 @@ export function PlanModePanel() {
 
   const executionRef = useRef(false);
 
-  const handleStartPlan = useCallback(async () => {
+  const handleStartPlan = useCallback(async (resume = false) => {
     if (totalTasks === 0 || executionRef.current) return;
 
     const firstTask = Object.values(store.tasks).find(t => t.parentId === null);
@@ -183,34 +186,36 @@ export function PlanModePanel() {
     await ensureProjectFolder(projectHint);
 
     executionRef.current = true;
-    store.startExecution();
+    store.startExecution(resume);
 
-    // Phase 1: Scan real file tree
-    try {
-      const fileTree = useFileStore.getState().fileTree;
-      const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
-      const res = await fetch('/api/plan/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileTree: treeStr }),
-      });
-      if (res.ok) {
-        const { directory } = await res.json();
-        useCodeDirectory.getState().setDirectory(directory);
-        store.setScanProgress(100);
+    // Phase 1: Scan real file tree (skip on resume to save time)
+    if (!resume) {
+      try {
+        const fileTree = useFileStore.getState().fileTree;
+        const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
+        const res = await fetch('/api/plan/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileTree: treeStr }),
+        });
+        if (res.ok) {
+          const { directory } = await res.json();
+          useCodeDirectory.getState().setDirectory(directory);
+          store.setScanProgress(100);
+        }
+      } catch {
+        // scan is best-effort
       }
-    } catch {
-      // scan is best-effort
     }
 
     store.setExecutionStatus('executing');
 
-    // Phase 2: Execute tasks via dedicated server-side execute route
+    // Phase 2: Execute tasks — when resuming, include failed tasks and use persisted file list
     const pendingTasks = Object.values(store.tasks)
-      .filter(t => t.parentId === null && t.status === 'pending')
+      .filter(t => t.parentId === null && (resume ? t.status !== 'completed' : t.status === 'pending'))
       .sort((a, b) => a.phase - b.phase || a.order - b.order);
 
-    const allCreatedFiles: string[] = [];
+    const allCreatedFiles: string[] = resume ? [...(usePlanStore.getState().execution.persistedCreatedFiles || [])] : [];
 
     const executeNext = async (index: number) => {
       if (index >= pendingTasks.length) {
@@ -255,27 +260,47 @@ export function PlanModePanel() {
       const fileTree = useFileStore.getState().fileTree;
       const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
 
-      const subtasksStr = task.checklist.length > 0
-        ? `\n\nSUBTASKS (each must be completed):\n${task.checklist.map((c, i) => `  ${i + 1}. ${c.label}`).join('\n')}`
+      const subtaskBlocks = task.checklist.length > 0
+        ? task.checklist.map((c, i) => `  ${i + 1}. ${c.label}\n     DELIVERABLE: One or more concrete files created or edited; outcome must be verifiable.`).join('\n')
+        : '';
+      const subtasksSection = task.checklist.length > 0
+        ? `\n\nSUBTASKS (every one must be completed — no exceptions):\n${subtaskBlocks}\n\nYou MUST produce at least one file create or edit per subtask. Total subtasks: ${task.checklist.length} → expect at least ${task.checklist.length} file operations (create_file or edit_file) unless a subtask is already satisfied by existing code.`
         : '';
 
-      const taskPrompt = `[TASK ${index + 1} of ${pendingTasks.length}] for project "${ps.planName || 'project'}"
+      const taskPrompt = `═══ ULTIMATE EXECUTION PROTOCOL — NO SHORTCUTS, NOTHING MISSED ═══
+
+[TASK ${index + 1} of ${pendingTasks.length}] for project "${ps.planName || 'project'}"
 
 TASK: ${task.title}
 DESCRIPTION: ${task.description}
 PRIORITY: ${task.priority}
-TAGS: ${task.tags.join(', ')}${subtasksStr}
+TAGS: ${task.tags.join(', ')}${subtasksSection}
 
-INSTRUCTIONS:
-1. First call list_directory to understand the current project structure.
-2. For EACH file needed, call create_file with the COMPLETE file contents. No placeholders.
-3. If modifying an existing file, call read_file first, then edit_file.
-4. After creating all files, call read_file on each to verify they exist and have correct content.
-5. If you need to install packages, call run_command with the appropriate npm/pnpm command.
-6. Write production-quality code with proper imports, types, error handling, and styling.`;
+═══ MANDATORY EXECUTION STEPS (follow in order) ═══
+1. Call list_directory (path: "." or relevant dir) to see current project structure. Do not skip.
+2. For EACH subtask above: create or edit the required file(s) with COMPLETE content. One subtask = at least one file create or edit. No placeholder files, no empty files, no "TODO" bodies.
+3. Every create_file must include FULL file content (imports, types, logic, styling). Minimum 20+ characters for code files.
+4. If a file already exists that you must change: call read_file first, then edit_file with exact old_string → new_string.
+5. After ALL files for this task are written: call read_file on each created path to verify content. If any file is empty or wrong, fix it with edit_file or create_file.
+6. If the task requires new dependencies: call run_command (e.g. npm install / pnpm add) before or after creating files as needed.
+7. Do not finish until every subtask has a corresponding deliverable (file created or edited with real content).
+
+═══ DEFINITION OF DONE (all must be true before you stop) ═══
+- list_directory was called at least once.
+- Every subtask has at least one file create or edit.
+- Every created/edited file has been read back and verified non-empty and correct.
+- No file contains only comments or placeholders; no "implement later" or empty stubs.
+- Imports and references are valid; no broken paths or missing exports.
+
+═══ ANTI-SHORTCUT RULES ═══
+- Never create an empty file. Never leave a file with only "// TODO" or similar.
+- Never skip a subtask. If there are ${task.checklist.length} subtasks, there must be at least ${task.checklist.length} file operations (unless a subtask is already done).
+- Never describe code without writing it. Use create_file or edit_file for every change.
+- At the end, the user must not be able to point at anything and say "this is missing" — every requirement in the task and subtasks must be implemented.`;
 
       const designDirective = getDesignDirective();
-      const systemContext = `\nCURRENT FILE TREE:\n${treeStr}\n${codeDir && codeDir.scannedAt > 0 ? `\nPROJECT ANALYSIS:\n${JSON.stringify(codeDir, null, 2).slice(0, 2000)}` : ''}`;
+      const hiveMemory = getHiveContext(1500);
+      const systemContext = `${hiveMemory ? `\n[TITAN HIVE MEMORY]\n${hiveMemory}\n` : ''}\nCURRENT FILE TREE:\n${treeStr}\n${codeDir && codeDir.scannedAt > 0 ? `\nPROJECT ANALYSIS:\n${JSON.stringify(codeDir, null, 2).slice(0, 2000)}` : ''}`;
 
       ps.addReport({
         type: 'progress', severity: 'info',
@@ -285,7 +310,11 @@ INSTRUCTIONS:
       });
 
       try {
-        const result = await executeTaskOnServer(taskPrompt, wsPath, designDirective, [...allCreatedFiles], systemContext);
+        let result = await executeTaskOnServer(taskPrompt, wsPath, designDirective, [...allCreatedFiles], systemContext);
+        if (!result.success && /network|internet|api|unreachable|timeout|rate limit|429|502|503/i.test(result.error || '')) {
+          usePlanStore.getState().addReport({ type: 'progress', severity: 'info', title: 'Retrying after API/network error...', details: 'One automatic retry.', taskId: task.id, resolved: true });
+          result = await executeTaskOnServer(taskPrompt, wsPath, designDirective, [...allCreatedFiles], systemContext);
+        }
 
         if (result.logs) {
           for (const log of result.logs) {
@@ -318,32 +347,53 @@ INSTRUCTIONS:
         if (result.success) {
           usePlanStore.getState().updateTask(task.id, { status: 'completed', completedAt: Date.now() });
           usePlanStore.getState().markTaskExecuted(task.id, true);
+          if (result.filesCreated?.length) usePlanStore.getState().appendCreatedFiles(result.filesCreated);
           if (task.checklist.length > 0) {
             const checked = task.checklist.map(c => ({ ...c, checked: true }));
             usePlanStore.getState().updateTask(task.id, { checklist: checked });
           }
+          const refreshResult = useFileStore.getState().refreshFileTree();
+          if (refreshResult && typeof (refreshResult as Promise<void>).catch === 'function') {
+            (refreshResult as Promise<void>).catch(() => {});
+          }
         } else {
-          usePlanStore.getState().updateTask(task.id, { status: 'failed' });
+          const isApiError = /network|internet|api|unreachable|timeout|rate limit|429|502|503/i.test(result.error || '');
+          usePlanStore.getState().updateTask(task.id, { status: isApiError ? 'pending' : 'failed' });
           usePlanStore.getState().markTaskExecuted(task.id, false);
           usePlanStore.getState().addReport({
             type: 'error', severity: 'warning',
-            title: `Task failed: ${task.title}`,
-            details: result.error || 'Server returned failure',
+            title: isApiError ? `Task interrupted (API/network): ${task.title}` : `Task failed: ${task.title}`,
+            details: isApiError ? (result.error || '') + ' — Click Resume to retry from here.' : (result.error || 'Server returned failure'),
             taskId: task.id, resolved: false,
           });
+          if (isApiError) {
+            usePlanStore.getState().setExecutionStatus('idle');
+            usePlanStore.getState().setPlanExecuting(false);
+            executionRef.current = false;
+          }
         }
       } catch (err) {
-        usePlanStore.getState().updateTask(task.id, { status: 'failed' });
+        const msg = err instanceof Error ? err.message : String(err);
+        const isApiError = /network|internet|api|unreachable|timeout|fetch|econnrefused/i.test(msg);
+        usePlanStore.getState().updateTask(task.id, { status: isApiError ? 'pending' : 'failed' });
         usePlanStore.getState().markTaskExecuted(task.id, false);
         usePlanStore.getState().addReport({
           type: 'error', severity: 'critical',
-          title: `Task crashed: ${task.title}`,
-          details: err instanceof Error ? err.message : 'Unknown error',
+          title: isApiError ? `Task interrupted (connection): ${task.title}` : `Task crashed: ${task.title}`,
+          details: isApiError ? msg + ' — Click Resume to retry from here.' : msg,
           taskId: task.id, resolved: false,
         });
+        if (isApiError) {
+          usePlanStore.getState().setExecutionStatus('idle');
+          usePlanStore.getState().setPlanExecuting(false);
+          executionRef.current = false;
+        }
       }
 
-      setTimeout(() => void executeNext(index + 1), 200);
+      const execStatus = usePlanStore.getState().execution.status;
+      if (execStatus === 'executing' || execStatus === 'paused') {
+        setTimeout(() => void executeNext(index + 1), 200);
+      }
     };
 
     store.setPlanExecuting(true);
@@ -411,6 +461,7 @@ INSTRUCTIONS:
 
   const isRunning = exec.status === 'scanning' || exec.status === 'executing';
   const isPaused = exec.status === 'paused';
+  const canResume = exec.status === 'idle' && totalTasks > 0 && completedTasks < totalTasks && (exec.persistedCreatedFiles?.length > 0 || exec.completedTaskIds?.length > 0);
 
   const execStatusLabel: Record<ExecutionStatus, { text: string; color: string }> = {
     idle: { text: 'Ready', color: '#808080' },
@@ -462,14 +513,26 @@ INSTRUCTIONS:
       {/* Execution Controls */}
       <div className="px-3 py-2 border-b border-[#2d2d2d] shrink-0 flex items-center gap-2">
         {!isRunning && !isPaused ? (
-          <button
-            onClick={() => void handleStartPlan()}
-            disabled={totalTasks === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all iridescent-badge text-white disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            Start Plan
-          </button>
+          <>
+            <button
+              onClick={() => void handleStartPlan(false)}
+              disabled={totalTasks === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all iridescent-badge text-white disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Start Plan
+            </button>
+            {canResume && (
+              <button
+                onClick={() => void handleStartPlan(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold bg-[#22c55e] text-white hover:bg-[#16a34a] transition-all"
+                title="Continue from where you left off with full context"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Resume
+              </button>
+            )}
+          </>
         ) : (
           <>
             <button

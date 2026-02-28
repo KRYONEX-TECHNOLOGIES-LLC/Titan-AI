@@ -35,7 +35,7 @@ export interface FileState {
   openFolder: (path: string, name: string, tree: FileNode[]) => void;
   closeFolder: () => void;
   setFileTree: (tree: FileNode[]) => void;
-  refreshFileTree: () => void;
+  refreshFileTree: () => void | Promise<void>;
 
   selectPath: (path: string) => void;
   toggleExpand: (path: string) => void;
@@ -79,6 +79,9 @@ function getAllPaths(nodes: FileNode[]): string[] {
   nodes.forEach(walk);
   return paths;
 }
+
+const REFRESH_DEBOUNCE_MS = 400;
+let refreshDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useFileStore = create<FileState>()(
   persist(
@@ -132,24 +135,31 @@ export const useFileStore = create<FileState>()(
 
       setFileTree: (tree) => set({ fileTree: tree }),
 
-      refreshFileTree: async () => {
-        const { workspacePath, workspaceOpen } = get();
-        if (!workspaceOpen || !workspacePath) return;
-        try {
-          if (isElectron && electronAPI) {
-            const nativeTree = await electronAPI.fs.readDir(workspacePath, { recursive: true });
-            const tree = convertNativeTree(nativeTree as Array<{ name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }>, '');
-            set({ fileTree: tree });
-          } else {
-            const res = await fetch(`/api/workspace?path=${encodeURIComponent(workspacePath)}`);
-            if (res.ok) {
-              const data = await res.json();
-              if (data.tree) set({ fileTree: data.tree });
+      refreshFileTree: (): Promise<void> => {
+        if (refreshDebounceTimer) clearTimeout(refreshDebounceTimer);
+        return new Promise((resolve) => {
+          refreshDebounceTimer = setTimeout(async () => {
+            refreshDebounceTimer = null;
+            const { workspacePath, workspaceOpen } = get();
+            if (!workspaceOpen || !workspacePath) { resolve(); return; }
+            try {
+              if (isElectron && electronAPI) {
+                const nativeTree = await electronAPI.fs.readDir(workspacePath, { recursive: true });
+                const tree = convertNativeTree(nativeTree as Array<{ name: string; path: string; type: 'file' | 'directory'; children?: unknown[] }>, '');
+                set({ fileTree: tree });
+              } else {
+                const res = await fetch(`/api/workspace?path=${encodeURIComponent(workspacePath)}`);
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.tree) set({ fileTree: data.tree });
+                }
+              }
+            } catch {
+              // silently fail — keep existing tree
             }
-          }
-        } catch {
-          // silently fail — keep existing tree
-        }
+            resolve();
+          }, REFRESH_DEBOUNCE_MS);
+        });
       },
 
       selectPath: (path) => set({ selectedPath: path }),

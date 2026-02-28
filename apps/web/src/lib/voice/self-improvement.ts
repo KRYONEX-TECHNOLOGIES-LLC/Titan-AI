@@ -273,6 +273,210 @@ export function evaluatePerformance(): {
   };
 }
 
+// ═══ AUTO-EVALUATION (2026 — track user follow-ups to grade success) ═══
+
+export interface EvaluationEntry {
+  experienceId: string;
+  autoGrade: 'success' | 'failure' | 'neutral';
+  reason: string;
+  evaluatedAt: string;
+}
+
+const EVALUATIONS_KEY = 'alfred-evaluations';
+
+function loadEvaluations(): EvaluationEntry[] {
+  try {
+    const raw = localStorage.getItem(EVALUATIONS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveEvaluations(evals: EvaluationEntry[]) {
+  try {
+    localStorage.setItem(EVALUATIONS_KEY, JSON.stringify(evals.slice(-200)));
+  } catch { /* quota */ }
+}
+
+/**
+ * Auto-evaluate recent experiences by checking if the user's next message
+ * indicates success or failure (e.g. "that worked", "no that's wrong").
+ */
+export function autoEvaluateExperience(
+  experienceId: string,
+  followUpMessage: string,
+): EvaluationEntry | null {
+  const lower = followUpMessage.toLowerCase();
+  let grade: 'success' | 'failure' | 'neutral' = 'neutral';
+  let reason = 'Ambiguous follow-up';
+
+  const successPatterns = /\b(thanks|perfect|works|worked|great|awesome|exactly|correct|good job|nice|love it|that's right|yes)\b/i;
+  const failurePatterns = /\b(wrong|no|incorrect|doesn't work|broken|fail|error|bug|not what|that's not|undo|revert|fix this)\b/i;
+
+  if (successPatterns.test(lower)) {
+    grade = 'success';
+    reason = 'User indicated satisfaction';
+  } else if (failurePatterns.test(lower)) {
+    grade = 'failure';
+    reason = 'User indicated problem';
+  }
+
+  if (grade === 'neutral') return null;
+
+  const entry: EvaluationEntry = {
+    experienceId,
+    autoGrade: grade,
+    reason,
+    evaluatedAt: new Date().toISOString(),
+  };
+
+  // Update the original experience
+  const exps = loadExperiences();
+  const exp = exps.find(e => e.id === experienceId);
+  if (exp) {
+    exp.success = grade === 'success';
+    saveExperiences(exps);
+  }
+
+  const evals = loadEvaluations();
+  evals.push(entry);
+  saveEvaluations(evals);
+
+  return entry;
+}
+
+// ═══ VALIDATED WRITE-BACK (Bidirectional RAG integration) ═══
+
+/**
+ * Write strategies and learned knowledge back to Brain via validation gate.
+ * Only validated content is persisted — no hallucination pollution.
+ */
+export async function validatedStrategyWriteBack(): Promise<{ written: number; rejected: number }> {
+  let written = 0;
+  let rejected = 0;
+
+  try {
+    const { validateKnowledge } = await import('@/lib/knowledge/validation-gate');
+    const { saveBrainEntry } = await import('./brain-storage');
+
+    const strategies = loadStrategies();
+    const existingBrain = (await import('./brain-storage')).queryBrain('strategy');
+    const existingContent = existingBrain.map(b => b.content);
+
+    for (const strategy of strategies.filter(s => s.confidence >= 0.7 && s.usageCount >= 1)) {
+      const candidate = {
+        content: `[STRATEGY] ${strategy.principle}\nEvidence: ${strategy.evidence}`,
+        source: 'auto' as const,
+        category: 'strategy',
+        importance: Math.round(strategy.confidence * 10),
+      };
+
+      const result = validateKnowledge(candidate, existingContent);
+      if (result.passed) {
+        await saveBrainEntry({
+          category: 'strategy',
+          content: result.sanitized || candidate.content,
+          source: 'self-improvement-validated',
+          importance: candidate.importance,
+        });
+        written++;
+      } else {
+        rejected++;
+      }
+    }
+  } catch { /* validation gate or brain storage unavailable */ }
+
+  return { written, rejected };
+}
+
+// ═══ BRAIN EXPORT — scheduled knowledge snapshot ═══
+
+export interface BrainSnapshot {
+  id: string;
+  timestamp: string;
+  experiences: number;
+  strategies: number;
+  evaluations: number;
+  topStrategies: Strategy[];
+  performanceMetrics: ReturnType<typeof evaluatePerformance>;
+  exportedKnowledge: Array<{ category: string; content: string; importance: number }>;
+}
+
+/**
+ * Export a "brain snapshot" — a curated package of the best learned knowledge.
+ * Can be used for fine-tuning, prompt caching, or transferring to another instance.
+ */
+export function exportBrainSnapshot(): BrainSnapshot {
+  const strategies = loadStrategies();
+  const experiences = loadExperiences();
+  const evaluations = loadEvaluations();
+  const metrics = evaluatePerformance();
+
+  const topStrategies = strategies
+    .filter(s => s.confidence >= 0.6)
+    .sort((a, b) => (b.confidence * b.usageCount) - (a.confidence * a.usageCount))
+    .slice(0, 20);
+
+  let exportedKnowledge: Array<{ category: string; content: string; importance: number }> = [];
+  try {
+    const { queryBrain } = require('./brain-storage');
+    const categories = ['knowledge', 'skill', 'strategy', 'mistake'] as const;
+    for (const cat of categories) {
+      const entries = queryBrain(cat);
+      exportedKnowledge.push(
+        ...entries.slice(0, 20).map((e: { content: string; importance: number }) => ({
+          category: cat,
+          content: e.content,
+          importance: e.importance,
+        }))
+      );
+    }
+  } catch { /* brain storage unavailable */ }
+
+  return {
+    id: `snapshot-${Date.now().toString(36)}`,
+    timestamp: new Date().toISOString(),
+    experiences: experiences.length,
+    strategies: strategies.length,
+    evaluations: evaluations.length,
+    topStrategies,
+    performanceMetrics: metrics,
+    exportedKnowledge,
+  };
+}
+
+/**
+ * Import a brain snapshot — restores strategies and knowledge from an export.
+ */
+export function importBrainSnapshot(snapshot: BrainSnapshot): { imported: number } {
+  let imported = 0;
+  const existing = loadStrategies();
+  const existingIds = new Set(existing.map(s => s.id));
+
+  for (const strategy of snapshot.topStrategies) {
+    if (!existingIds.has(strategy.id)) {
+      existing.push(strategy);
+      imported++;
+    }
+  }
+  saveStrategies(existing);
+
+  // Import knowledge entries to brain
+  try {
+    const { saveBrainEntryBatch } = require('./brain-storage') as typeof import('./brain-storage');
+    saveBrainEntryBatch(
+      snapshot.exportedKnowledge.slice(0, 50).map(k => ({
+        content: k.content,
+        category: k.category as BrainCategory,
+        source: 'snapshot-import',
+        importance: k.importance,
+      }))
+    );
+    imported += snapshot.exportedKnowledge.length;
+  } catch { /* best-effort */ }
+
+  return { imported };
+}
+
 // ═══ HELPERS ═══
 
 function findCommonPatterns(texts: string[]): string[] {

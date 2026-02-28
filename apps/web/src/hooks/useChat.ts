@@ -19,6 +19,7 @@ import { MemoryManager } from '@/lib/autonomy/memory-manager';
 import { useTitanMemory } from '@/stores/titan-memory';
 import { useCodeDirectory } from '@/stores/code-directory';
 import { usePlanStore } from '@/stores/plan-store';
+import { useUserProfile } from '@/stores/user-profile-store';
 import { DESIGN_TEMPLATES, templateToPromptDirective } from '@/lib/plan/design-templates';
 import { OmegaFluency } from '@/lib/autonomy/omega-fluency';
 import { playBellSound } from '@/utils/notification-sound';
@@ -861,6 +862,8 @@ export function useChat({
               finalContent,
               Array.from(touchedFiles).slice(0, 20),
             );
+            useUserProfile.getState().extractFromMessage(msg);
+            useUserProfile.getState().bumpConversation();
           } catch { /* best-effort */ }
 
           // Forge: finalize quality scoring for this turn, store ID for next message

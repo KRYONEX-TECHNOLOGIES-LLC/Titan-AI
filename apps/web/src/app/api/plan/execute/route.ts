@@ -25,6 +25,13 @@ function isCommandSafe(command: string): boolean {
   return !DANGEROUS_PATTERNS.some(p => p.test(command));
 }
 
+const CODE_EXTENSIONS = /\.(ts|tsx|js|jsx|prisma|json|css|scss|html|md|sql|yaml|yml)$/i;
+const MIN_CONTENT_LENGTH = 20;
+
+function isCodeOrConfigFile(filePath: string): boolean {
+  return CODE_EXTENSIONS.test(filePath);
+}
+
 function executeTool(call: ToolCall): ToolResult {
   const workspace = call.workspacePath || process.cwd();
 
@@ -35,6 +42,12 @@ function executeTool(call: ToolCall): ToolResult {
       const content = (call.args.content as string) || '';
       if (!filePath) return { success: false, output: '', error: 'path is required' };
       if (!isPathSafe(filePath, workspace)) return { success: false, output: '', error: 'Path outside workspace' };
+      if (content.length === 0) {
+        return { success: false, output: '', error: 'File content must be non-empty. Every create_file must include full, production-ready content.' };
+      }
+      if (isCodeOrConfigFile(filePath) && content.trim().length < MIN_CONTENT_LENGTH) {
+        return { success: false, output: '', error: `File content must be substantive (min ${MIN_CONTENT_LENGTH} chars for code/config files). No placeholders or stubs.` };
+      }
       try {
         const fullPath = path.resolve(workspace, filePath);
         fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -174,21 +187,27 @@ const MAX_ROUNDS = 15;
 const MAX_REWORK_ATTEMPTS = 2;
 
 function buildSystemPrompt(workspacePath: string, designDirective?: string, previousFiles?: string[], systemContext?: string): string {
-  return `You are a senior full-stack developer executing a specific task in a real project. You MUST use tools to create files, write code, and verify your work.
+  return `You are executing a task under the ULTIMATE EXECUTION PROTOCOL. Your job is to complete every requirement with zero shortcuts and zero missed items. The user must not be able to point at anything and say "this is missing."
 
 WORKSPACE: ${workspacePath}
 ${designDirective ? `\nDESIGN SYSTEM:\n${designDirective}\nApply these exact colors, fonts, and styles to ALL UI components. Use modern CSS/Tailwind. Create visually polished, production-quality interfaces.\n` : ''}
 ${previousFiles?.length ? `\nFILES ALREADY CREATED BY PREVIOUS TASKS:\n${previousFiles.join('\n')}\nBuild on top of these. Import from them. Do not recreate them.\n` : ''}
 ${systemContext || ''}
 
+ULTIMATE PROTOCOL — MANDATORY:
+1. Call list_directory first to see project structure. Do not skip.
+2. For every subtask in the user message: produce at least one create_file or edit_file. No subtask left without a deliverable.
+3. Every create_file must contain FULL content (min 20+ chars for code files). Empty files or placeholder-only files are forbidden and will be rejected by the system.
+4. If modifying existing code: read_file first, then edit_file with exact old_string and new_string.
+5. After writing files: read_file each created path to verify. Fix any empty or incorrect file before finishing.
+6. Use run_command for package installs when the task requires new dependencies.
+7. Do not stop until: (a) every subtask has a file create/edit, (b) every created file has been read back and verified, (c) no TODOs or placeholders remain.
+
 RULES:
-1. You MUST call create_file for every new file. Do NOT just describe code — write it.
-2. Use list_directory and read_file to understand existing project structure before making changes.
-3. Write COMPLETE, production-quality code. No TODOs, no placeholders, no "implement later".
-4. Every component must have real styling, real logic, real content.
-5. Use modern best practices (React hooks, TypeScript, async/await, proper error handling).
-6. After creating files, read them back to verify they were created correctly.
-7. If a file already exists that you need to modify, use read_file first, then edit_file.
+- You MUST use tools. Do NOT describe code without writing it. create_file and edit_file are required for every change.
+- Write COMPLETE, production-quality code. No "implement later", no empty stubs.
+- Every component: real styling, real logic, real content. Modern best practices (TypeScript, error handling, etc.).
+- Never call create_file or write_file with empty or placeholder content. Every file must be complete and usable.
 
 AVAILABLE TOOLS: create_file, edit_file, read_file, list_directory, run_command, delete_file`;
 }
@@ -251,12 +270,26 @@ async function verifyTask(
     return { passed: false, feedback: 'No files were created. The task requires file creation.' };
   }
 
+  const subtaskMatch = taskPrompt.match(/expect at least (\d+) file|Total subtasks: (\d+)/i);
+  const requiredFiles = subtaskMatch ? Math.max(1, parseInt(subtaskMatch[1] || subtaskMatch[2] || '1', 10)) : 0;
+  if (requiredFiles > 0 && filesCreated.length < requiredFiles) {
+    return { passed: false, feedback: `Task required at least ${requiredFiles} file(s) (one per subtask). Only ${filesCreated.length} file(s) were created. Create or edit the missing deliverable(s).` };
+  }
+
   const fileContents: string[] = [];
   for (const fp of filesCreated.slice(0, 10)) {
     try {
       const fullPath = path.resolve(workspacePath, fp);
       if (fs.existsSync(fullPath)) {
         const content = fs.readFileSync(fullPath, 'utf-8');
+        const len = content.length;
+        const trimmed = content.trim().length;
+        if (len === 0) {
+          return { passed: false, feedback: `File "${fp}" is empty. All created files must contain real code or content.` };
+        }
+        if (isCodeOrConfigFile(fp) && trimmed < MIN_CONTENT_LENGTH) {
+          return { passed: false, feedback: `File "${fp}" is too short (${trimmed} chars). Code/config files must be substantive (min ${MIN_CONTENT_LENGTH} chars).` };
+        }
         fileContents.push(`--- ${fp} ---\n${content.slice(0, 2000)}`);
       } else {
         fileContents.push(`--- ${fp} --- FILE MISSING`);
@@ -278,11 +311,11 @@ Respond with ONLY a JSON object:
 { "passed": true/false, "feedback": "explanation of what passed or what needs to be fixed" }
 
 Check for:
-- All required files exist
-- Code is complete (no TODOs, no placeholders)
-- Imports are correct
-- No obvious syntax errors
-- Component/function structure is correct`,
+- Every subtask in the task requirements has a corresponding created or edited file (no subtask left without a deliverable).
+- All required files exist and have substantive content (no empty or stub files).
+- Code is complete (no TODOs, no placeholders, no "implement later").
+- Imports are correct; no obvious syntax errors; component/function structure is correct.
+- If anything in the task or subtasks is not fully implemented, or if the user could point at something and say "this is missing", return passed: false.`,
         },
         {
           role: 'user',
@@ -328,6 +361,7 @@ export async function POST(request: NextRequest) {
     const verificationResults: Array<{ attempt: number; passed: boolean; feedback: string }> = [];
 
     for (let attempt = 0; attempt <= MAX_REWORK_ATTEMPTS; attempt++) {
+      if (attempt > 0) filesCreated.length = 0;
       const messages: Array<{ role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown[] }> = [
         { role: 'system', content: sysPrompt },
         { role: 'user', content: attempt === 0

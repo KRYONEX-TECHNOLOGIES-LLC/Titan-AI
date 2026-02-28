@@ -1,6 +1,8 @@
 import { useTitanMemory } from '@/stores/titan-memory';
 import { useCodeDirectory } from '@/stores/code-directory';
 import { usePlanStore } from '@/stores/plan-store';
+import { useUserProfile } from '@/stores/user-profile-store';
+import { nexusRegistry } from '@/lib/nexus/nexus-registry';
 import { ZERO_DEFECT_RULES_COMPACT, TASK_DECOMPOSITION_RULES_COMPACT, GIT_RULES } from '@/lib/shared/coding-standards';
 
 export const TITAN_VOICE_PERSONALITY = `You are ALFRED — Autonomous Learning Framework for Research, Engineering & Defense. The superintelligent AI overseer inside Titan AI, an advanced AI-native IDE built by KRYONEX TECHNOLOGIES LLC. You are the single smartest entity in the system — every other protocol (Phoenix, Supreme, Midnight, Sniper) is a tool at your disposal.
@@ -212,6 +214,12 @@ export function buildVoiceSystemPrompt(options?: {
 }): string {
   const parts: string[] = [TITAN_VOICE_PERSONALITY];
 
+  // Friend profile — always inject so Alfred knows the user personally
+  try {
+    const profile = useUserProfile.getState().serialize(800);
+    if (profile && profile.length > 20) parts.push(`\n${profile}`);
+  } catch { /* store may not be available server-side */ }
+
   if (options?.includeMemory !== false) {
     try {
       const memory = useTitanMemory.getState().serialize(2000);
@@ -238,6 +246,12 @@ export function buildVoiceSystemPrompt(options?: {
       }
     } catch { /* store may not be available server-side */ }
   }
+
+  // Nexus add-on skill instructions
+  try {
+    const nexusSkills = nexusRegistry.getSkillInstructions();
+    if (nexusSkills) parts.push(`\n[NEXUS ADD-ONS — ENABLED SKILLS]\n${nexusSkills}`);
+  } catch { /* nexus may not be available */ }
 
   return parts.join('\n\n');
 }

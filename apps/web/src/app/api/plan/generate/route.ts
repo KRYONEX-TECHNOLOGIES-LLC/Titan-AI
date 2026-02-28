@@ -108,6 +108,12 @@ ORDERING:
 COVERAGE CHECKLIST (include tasks for ALL that apply):
 frontend, backend, database schema, auth, API routes, components, pages, layouts, navigation, state management, testing, deployment config, UI/UX polish, error handling, responsive design, loading states, empty states, form validation, environment variables, README.
 
+ULTIMATE PLAN PROTOCOL — NOTHING MISSED:
+- The plan will be executed by an agent that must implement every subtask. If a subtask is vague or missing a file path, the agent cannot deliver. Therefore: EVERY subtask MUST name a specific file path (e.g. src/components/X.tsx) or a specific command/config file. No "set up X" without saying which files.
+- At the end of execution, the user must not be able to say "you forgot Y." Every feature, page, component, route, and config the project needs must appear as a task or subtask with a clear deliverable.
+- Prefer more subtasks over fewer when in doubt. Breaking "Add auth" into "Create src/lib/auth.ts with verifyToken", "Create src/middleware/auth.ts for protected routes", "Add login form in src/components/LoginForm.tsx" is correct. One vague "Add auth" subtask is wrong.
+- Each task description must state WHICH files to create or edit and WHAT to put in them. No shortcuts.
+
 Each task should be completable in a single coding session.
 Be SPECIFIC about file paths. Do NOT wrap in markdown code fences. Return raw JSON only.`;
 }

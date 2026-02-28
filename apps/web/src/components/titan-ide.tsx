@@ -635,6 +635,23 @@ export default function TitanIDE() {
     };
   }, [fileSystem.workspacePath]);
 
+  // When plan execution finishes, refresh file tree once so UI is in sync
+  const planExecutingPrevRef = useRef(false);
+  useEffect(() => {
+    const unsub = usePlanStore.subscribe(() => {
+      const current = usePlanStore.getState().planExecuting;
+      if (planExecutingPrevRef.current && !current) {
+        const refreshResult = useFileStore.getState().refreshFileTree();
+        if (refreshResult && typeof (refreshResult as Promise<void>).catch === 'function') {
+          (refreshResult as Promise<void>).catch(() => {});
+        }
+      }
+      planExecutingPrevRef.current = current;
+    });
+    planExecutingPrevRef.current = usePlanStore.getState().planExecuting;
+    return unsub;
+  }, []);
+
   // Bridge command-registry's file.openFolder to the real useFileSystem.openFolder
   useEffect(() => {
     const handler = () => { fileSystem.openFolder(); };
