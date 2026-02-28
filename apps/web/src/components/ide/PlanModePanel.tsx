@@ -7,50 +7,14 @@ import { useFileStore } from '@/stores/file-store';
 import { DESIGN_TEMPLATES, templateToPromptDirective, type DesignTemplate } from '@/lib/plan/design-templates';
 import type { FileNode } from '@/stores/file-store';
 import { isElectron, electronAPI } from '@/lib/electron';
-import { getHiveContext } from '@/lib/hive-memory';
 
-interface ExecuteResult {
-  success: boolean;
-  logs?: Array<{ tool: string; args: Record<string, unknown>; success: boolean; output: string; error?: string }>;
-  filesCreated?: string[];
-  verificationResults?: Array<{ attempt: number; passed: boolean; feedback: string }>;
-  verified?: boolean;
-  error?: string;
-}
-
-async function executeTaskOnServer(
-  taskPrompt: string,
-  workspacePath: string,
-  designDirective?: string,
-  previousFiles?: string[],
-  systemContext?: string,
-): Promise<ExecuteResult> {
+function getCartographyContext(): string | undefined {
   try {
-    const res = await fetch('/api/plan/execute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taskPrompt, model: 'google/gemini-2.0-flash-001', workspacePath, designDirective, previousFiles, systemContext }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      return { success: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
-    }
-    const data = await res.json().catch(() => null);
-    if (!data || typeof data !== 'object') return { success: false, error: 'Invalid response from executor' };
-    return data as ExecuteResult;
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : 'Execution failed' };
-  }
-}
-
-function getDesignDirective(): string | undefined {
-  const memories = usePlanStore.getState().memories;
-  const designMemory = memories.find(m => m.pinned && m.title.startsWith('Design Template:'));
-  if (!designMemory) return undefined;
-  const templateName = designMemory.title.replace('Design Template: ', '');
-  const template = DESIGN_TEMPLATES.find(t => t.name === templateName);
-  if (!template) return designMemory.content;
-  return templateToPromptDirective(template);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useCartographyStore } = require('@/stores/cartography-store');
+    const ctx = useCartographyStore.getState().getContextForProtocol(3000);
+    return ctx || undefined;
+  } catch { return undefined; }
 }
 
 async function ensureProjectFolder(planName: string): Promise<boolean> {
@@ -192,6 +156,8 @@ export function PlanModePanel() {
     }
   }, []);
 
+  const sniperAbortRef = useRef<AbortController | null>(null);
+
   const handleStartPlan = useCallback(async (resume = false) => {
     if (totalTasks === 0 || executionRef.current) return;
 
@@ -201,217 +167,306 @@ export function PlanModePanel() {
 
     executionRef.current = true;
     store.startExecution(resume);
-
-    // Phase 1: Scan real file tree (skip on resume to save time)
-    if (!resume) {
-      try {
-        const fileTree = useFileStore.getState().fileTree;
-        const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
-        const res = await fetch('/api/plan/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileTree: treeStr }),
-        });
-        if (res.ok) {
-          const { directory } = await res.json();
-          useCodeDirectory.getState().setDirectory(directory);
-          store.setScanProgress(100);
-        }
-      } catch {
-        // scan is best-effort
-      }
-    }
-
     store.setExecutionStatus('executing');
+    store.setPlanExecuting(true);
 
-    // Phase 2: Execute tasks — when resuming, include failed tasks and use persisted file list
     const pendingTasks = Object.values(store.tasks)
       .filter(t => t.parentId === null && (resume ? t.status !== 'completed' : t.status === 'pending'))
       .sort((a, b) => a.phase - b.phase || a.order - b.order);
 
-    const allCreatedFiles: string[] = resume ? [...(usePlanStore.getState().execution.persistedCreatedFiles || [])] : [];
+    if (pendingTasks.length === 0) {
+      usePlanStore.getState().setExecutionStatus('done');
+      usePlanStore.getState().setPlanExecuting(false);
+      executionRef.current = false;
+      return;
+    }
 
-    const executeNext = async (index: number) => {
-      if (index >= pendingTasks.length) {
-        usePlanStore.getState().setExecutionStatus('done');
-        usePlanStore.getState().setCurrentTask(null);
-        usePlanStore.getState().setPlanExecuting(false);
-        executionRef.current = false;
+    const wsPath = useFileStore.getState().workspacePath || '';
+    const fileTree = useFileStore.getState().fileTree;
+    const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
 
-        // Final file tree refresh
-        try {
-          if (isElectron && electronAPI && useFileStore.getState().workspacePath) {
-            const rawTree = await electronAPI.fs.readDir(useFileStore.getState().workspacePath!);
-            if (rawTree) {
-              const normalised = (rawTree as Array<{ name: string; path: string; type: string; size?: number; children?: unknown[] }>).map(
-                (n) => ({ ...n, type: n.type === 'directory' ? 'folder' as const : 'file' as const }),
-              ) as FileNode[];
-              useFileStore.getState().setFileTree(normalised);
-            }
-          }
-        } catch { /* best effort */ }
-        return;
-      }
+    const taskList = pendingTasks.map(t => ({
+      id: t.id,
+      title: t.title,
+      description: `${t.description}${t.checklist.length > 0 ? '\n\nSubtasks:\n' + t.checklist.map((c, i) => `${i + 1}. ${c.label}`).join('\n') : ''}`,
+      phase: t.phase,
+      priority: t.priority,
+      tags: t.tags,
+      blockedBy: t.blockedBy,
+    }));
 
-      const currentExec = usePlanStore.getState().execution;
-      if (currentExec.status === 'idle') {
-        usePlanStore.getState().setPlanExecuting(false);
-        executionRef.current = false;
-        return;
-      }
-      if (currentExec.status === 'paused') {
-        setTimeout(() => void executeNext(index), 500);
-        return;
-      }
+    const planName = usePlanStore.getState().planName || 'project';
+    const goal = `Project: ${planName}\n\n${pendingTasks.map(t => `- ${t.title}: ${t.description}`).join('\n')}`;
 
-      const task = pendingTasks[index];
-      const ps = usePlanStore.getState();
-      ps.setCurrentTask(task.id);
-      ps.updateTask(task.id, { status: 'in_progress' });
+    usePlanStore.getState().addReport({
+      type: 'progress', severity: 'info',
+      title: 'Plan Sniper V2 -- Starting execution',
+      details: `${taskList.length} tasks queued for parallel execution via 5-role model orchestra`,
+      taskId: pendingTasks[0].id, resolved: true,
+    });
 
-      const wsPath = useFileStore.getState().workspacePath || '';
-      const codeDir = useCodeDirectory.getState().directory;
-      const fileTree = useFileStore.getState().fileTree;
-      const treeStr = fileTree.length > 0 ? serializeFileTree(fileTree) : '(empty workspace)';
+    const controller = new AbortController();
+    sniperAbortRef.current = controller;
 
-      const subtaskBlocks = task.checklist.length > 0
-        ? task.checklist.map((c, i) => `  ${i + 1}. ${c.label}\n     DELIVERABLE: One or more concrete files created or edited; outcome must be verifiable.`).join('\n')
-        : '';
-      const subtasksSection = task.checklist.length > 0
-        ? `\n\nSUBTASKS (every one must be completed — no exceptions):\n${subtaskBlocks}\n\nYou MUST produce at least one file create or edit per subtask. Total subtasks: ${task.checklist.length} → expect at least ${task.checklist.length} file operations (create_file or edit_file) unless a subtask is already satisfied by existing code.`
-        : '';
-
-      const taskPrompt = `═══ ULTIMATE EXECUTION PROTOCOL — NO SHORTCUTS, NOTHING MISSED ═══
-
-[TASK ${index + 1} of ${pendingTasks.length}] for project "${ps.planName || 'project'}"
-
-TASK: ${task.title}
-DESCRIPTION: ${task.description}
-PRIORITY: ${task.priority}
-TAGS: ${task.tags.join(', ')}${subtasksSection}
-
-═══ MANDATORY EXECUTION STEPS (follow in order) ═══
-1. Call list_directory (path: "." or relevant dir) to see current project structure. Do not skip.
-2. For EACH subtask above: create or edit the required file(s) with COMPLETE content. One subtask = at least one file create or edit. No placeholder files, no empty files, no "TODO" bodies.
-3. Every create_file must include FULL file content (imports, types, logic, styling). Minimum 20+ characters for code files.
-4. If a file already exists that you must change: call read_file first, then edit_file with exact old_string → new_string.
-5. After ALL files for this task are written: call read_file on each created path to verify content. If any file is empty or wrong, fix it with edit_file or create_file.
-6. If the task requires new dependencies: call run_command (e.g. npm install / pnpm add) before or after creating files as needed.
-7. Do not finish until every subtask has a corresponding deliverable (file created or edited with real content).
-
-═══ DEFINITION OF DONE (all must be true before you stop) ═══
-- list_directory was called at least once.
-- Every subtask has at least one file create or edit.
-- Every created/edited file has been read back and verified non-empty and correct.
-- No file contains only comments or placeholders; no "implement later" or empty stubs.
-- Imports and references are valid; no broken paths or missing exports.
-
-═══ ANTI-SHORTCUT RULES ═══
-- Never create an empty file. Never leave a file with only "// TODO" or similar.
-- Never skip a subtask. If there are ${task.checklist.length} subtasks, there must be at least ${task.checklist.length} file operations (unless a subtask is already done).
-- Never describe code without writing it. Use create_file or edit_file for every change.
-- At the end, the user must not be able to point at anything and say "this is missing" — every requirement in the task and subtasks must be implemented.`;
-
-      const designDirective = getDesignDirective();
-      const hiveMemory = getHiveContext(1500);
-      const systemContext = `${hiveMemory ? `\n[TITAN HIVE MEMORY]\n${hiveMemory}\n` : ''}\nCURRENT FILE TREE:\n${treeStr}\n${codeDir && codeDir.scannedAt > 0 ? `\nPROJECT ANALYSIS:\n${JSON.stringify(codeDir, null, 2).slice(0, 2000)}` : ''}`;
-
-      ps.addReport({
-        type: 'progress', severity: 'info',
-        title: `Starting: ${task.title}`,
-        details: `Task ${index + 1}/${pendingTasks.length}`,
-        taskId: task.id, resolved: true,
+    try {
+      const response = await fetch('/api/titan/sniper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          goal,
+          tasks: taskList,
+          workspacePath: wsPath,
+          fileTree: treeStr,
+          openFiles: [],
+          cartographyContext: getCartographyContext(),
+        }),
       });
 
+      if (!response.ok || !response.body) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`Plan Sniper request failed (${response.status}): ${errText.slice(0, 300)}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        if (!executionRef.current) {
+          try { reader.cancel(); } catch { /* ignore */ }
+          break;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const evt of events) {
+          const lines = evt.split('\n');
+          let eventType = 'message';
+          let data = '';
+          for (const line of lines) {
+            if (line.startsWith('event:')) eventType = line.slice(6).trim();
+            if (line.startsWith('data:')) data += line.slice(5).trim();
+          }
+          if (!data) continue;
+
+          try {
+            const payload = JSON.parse(data) as Record<string, unknown>;
+
+            switch (eventType) {
+              case 'scan_start':
+                usePlanStore.getState().addReport({
+                  type: 'progress', severity: 'info',
+                  title: 'SCANNER: Reading codebase...',
+                  details: `Model: ${String(payload.model || 'devstral-2')}`,
+                  taskId: pendingTasks[0].id, resolved: true,
+                });
+                break;
+
+              case 'scan_complete':
+                usePlanStore.getState().setScanProgress(100);
+                usePlanStore.getState().addReport({
+                  type: 'progress', severity: 'info',
+                  title: 'SCANNER: Codebase analysis complete',
+                  details: `Found ${payload.keyFilesCount} key files, ${payload.conventionsCount} conventions`,
+                  taskId: pendingTasks[0].id, resolved: true,
+                });
+                break;
+
+              case 'dag_created':
+                usePlanStore.getState().addReport({
+                  type: 'progress', severity: 'info',
+                  title: 'ARCHITECT: Execution DAG created',
+                  details: `${payload.nodeCount} tasks, ${payload.parallelizable} can run in parallel`,
+                  taskId: pendingTasks[0].id, resolved: true,
+                });
+                break;
+
+              case 'lane_start':
+                usePlanStore.getState().addReport({
+                  type: 'progress', severity: 'info',
+                  title: `CODER: Starting "${payload.title}"`,
+                  details: `Type: ${payload.taskType}, Risk: ${payload.risk}`,
+                  taskId: String(payload.nodeId || pendingTasks[0].id), resolved: true,
+                });
+                break;
+
+              case 'lane_status': {
+                const status = String(payload.status);
+                if (status === 'VERIFYING') {
+                  usePlanStore.getState().addReport({
+                    type: 'progress', severity: 'info',
+                    title: 'SENTINEL: Verifying code quality...',
+                    details: 'Checking acceptance criteria, imports, types',
+                    taskId: String(payload.nodeId || ''), resolved: true,
+                  });
+                }
+                break;
+              }
+
+              case 'lane_verified':
+                usePlanStore.getState().addReport({
+                  type: 'final_check', severity: 'info',
+                  title: 'SENTINEL: PASS',
+                  details: `${payload.criteriaMetCount}/${payload.criteriaTotalCount} acceptance criteria met`,
+                  taskId: String(payload.nodeId || ''), resolved: true,
+                });
+                break;
+
+              case 'lane_failed': {
+                const issues = Array.isArray(payload.issues) ? payload.issues : [];
+                usePlanStore.getState().addReport({
+                  type: 'error', severity: 'warning',
+                  title: 'SENTINEL: FAIL',
+                  details: issues.slice(0, 3).join('; ').slice(0, 400),
+                  taskId: String(payload.nodeId || ''), resolved: false,
+                });
+                break;
+              }
+
+              case 'lane_rework':
+                usePlanStore.getState().addReport({
+                  type: 'snitch', severity: 'info',
+                  title: `CODER: Reworking (attempt ${payload.attempt})`,
+                  details: Array.isArray(payload.issues) ? payload.issues.slice(0, 2).join('; ').slice(0, 300) : '',
+                  taskId: String(payload.nodeId || ''), resolved: true,
+                });
+                break;
+
+              case 'task_status': {
+                const { taskId, status: taskStatus } = payload as { taskId: string; status: string };
+                if (taskStatus === 'completed') {
+                  usePlanStore.getState().updateTask(String(taskId), { status: 'completed', completedAt: Date.now() });
+                  usePlanStore.getState().markTaskExecuted(String(taskId), true);
+                  const completedTask = usePlanStore.getState().tasks[String(taskId)];
+                  if (completedTask?.checklist?.length > 0) {
+                    usePlanStore.getState().updateTask(String(taskId), {
+                      checklist: completedTask.checklist.map(c => ({ ...c, checked: true })),
+                    });
+                  }
+                  const refreshResult = useFileStore.getState().refreshFileTree();
+                  if (refreshResult && typeof (refreshResult as Promise<void>).catch === 'function') {
+                    (refreshResult as Promise<void>).catch(() => {});
+                  }
+                } else if (taskStatus === 'failed') {
+                  usePlanStore.getState().updateTask(String(taskId), { status: 'failed' });
+                  usePlanStore.getState().markTaskExecuted(String(taskId), false);
+                } else if (taskStatus === 'in_progress') {
+                  usePlanStore.getState().updateTask(String(taskId), { status: 'in_progress' });
+                  usePlanStore.getState().setCurrentTask(String(taskId));
+                } else if (taskStatus === 'blocked') {
+                  usePlanStore.getState().updateTask(String(taskId), { status: 'blocked' });
+                }
+                break;
+              }
+
+              case 'judge_start':
+                usePlanStore.getState().addReport({
+                  type: 'progress', severity: 'info',
+                  title: 'JUDGE: Final quality review...',
+                  details: 'Reviewing all completed work holistically',
+                  taskId: pendingTasks[0].id, resolved: true,
+                });
+                break;
+
+              case 'judge_complete': {
+                const pass = Boolean(payload.pass);
+                usePlanStore.getState().addReport({
+                  type: pass ? 'final_check' : 'snitch', severity: pass ? 'info' : 'warning',
+                  title: `JUDGE: Score ${payload.score}/10 -- ${pass ? 'PASS' : 'NEEDS WORK'}`,
+                  details: `${payload.issueCount || 0} issues found, ${payload.checklistCount || 0} checklist items updated`,
+                  taskId: pendingTasks[0].id, resolved: pass,
+                });
+                if (Array.isArray(payload.checklistUpdates)) {
+                  for (const update of payload.checklistUpdates as Array<{ id: string; checked: boolean; notes: string }>) {
+                    usePlanStore.getState().toggleChecklistItem(update.id);
+                    if (update.notes) usePlanStore.getState().updateChecklistNotes(update.id, update.notes);
+                  }
+                }
+                break;
+              }
+
+              case 'pipeline_complete':
+                usePlanStore.getState().addReport({
+                  type: 'progress', severity: 'info',
+                  title: `Plan Sniper V2: ${payload.completedNodes}/${payload.totalNodes} tasks completed`,
+                  details: `Judge: ${payload.judgeScore}/10 | Cost: $${Number(payload.totalCost || 0).toFixed(4)} | Duration: ${Math.round(Number(payload.durationMs || 0) / 1000)}s`,
+                  taskId: pendingTasks[0].id, resolved: Boolean(payload.success),
+                });
+                break;
+
+              case 'error':
+                usePlanStore.getState().addReport({
+                  type: 'error', severity: 'critical',
+                  title: 'Sniper Error',
+                  details: String(payload.message || '').slice(0, 400),
+                  taskId: pendingTasks[0].id, resolved: false,
+                });
+                break;
+
+              case 'sniper_error':
+                usePlanStore.getState().addReport({
+                  type: 'error', severity: 'critical',
+                  title: 'Plan Sniper V2 Error',
+                  details: String(payload.message || '').slice(0, 400),
+                  taskId: pendingTasks[0].id, resolved: false,
+                });
+                break;
+            }
+          } catch { /* skip malformed SSE */ }
+        }
+      }
+
+      // Final file tree refresh
       try {
-        let result = await executeTaskOnServer(taskPrompt, wsPath, designDirective, [...allCreatedFiles], systemContext);
-        if (!result.success && /network|internet|api|unreachable|timeout|rate limit|429|502|503/i.test(result.error || '')) {
-          usePlanStore.getState().addReport({ type: 'progress', severity: 'info', title: 'Retrying after API/network error...', details: 'One automatic retry.', taskId: task.id, resolved: true });
-          result = await executeTaskOnServer(taskPrompt, wsPath, designDirective, [...allCreatedFiles], systemContext);
+        if (isElectron && electronAPI && useFileStore.getState().workspacePath) {
+          const rawTree = await electronAPI.fs.readDir(useFileStore.getState().workspacePath!);
+          if (rawTree) {
+            const normalised = (rawTree as Array<{ name: string; path: string; type: string; size?: number; children?: unknown[] }>).map(
+              (n) => ({ ...n, type: n.type === 'directory' ? 'folder' as const : 'file' as const }),
+            ) as FileNode[];
+            useFileStore.getState().setFileTree(normalised);
+          }
         }
+      } catch { /* best effort */ }
 
-        if (result.logs) {
-          for (const log of result.logs) {
-            usePlanStore.getState().addReport({
-              type: log.success ? 'progress' : 'error',
-              severity: log.success ? 'info' : 'warning',
-              title: `${log.success ? '✓' : '✗'} ${log.tool}`,
-              details: log.success ? (log.output || '').slice(0, 200) : (log.error || log.output || '').slice(0, 300),
-              taskId: task.id, resolved: log.success,
-            });
-          }
-        }
-
-        if (result.filesCreated) {
-          allCreatedFiles.push(...result.filesCreated);
-        }
-
-        if (result.verificationResults) {
-          for (const vr of result.verificationResults) {
-            usePlanStore.getState().addReport({
-              type: vr.passed ? 'final_check' : 'snitch',
-              severity: vr.passed ? 'info' : 'warning',
-              title: vr.passed ? `Verification passed (attempt ${vr.attempt + 1})` : `Verification failed (attempt ${vr.attempt + 1})`,
-              details: vr.feedback.slice(0, 400),
-              taskId: task.id, resolved: vr.passed,
-            });
-          }
-        }
-
-        if (result.success) {
-          usePlanStore.getState().updateTask(task.id, { status: 'completed', completedAt: Date.now() });
-          usePlanStore.getState().markTaskExecuted(task.id, true);
-          if (result.filesCreated?.length) usePlanStore.getState().appendCreatedFiles(result.filesCreated);
-          if (task.checklist.length > 0) {
-            const checked = task.checklist.map(c => ({ ...c, checked: true }));
-            usePlanStore.getState().updateTask(task.id, { checklist: checked });
-          }
-          const refreshResult = useFileStore.getState().refreshFileTree();
-          if (refreshResult && typeof (refreshResult as Promise<void>).catch === 'function') {
-            (refreshResult as Promise<void>).catch(() => {});
-          }
-        } else {
-          const isApiError = /network|internet|api|unreachable|timeout|rate limit|429|502|503/i.test(result.error || '');
-          usePlanStore.getState().updateTask(task.id, { status: isApiError ? 'pending' : 'failed' });
-          usePlanStore.getState().markTaskExecuted(task.id, false);
-          usePlanStore.getState().addReport({
-            type: 'error', severity: 'warning',
-            title: isApiError ? `Task interrupted (API/network): ${task.title}` : `Task failed: ${task.title}`,
-            details: isApiError ? (result.error || '') + ' — Click Resume to retry from here.' : (result.error || 'Server returned failure'),
-            taskId: task.id, resolved: false,
-          });
-          if (isApiError) {
-            usePlanStore.getState().setExecutionStatus('idle');
-            usePlanStore.getState().setPlanExecuting(false);
-            executionRef.current = false;
-          }
-        }
-      } catch (err) {
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        usePlanStore.getState().addReport({
+          type: 'progress', severity: 'info',
+          title: 'Plan Sniper V2 stopped by user',
+          details: 'Execution was cancelled.',
+          taskId: pendingTasks[0]?.id || '', resolved: true,
+        });
+      } else {
         const msg = err instanceof Error ? err.message : String(err);
-        const isApiError = /network|internet|api|unreachable|timeout|fetch|econnrefused/i.test(msg);
-        usePlanStore.getState().updateTask(task.id, { status: isApiError ? 'pending' : 'failed' });
-        usePlanStore.getState().markTaskExecuted(task.id, false);
+        const isApiError = /network|internet|api|unreachable|timeout|fetch|econnrefused|rate limit|429|502|503/i.test(msg);
         usePlanStore.getState().addReport({
           type: 'error', severity: 'critical',
-          title: isApiError ? `Task interrupted (connection): ${task.title}` : `Task crashed: ${task.title}`,
-          details: isApiError ? msg + ' — Click Resume to retry from here.' : msg,
-          taskId: task.id, resolved: false,
+          title: isApiError ? 'Plan Sniper interrupted (connection)' : 'Plan Sniper failed',
+          details: isApiError ? msg + ' -- Click Resume to retry.' : msg,
+          taskId: pendingTasks[0]?.id || '', resolved: false,
         });
         if (isApiError) {
-          usePlanStore.getState().setExecutionStatus('idle');
-          usePlanStore.getState().setPlanExecuting(false);
-          executionRef.current = false;
+          for (const t of pendingTasks) {
+            const taskStatus = usePlanStore.getState().tasks[t.id]?.status;
+            if (taskStatus === 'in_progress') {
+              usePlanStore.getState().updateTask(t.id, { status: 'pending' });
+            }
+          }
         }
       }
-
-      const execStatus = usePlanStore.getState().execution.status;
-      if (execStatus === 'executing' || execStatus === 'paused') {
-        setTimeout(() => void executeNext(index + 1), 200);
-      }
-    };
-
-    store.setPlanExecuting(true);
-    void executeNext(0);
+    } finally {
+      sniperAbortRef.current = null;
+      usePlanStore.getState().setExecutionStatus('done');
+      usePlanStore.getState().setCurrentTask(null);
+      usePlanStore.getState().setPlanExecuting(false);
+      executionRef.current = false;
+    }
   }, [store, totalTasks]);
 
   const handlePausePlan = useCallback(() => {
@@ -424,6 +479,8 @@ TAGS: ${task.tags.join(', ')}${subtasksSection}
 
   const handleStopPlan = useCallback(() => {
     executionRef.current = false;
+    sniperAbortRef.current?.abort();
+    sniperAbortRef.current = null;
     store.stopExecution();
   }, [store]);
 

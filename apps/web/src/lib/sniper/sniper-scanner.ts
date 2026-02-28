@@ -1,5 +1,5 @@
-// ── Titan Plan Sniper — SCANNER Role ─────────────────────────────────────────
-// Reads the entire codebase using Devstral 2 (FREE) to map dependencies,
+// ── Titan Plan Sniper V2 — SCANNER Role ──────────────────────────────────────
+// Reads the entire codebase using Devstral 2 ($0.05/$0.22) to map dependencies,
 // conventions, and existing patterns before any code generation happens.
 
 import { callModelDirect } from '@/lib/llm-call';

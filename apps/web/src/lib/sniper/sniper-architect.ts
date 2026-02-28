@@ -1,5 +1,5 @@
-// ── Titan Plan Sniper — ARCHITECT Role ───────────────────────────────────────
-// Uses MiMo-V2-Flash (FREE) to create a task DAG from Plan Mode tasks,
+// ── Titan Plan Sniper V2 — ARCHITECT Role ────────────────────────────────────
+// Uses DeepSeek V3.2 ($0.25/$0.38) to create a task DAG from Plan Mode tasks,
 // assign risk levels, identify dependencies, and route to optimal models.
 
 import { callModelDirect } from '@/lib/llm-call';

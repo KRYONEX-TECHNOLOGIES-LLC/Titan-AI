@@ -1,11 +1,11 @@
-// ── Titan Plan Sniper — Orchestrator ─────────────────────────────────────────
-// Main loop connecting all 7 roles with up to 8 parallel worker lanes.
-// Flow: SCANNER → ARCHITECT → parallel(CODER → EXECUTOR → SENTINEL) → JUDGE
+// ── Titan Plan Sniper V2 — Orchestrator ──────────────────────────────────────
+// Main loop connecting all roles with up to 8 parallel worker lanes.
+// V2 Flow: SCANNER -> ARCHITECT -> parallel(CODER [direct tool calling] -> SENTINEL) -> JUDGE
+// EXECUTOR role has been eliminated -- CODER now calls tools directly.
 
 import { runScanner } from './sniper-scanner';
 import { runArchitect } from './sniper-architect';
-import { runWorker } from './sniper-worker';
-import { runExecutor, type ToolCallFn } from './sniper-executor';
+import { runWorker, type ToolCallFn } from './sniper-worker';
 import { runSentinel } from './sniper-sentinel';
 import { runJudge } from './sniper-judge';
 import {
@@ -90,7 +90,6 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
     opts.cartographyContext,
   );
 
-  // Update DAG ID in emit
   const emitWithDag = (type: string, data: Record<string, unknown>, laneId?: string, nodeId?: string) => {
     opts.onEvent({
       type: type as SniperEvent['type'],
@@ -107,6 +106,8 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
   const lanes: SniperLane[] = [];
   const completedNodeIds = new Set<string>();
   const failedNodeIds = new Set<string>();
+  let consecutiveFailures = 0;
+  let circuitBroken = false;
 
   const getReadyNodes = (): SniperDAGNode[] => {
     return dag.nodes.filter(node =>
@@ -147,26 +148,39 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
     }
 
     for (let attempt = 0; attempt <= config.maxReworkAttempts; attempt++) {
-      // CODER
+      // CODER (with direct tool calling -- no EXECUTOR needed)
       lane.status = 'CODING';
       emitWithDag('lane_status', { status: 'CODING', attempt }, laneId, node.id);
 
-      const codeArtifact = await runWorker(node, scanResult, config, costTracker, fileContents);
+      const laneTimeout = config.laneTimeoutMs;
+      let codeArtifact;
+
+      try {
+        codeArtifact = await Promise.race([
+          runWorker(node, scanResult, config, costTracker, opts.executeTool, fileContents),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Lane timeout after ${laneTimeout / 1000}s`)), laneTimeout)
+          ),
+        ]);
+      } catch (err) {
+        lane.status = 'FAILED';
+        lane.completedAt = Date.now();
+        lane.metrics.durationMs = lane.completedAt - lane.startedAt;
+        emitWithDag('lane_failed', {
+          issues: [(err as Error).message],
+        }, laneId, node.id);
+        opts.onTaskStatusUpdate?.(node.planTaskId, 'failed', [(err as Error).message]);
+        return lane;
+      }
+
       lane.codeArtifact = codeArtifact;
+      lane.metrics.toolCallCount += codeArtifact.toolCalls.length;
 
-      // EXECUTOR
-      lane.status = 'EXECUTING';
-      emitWithDag('lane_status', { status: 'EXECUTING' }, laneId, node.id);
-
-      const execResult = await runExecutor(codeArtifact, config, costTracker, opts.executeTool);
-      codeArtifact.toolCalls = execResult.toolCalls;
-      lane.metrics.toolCallCount += execResult.toolCalls.length;
-
-      // SENTINEL
+      // SENTINEL -- verify the CODER's direct tool call results
       lane.status = 'VERIFYING';
       emitWithDag('lane_status', { status: 'VERIFYING' }, laneId, node.id);
 
-      const verdict = await runSentinel(node, codeArtifact, execResult.toolCalls, config, costTracker);
+      const verdict = await runSentinel(node, codeArtifact, codeArtifact.toolCalls, config, costTracker);
       lane.sentinelVerdict = verdict;
 
       if (verdict.pass) {
@@ -183,7 +197,6 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
         return lane;
       }
 
-      // Rework if not passed and attempts remain
       if (attempt < config.maxReworkAttempts) {
         lane.status = 'REWORKING';
         lane.reworkCount++;
@@ -192,7 +205,6 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
           issues: verdict.issues,
         }, laneId, node.id);
 
-        // Enrich the node description with sentinel feedback for the next attempt
         node.description += `\n\nPrevious attempt failed. Issues: ${verdict.issues.join('; ')}. Suggestions: ${verdict.suggestions.join('; ')}`;
       }
     }
@@ -210,13 +222,25 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
     return lane;
   };
 
-  // Parallel execution loop
+  // Parallel execution loop with circuit breaker
   while (completedNodeIds.size + failedNodeIds.size < dag.nodes.length) {
+    if (circuitBroken) {
+      const remaining = dag.nodes.filter(n => n.status === 'pending');
+      for (const node of remaining) {
+        node.status = 'failed';
+        failedNodeIds.add(node.id);
+        opts.onTaskStatusUpdate?.(node.planTaskId, 'blocked');
+      }
+      emitWithDag('error', {
+        message: `Circuit breaker tripped: ${config.circuitBreaker.consecutiveFailuresThreshold} consecutive lane failures. Remaining ${remaining.length} tasks marked blocked.`,
+      });
+      break;
+    }
+
     const readyNodes = getReadyNodes();
     if (readyNodes.length === 0) {
       const remaining = dag.nodes.filter(n => n.status === 'pending');
       if (remaining.length > 0) {
-        // All remaining nodes have unmet dependencies — mark as failed
         for (const node of remaining) {
           node.status = 'failed';
           failedNodeIds.add(node.id);
@@ -226,7 +250,6 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
       break;
     }
 
-    // Launch up to maxConcurrentLanes in parallel
     const batch = readyNodes.slice(0, config.maxConcurrentLanes);
     for (const node of batch) {
       node.status = 'dispatched';
@@ -240,9 +263,15 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
       if (lane.status === 'VERIFIED' || lane.status === 'COMPLETE') {
         node.status = 'complete';
         completedNodeIds.add(node.id);
+        consecutiveFailures = 0;
       } else {
         node.status = 'failed';
         failedNodeIds.add(node.id);
+        consecutiveFailures++;
+
+        if (config.circuitBreaker.enabled && consecutiveFailures >= config.circuitBreaker.consecutiveFailuresThreshold) {
+          circuitBroken = true;
+        }
       }
     }
   }
@@ -263,7 +292,7 @@ export async function orchestrateSniper(opts: SniperOrchestrateOptions): Promise
     totalCost: costTracker.totalCost,
     totalDurationMs,
     summary: [
-      `Plan Sniper completed: ${completedNodeIds.size}/${dag.nodes.length} tasks`,
+      `Plan Sniper V2 completed: ${completedNodeIds.size}/${dag.nodes.length} tasks`,
       `Judge score: ${judgeVerdict.score}/10`,
       `Total cost: $${costTracker.totalCost.toFixed(4)}`,
       `Duration: ${Math.round(totalDurationMs / 1000)}s`,

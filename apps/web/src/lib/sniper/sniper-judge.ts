@@ -1,4 +1,4 @@
-// ── Titan Plan Sniper — JUDGE Role ───────────────────────────────────────────
+// ── Titan Plan Sniper V2 — JUDGE Role ────────────────────────────────────────
 // Uses Qwen3.5 Plus ($0.40/$2, 1M context) for final quality gate.
 // Reviews the entire completed project, fills the common-sense checklist,
 // and produces a final verdict.

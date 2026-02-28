@@ -186,33 +186,57 @@ pnpm --filter @titan/forge run eval
 
 ---
 
-## Titan Plan Sniper Protocol
+## Titan Plan Sniper V2 Protocol
 
-The Plan Sniper is a 7-role multi-model orchestra that executes Plan Mode tasks using specialized cheap models. When the user selects "Titan Plan Sniper" from the model dropdown, all conversation goes through the sniper pipeline.
+Plan Sniper V2 is a 5-role multi-model orchestra that executes Plan Mode tasks. It is the **default execution engine for Plan Mode** -- when you hit "Start Plan", all tasks are sent to Sniper V2 for parallel execution with full verification.
+
+### V2 Architecture (eliminates EXECUTOR bottleneck)
+
+In V1, the CODER generated text and the EXECUTOR translated it into tool calls. This two-step process lost information and was error-prone. **V2 eliminates the EXECUTOR entirely** -- the CODER now uses native OpenAI function-calling API to execute tools directly (create_file, edit_file, run_command, etc.).
 
 ### Roles & Models
 
-| Role | Model | Cost | Purpose |
-|------|-------|------|---------|
-| SCANNER | Devstral 2 | FREE | Reads codebase, maps dependencies |
-| ARCHITECT | MiMo-V2-Flash | FREE | Creates task DAG, assigns risk |
-| CODER (low/med) | MiniMax M2.1 | $0.28/M in | Generates code |
-| CODER (high) | DeepSeek V3.2 | $0.25/M in | High-risk code |
-| EXECUTOR | Qwen3 Coder Next | $0.12/M in | Applies edits, runs commands |
-| SENTINEL | Seed 1.6 | $0.25/M in | Verifies each task |
-| JUDGE | Qwen3.5 Plus | $0.40/M in | Final quality gate |
+| Role | Model | Cost ($/1M tokens in/out) | Purpose |
+|------|-------|---------------------------|---------|
+| SCANNER | Devstral 2 | $0.05 / $0.22 | Reads codebase, maps dependencies and conventions |
+| ARCHITECT | DeepSeek V3.2 | $0.25 / $0.38 | Creates task DAG, assigns risk levels, routes to models |
+| CODER (low/med risk) | Qwen3 Coder | FREE | Direct tool-calling code generation |
+| CODER (high/critical risk) | DeepSeek V3.2 | $0.25 / $0.38 | High-risk code with direct tool calling |
+| SENTINEL | DeepSeek V3.2 | $0.25 / $0.38 | Rigorous per-task verification against acceptance criteria |
+| JUDGE | Qwen3.5 Plus | $0.40 / $2.00 | Final holistic quality gate + checklist |
 
 ### Flow
 
-1. User describes what to build in Plan Mode
-2. Sniper generates full task list via `bulkAddTasks()`
-3. 8 parallel worker lanes execute tasks
-4. Real-time status updates in Plan Mode panel
-5. Cost: ~$5-15 for a complete 50-task app (vs $500-1000 with Opus/GPT-5)
+1. User generates a plan in Plan Mode (tasks + subtasks)
+2. User clicks "Start Plan" -- all tasks sent to `/api/titan/sniper`
+3. SCANNER reads the codebase and maps conventions
+4. ARCHITECT converts plan tasks into a parallel execution DAG
+5. Up to 8 parallel worker lanes: CODER (direct tool calling) -> SENTINEL verification
+6. Failed tasks get up to 2 rework attempts with sentinel feedback
+7. Circuit breaker: 3 consecutive lane failures pauses remaining tasks
+8. JUDGE does final holistic review and fills common-sense checklist
+9. Real-time SSE events update task statuses in Plan Mode panel
+10. Cost: ~$2-10 for a complete 50-task app (cheaper than V1 due to eliminating EXECUTOR)
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `apps/web/src/lib/sniper/sniper-model.ts` | Config, roles, types, cost tracker, DAG types |
+| `apps/web/src/lib/sniper/sniper-scanner.ts` | SCANNER: Codebase analysis |
+| `apps/web/src/lib/sniper/sniper-architect.ts` | ARCHITECT: Plan tasks -> parallel DAG |
+| `apps/web/src/lib/sniper/sniper-worker.ts` | CODER: Direct tool-calling implementation |
+| `apps/web/src/lib/sniper/sniper-sentinel.ts` | SENTINEL: Per-task verification |
+| `apps/web/src/lib/sniper/sniper-judge.ts` | JUDGE: Final quality gate |
+| `apps/web/src/lib/sniper/sniper-orchestrator.ts` | Main loop: SCANNER -> ARCHITECT -> parallel lanes -> JUDGE |
+| `apps/web/src/lib/sniper/sniper-executor.ts` | DEPRECATED (V1 only, not imported) |
+| `apps/web/src/app/api/titan/sniper/route.ts` | SSE API route for sniper execution |
+| `apps/web/src/hooks/useSniperChat.ts` | Chat hook for sniper model dropdown |
+| `apps/web/src/components/ide/PlanModePanel.tsx` | Plan Mode UI -- wired to Sniper V2 |
 
 ### API Route
 
-`POST /api/titan/sniper` — SSE streaming endpoint for sniper execution.
+`POST /api/titan/sniper` -- SSE streaming endpoint. Accepts `goal`, `tasks[]`, `workspacePath`, `fileTree`, `openFiles`, `cartographyContext`. Streams events: `scan_start`, `scan_complete`, `dag_created`, `lane_start`, `lane_status`, `lane_verified`, `lane_failed`, `lane_rework`, `task_status`, `judge_start`, `judge_complete`, `pipeline_complete`, `sniper_error`.
 
 ---
 
@@ -311,7 +335,7 @@ Midnight Mode is the autonomous build system that executes projects end-to-end.
 | Protocol | Models | Best For |
 |----------|--------|----------|
 | Phoenix Protocol | Gemini Flash (Scout), DeepSeek (Coder), Claude (Architect) | General tasks |
-| Plan Sniper | 7 specialized models | Plan Mode execution |
+| Plan Sniper V2 | 5 specialized models (SCANNER/ARCHITECT/CODER/SENTINEL/JUDGE) | Plan Mode execution (default engine) |
 | Supreme Protocol | Multi-pass verification | High-stakes changes |
 | Omega Protocol | Long-horizon governance | Complex refactors |
 

@@ -426,6 +426,8 @@ async function runToolLoop(
   logs: ExecLog[],
   filesCreated: string[],
 ): Promise<{ success: boolean; error?: string }> {
+  let toolCallCount = 0;
+
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let response: ModelToolResponse;
     try {
@@ -452,9 +454,14 @@ async function runToolLoop(
     for (const tc of response.toolCalls) {
       const result = await executeTool({ tool: tc.name, args: tc.arguments, workspacePath });
       logs.push({ tool: tc.name, args: tc.arguments, success: result.success, output: result.output.slice(0, 1000), error: result.error });
+      toolCallCount++;
 
       if ((tc.name === 'create_file' || tc.name === 'write_file') && result.success) {
         filesCreated.push(tc.arguments.path as string);
+      }
+      if (tc.name === 'edit_file' && result.success) {
+        const editPath = tc.arguments.path as string;
+        if (!filesCreated.includes(editPath)) filesCreated.push(editPath);
       }
 
       messages.push({
@@ -463,6 +470,10 @@ async function runToolLoop(
         tool_call_id: tc.id,
       });
     }
+  }
+
+  if (toolCallCount === 0) {
+    return { success: false, error: 'LLM returned no tool calls. No work was done.' };
   }
   return { success: true };
 }
@@ -541,7 +552,7 @@ Check for:
       return { passed: text.toLowerCase().includes('"passed": true') || text.toLowerCase().includes('"passed":true'), feedback: text.slice(0, 500) };
     }
   } catch {
-    return { passed: true, feedback: 'Verification skipped (LLM call failed)' };
+    return { passed: false, feedback: 'Verification failed: LLM call error. Task needs manual review.' };
   }
 }
 
@@ -568,7 +579,6 @@ export async function POST(request: NextRequest) {
     const verificationResults: Array<{ attempt: number; passed: boolean; feedback: string }> = [];
 
     for (let attempt = 0; attempt <= MAX_REWORK_ATTEMPTS; attempt++) {
-      if (attempt > 0) filesCreated.length = 0;
       const messages: Array<{ role: string; content: string | null; tool_call_id?: string; tool_calls?: unknown[] }> = [
         { role: 'system', content: sysPrompt },
         { role: 'user', content: attempt === 0
@@ -599,7 +609,7 @@ export async function POST(request: NextRequest) {
 
     const finalPassed = verificationResults.length > 0 && verificationResults[verificationResults.length - 1].passed;
 
-    return NextResponse.json({ success: true, logs, filesCreated, verificationResults, verified: finalPassed });
+    return NextResponse.json({ success: finalPassed, logs, filesCreated, verificationResults, verified: finalPassed });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

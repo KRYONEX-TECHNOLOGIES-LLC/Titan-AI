@@ -1,5 +1,5 @@
-// ── Titan Plan Sniper — SENTINEL Role ────────────────────────────────────────
-// Uses ByteDance Seed 1.6 ($0.25/$2) for deep-thinking verification.
+// ── Titan Plan Sniper V2 — SENTINEL Role ─────────────────────────────────────
+// Uses DeepSeek V3.2 ($0.25/$0.38) for rigorous verification.
 // Checks each completed task against acceptance criteria, lint, and types.
 
 import { callModelDirect } from '@/lib/llm-call';

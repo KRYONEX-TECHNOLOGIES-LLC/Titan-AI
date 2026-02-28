@@ -6,7 +6,6 @@ export type SniperRole =
   | 'SCANNER'
   | 'ARCHITECT'
   | 'CODER'
-  | 'EXECUTOR'
   | 'SENTINEL'
   | 'JUDGE';
 
@@ -30,7 +29,6 @@ export type SniperLaneStatus =
   | 'SCANNING'
   | 'PLANNING'
   | 'CODING'
-  | 'EXECUTING'
   | 'VERIFYING'
   | 'VERIFIED'
   | 'REWORKING'
@@ -45,7 +43,6 @@ export interface SniperModelMap {
   architect: string;
   coderLow: string;
   coderHigh: string;
-  executor: string;
   sentinel: string;
   judge: string;
 }
@@ -54,11 +51,8 @@ export interface SniperModelMap {
 
 const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'mistralai/devstral-2-2512':        { input: 0.05, output: 0.22 },
-  'xiaomi/mimo-v2-flash':             { input: 0.00, output: 0.00 },
-  'minimax/minimax-m2.1':             { input: 0.28, output: 1.20 },
   'deepseek/deepseek-v3.2':           { input: 0.25, output: 0.38 },
-  'qwen/qwen3-coder-next':            { input: 0.12, output: 0.75 },
-  'bytedance-research/seed-1.6':      { input: 0.25, output: 2.00 },
+  'qwen/qwen3-coder':                 { input: 0.00, output: 0.00 },
   'qwen/qwen3.5-plus-02-15':          { input: 0.40, output: 2.00 },
 };
 
@@ -67,6 +61,11 @@ const MODEL_COSTS: Record<string, { input: number; output: number }> = {
 export interface SniperBudget {
   perRequest: number;
   daily: number;
+}
+
+export interface CircuitBreakerConfig {
+  consecutiveFailuresThreshold: number;
+  enabled: boolean;
 }
 
 export interface SniperConfig {
@@ -79,26 +78,30 @@ export interface SniperConfig {
   tokenBudget: SniperBudget;
   sentinelThreshold: number;
   judgeThreshold: number;
+  circuitBreaker: CircuitBreakerConfig;
 }
 
 export const DEFAULT_SNIPER_CONFIG: SniperConfig = {
   models: {
     scanner:   'mistralai/devstral-2-2512',
-    architect: 'xiaomi/mimo-v2-flash',
-    coderLow:  'minimax/minimax-m2.1',
+    architect: 'deepseek/deepseek-v3.2',
+    coderLow:  'qwen/qwen3-coder',
     coderHigh: 'deepseek/deepseek-v3.2',
-    executor:  'qwen/qwen3-coder-next',
-    sentinel:  'bytedance-research/seed-1.6',
+    sentinel:  'deepseek/deepseek-v3.2',
     judge:     'qwen/qwen3.5-plus-02-15',
   },
   maxConcurrentLanes: 8,
   maxReworkAttempts: 2,
   maxWorkerToolCalls: 30,
-  maxWorkerIterations: 15,
+  maxWorkerIterations: 20,
   laneTimeoutMs: 300_000,
   tokenBudget: { perRequest: 800_000, daily: 20_000_000 },
   sentinelThreshold: 6,
   judgeThreshold: 7,
+  circuitBreaker: {
+    consecutiveFailuresThreshold: 3,
+    enabled: true,
+  },
 };
 
 // ── Task Type → Risk Routing ────────────────────────────────────────────────
@@ -132,7 +135,6 @@ export function getModelForRole(role: SniperRole, config: SniperConfig, risk?: R
     case 'SCANNER':   return config.models.scanner;
     case 'ARCHITECT': return config.models.architect;
     case 'CODER':     return getCoderModel(risk ?? 'medium', config);
-    case 'EXECUTOR':  return config.models.executor;
     case 'SENTINEL':  return config.models.sentinel;
     case 'JUDGE':     return config.models.judge;
   }
