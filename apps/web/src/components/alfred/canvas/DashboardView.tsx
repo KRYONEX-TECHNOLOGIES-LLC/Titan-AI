@@ -1,13 +1,76 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useAlfredCanvas, type AgentInfo } from '@/stores/alfred-canvas-store';
 
 type FilterTab = 'all' | 'running' | 'completed' | 'failed';
 
+interface LiveMetric {
+  id: string;
+  label: string;
+  value: string | number;
+  change?: number;
+  color: string;
+  icon: 'chart' | 'bolt' | 'clock' | 'dollar' | 'cpu' | 'task';
+}
+
+function useSystemMetrics() {
+  const { stats, agents, workflows } = useAlfredCanvas();
+  const [uptime, setUptime] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setUptime(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatUptime = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+  };
+
+  const metrics: LiveMetric[] = [
+    { id: 'tasks', label: 'Total Tasks', value: stats.totalTasks, color: '#22d3ee', icon: 'task' },
+    { id: 'completed', label: 'Completed', value: stats.completedTasks, color: '#22c55e', icon: 'chart' },
+    { id: 'success', label: 'Success Rate', value: `${stats.successRate}%`, color: stats.successRate >= 90 ? '#22c55e' : stats.successRate >= 70 ? '#f59e0b' : '#ef4444', icon: 'bolt' },
+    { id: 'agents', label: 'Active Agents', value: stats.activeAgents, color: '#a78bfa', icon: 'cpu' },
+    { id: 'cost', label: 'Total Cost', value: `$${stats.totalCost.toFixed(4)}`, color: '#f59e0b', icon: 'dollar' },
+    { id: 'uptime', label: 'Session', value: formatUptime(uptime), color: '#6366f1', icon: 'clock' },
+    { id: 'workflows', label: 'Workflows', value: workflows.length, color: '#ec4899', icon: 'chart' },
+    { id: 'agents-total', label: 'Total Agents', value: agents.length, color: '#14b8a6', icon: 'cpu' },
+  ];
+
+  return metrics;
+}
+
+function MetricIcon({ icon }: { icon: LiveMetric['icon'] }) {
+  const props = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 };
+  switch (icon) {
+    case 'chart':
+      return <svg {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>;
+    case 'bolt':
+      return <svg {...props}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>;
+    case 'clock':
+      return <svg {...props}><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>;
+    case 'dollar':
+      return <svg {...props}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>;
+    case 'cpu':
+      return <svg {...props}><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" /><line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" /></svg>;
+    case 'task':
+      return <svg {...props}><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>;
+  }
+}
+
 export function DashboardView() {
   const { stats, workflows, agents, removeAgent, updateAgent } = useAlfredCanvas();
   const [filter, setFilter] = useState<FilterTab>('all');
+  const metrics = useSystemMetrics();
 
   const filtered = useMemo(() => {
     if (filter === 'all') return agents;
@@ -18,8 +81,7 @@ export function DashboardView() {
     const running = agents.filter((a) => a.status === 'running').length;
     const completed = agents.filter((a) => a.status === 'completed').length;
     const failed = agents.filter((a) => a.status === 'failed').length;
-    const totalCost = agents.reduce((s, a) => s + a.cost, 0);
-    return { total: agents.length, running, completed, failed, totalCost };
+    return { total: agents.length, running, completed, failed };
   }, [agents]);
 
   const handleKill = (id: string) => {
@@ -28,34 +90,31 @@ export function DashboardView() {
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-[#2a2a2a]">
-        <h2 className="text-[14px] font-semibold text-white">Alfred Dashboard</h2>
-        <p className="text-[10px] text-[#666]">Agent overview, workflows &amp; cost tracking</p>
+      <div className="px-4 py-3 border-b border-[#2a2a2a] flex items-center gap-3">
+        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <div>
+          <h2 className="text-[14px] font-semibold text-white">Alfred Command Center</h2>
+          <p className="text-[10px] text-[#666]">Live metrics, agents, workflows &amp; tracking</p>
+        </div>
       </div>
 
-      {/* Stats summary row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 px-4 py-4">
-        <DashCard label="Total Agents" value={counts.total} color="#22d3ee" />
-        <DashCard label="Running" value={counts.running} color="#22c55e" />
-        <DashCard label="Completed" value={counts.completed} color="#3b82f6" />
-        <DashCard label="Failed" value={counts.failed} color="#ef4444" />
-        <DashCard label="Total Cost" value={`$${counts.totalCost.toFixed(4)}`} color="#a78bfa" />
-      </div>
-
-      {/* Legacy stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 px-4 pb-3">
-        <DashCard label="Total Tasks" value={stats.totalTasks} color="#22d3ee" />
-        <DashCard label="Completed Tasks" value={stats.completedTasks} color="#22c55e" />
-        <DashCard
-          label="Success Rate"
-          value={`${stats.successRate}%`}
-          color={stats.successRate >= 90 ? '#22c55e' : stats.successRate >= 70 ? '#f59e0b' : '#ef4444'}
-        />
+      {/* Live Metrics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 px-4 py-3">
+        {metrics.map((m) => (
+          <div key={m.id} className="bg-[#141414] border border-[#2a2a2a] rounded-lg px-3 py-2.5 flex items-center gap-2.5 hover:border-[#3a3a3a] transition-colors">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${m.color}15`, color: m.color }}>
+              <MetricIcon icon={m.icon} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[15px] font-bold text-white truncate">{m.value}</div>
+              <div className="text-[9px] text-[#666] uppercase tracking-wider">{m.label}</div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-1 px-4 pb-2">
+      <div className="flex items-center gap-1 px-4 py-1">
         {(['all', 'running', 'completed', 'failed'] as const).map((tab) => (
           <button
             key={tab}
@@ -150,17 +209,14 @@ function AgentCard({
 
   return (
     <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 flex flex-col gap-2">
-      {/* Top row: name + status badge */}
       <div className="flex items-center gap-2">
         <div className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
         <span className="text-[12px] font-medium text-white flex-1 truncate">{agent.name}</span>
         <span className={`text-[9px] px-1.5 py-0.5 rounded border ${cfg.badge}`}>{cfg.label}</span>
       </div>
 
-      {/* Task description */}
       <p className="text-[10px] text-[#888] leading-tight line-clamp-2">{agent.task}</p>
 
-      {/* Progress bar */}
       <div className="flex items-center gap-2">
         <div className="flex-1 h-[5px] bg-[#2a2a2a] rounded-full overflow-hidden">
           <div
@@ -174,7 +230,6 @@ function AgentCard({
         <span className="text-[9px] text-[#666] w-[32px] text-right">{agent.progress}%</span>
       </div>
 
-      {/* Meta row: elapsed, cost, actions */}
       <div className="flex items-center gap-3 text-[9px] text-[#666]">
         <span>{elapsedStr}</span>
         <span>${agent.cost.toFixed(4)}</span>
@@ -196,15 +251,6 @@ function AgentCard({
           </button>
         )}
       </div>
-    </div>
-  );
-}
-
-function DashCard({ label, value, color }: { label: string; value: string | number; color: string }) {
-  return (
-    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3">
-      <div className="text-[20px] font-bold" style={{ color }}>{value}</div>
-      <div className="text-[10px] text-[#666] mt-0.5">{label}</div>
     </div>
   );
 }

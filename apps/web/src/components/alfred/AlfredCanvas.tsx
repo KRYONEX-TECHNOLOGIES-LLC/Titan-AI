@@ -8,6 +8,8 @@ import { TerminalView } from './canvas/TerminalView';
 import { FileTreeView } from './canvas/FileTreeView';
 import { VibeCode } from './canvas/VibeCode';
 import { DashboardView } from './canvas/DashboardView';
+import { SimulationView } from './canvas/SimulationView';
+import { VideoView } from './canvas/VideoView';
 
 export function AlfredCanvas() {
   const { activeMode } = useAlfredCanvas();
@@ -25,6 +27,10 @@ export function AlfredCanvas() {
       return <VibeCode />;
     case 'dashboard':
       return <DashboardView />;
+    case 'simulation':
+      return <SimulationView />;
+    case 'video':
+      return <VideoView />;
     case 'idle':
     default:
       return <ScreenView />;

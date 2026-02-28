@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-export type CanvasMode = 'screen' | 'code' | 'terminal' | 'files' | 'vibe' | 'dashboard' | 'idle';
+export type CanvasMode = 'screen' | 'code' | 'terminal' | 'files' | 'vibe' | 'dashboard' | 'simulation' | 'video' | 'idle';
 
 export interface CanvasContent {
   type: CanvasMode;
@@ -42,6 +42,23 @@ export interface AgentInfo {
   output?: string;
 }
 
+export interface PendingAction {
+  id: string;
+  description: string;
+  actionLabel?: string;
+  cancelLabel?: string;
+}
+
+export interface Artifact {
+  id: string;
+  type: 'code' | 'html' | 'url' | 'image' | 'video' | 'simulation';
+  title: string;
+  code?: string;
+  url?: string;
+  language?: string;
+  timestamp: number;
+}
+
 interface AlfredCanvasState {
   activeMode: CanvasMode;
   pinned: boolean;
@@ -52,11 +69,18 @@ interface AlfredCanvasState {
   workflows: WorkflowStat[];
   agents: AgentInfo[];
   stats: { totalTasks: number; completedTasks: number; successRate: number; totalCost: number; activeAgents: number };
+  pendingAction: PendingAction | null;
+  artifacts: Artifact[];
 
   setMode: (mode: CanvasMode) => void;
   setPinned: (pinned: boolean) => void;
   pushContent: (content: CanvasContent) => void;
   clearContent: () => void;
+
+  setPendingAction: (action: PendingAction | null) => void;
+  addArtifact: (artifact: Artifact) => void;
+  removeArtifact: (id: string) => void;
+  clearArtifacts: () => void;
 
   addSession: (session: AlfredSession) => void;
   removeSession: (id: string) => void;
@@ -87,6 +111,8 @@ export const useAlfredCanvas = create<AlfredCanvasState>((set) => ({
   workflows: [],
   agents: [],
   stats: { totalTasks: 0, completedTasks: 0, successRate: 100, totalCost: 0, activeAgents: 1 },
+  pendingAction: null,
+  artifacts: [],
 
   setMode: (mode) => set({ activeMode: mode }),
   setPinned: (pinned) => set({ pinned }),
@@ -98,6 +124,16 @@ export const useAlfredCanvas = create<AlfredCanvasState>((set) => ({
   })),
 
   clearContent: () => set({ content: null, activeMode: 'idle' }),
+
+  setPendingAction: (action) => set({ pendingAction: action }),
+
+  addArtifact: (artifact) => set((s) => ({
+    artifacts: [...s.artifacts.slice(-20), artifact],
+  })),
+  removeArtifact: (id) => set((s) => ({
+    artifacts: s.artifacts.filter((a) => a.id !== id),
+  })),
+  clearArtifacts: () => set({ artifacts: [] }),
 
   addSession: (session) => set((s) => ({ sessions: [...s.sessions, session] })),
   removeSession: (id) => set((s) => ({

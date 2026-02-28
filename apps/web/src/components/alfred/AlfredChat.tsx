@@ -4,6 +4,8 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useAlfredCanvas } from '@/stores/alfred-canvas-store';
 import { AlfredQuickActions } from './AlfredQuickActions';
 import { AlfredChoiceChips, parseChoices } from './AlfredChoiceChips';
+import { AlfredActionBar, parseActions } from './AlfredActionBar';
+import { AlfredArtifactCard, parseArtifacts } from './AlfredArtifactCard';
 
 interface ConversationEntry {
   role: 'user' | 'alfred';
@@ -41,7 +43,7 @@ export function AlfredChat({
   const [manualInput, setManualInput] = useState('');
   const [attachedImages, setAttachedImages] = useState<File[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const { pushContent } = useAlfredCanvas();
+  const { pushContent, addArtifact, setPendingAction } = useAlfredCanvas();
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -60,6 +62,20 @@ export function AlfredChat({
     setAttachedImages([]);
   }, [manualInput, attachedImages, sendManual]);
 
+  const handleActionClick = useCallback((action: string) => {
+    const lower = action.toLowerCase();
+    if (lower === 'proceed' || lower === 'yes' || lower === 'confirm' || lower === 'go') {
+      sendManual('proceed');
+    } else if (lower === 'cancel' || lower === 'no') {
+      setPendingAction(null);
+      sendManual('cancel');
+    } else if (lower === 'play' || lower === 'run' || lower === 'execute') {
+      sendManual(`run ${action.toLowerCase()}`);
+    } else {
+      sendManual(action);
+    }
+  }, [sendManual, setPendingAction]);
+
   const handleImageDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
@@ -73,7 +89,6 @@ export function AlfredChat({
 
   const isProcessing = alfredState === 'processing';
 
-  // Push last alfred message to canvas as screen content when it looks like web content
   useEffect(() => {
     if (conversationLog.length === 0) return;
     const last = conversationLog[conversationLog.length - 1];
@@ -87,7 +102,14 @@ export function AlfredChat({
         });
       }
     }
-  }, [conversationLog, pushContent]);
+
+    if (last && last.role === 'alfred') {
+      const { artifacts } = parseArtifacts(last.text);
+      for (const art of artifacts) {
+        addArtifact(art);
+      }
+    }
+  }, [conversationLog, pushContent, addArtifact]);
 
   return (
     <div className="flex flex-col h-full bg-[#1e1e1e]">
@@ -121,9 +143,15 @@ export function AlfredChat({
               </div>
             );
           }
+
           const parsed = entry.role === 'alfred' ? parseChoices(entry.text) : null;
-          const displayText = parsed ? parsed.cleanText : entry.text;
+          const actionsParsed = entry.role === 'alfred' ? parseActions(parsed?.cleanText || entry.text) : null;
+          const artifactsParsed = entry.role === 'alfred' ? parseArtifacts(actionsParsed?.cleanText || parsed?.cleanText || entry.text) : null;
+          const displayText = artifactsParsed?.cleanText || actionsParsed?.cleanText || parsed?.cleanText || entry.text;
           const choices = parsed?.choices || [];
+          const actions = actionsParsed?.actions || [];
+          const artifacts = artifactsParsed?.artifacts || [];
+          const isLastAlfred = entry.role === 'alfred' && i === conversationLog.length - 1;
 
           return (
             <div key={i} className={`flex gap-2 ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -139,6 +167,12 @@ export function AlfredChat({
                 {choices.length > 0 && (
                   <AlfredChoiceChips choices={choices} onSelect={(c) => handleManualSend(c)} disabled={isProcessing} />
                 )}
+                {actions.length > 0 && isLastAlfred && (
+                  <AlfredActionBar actions={actions} onAction={handleActionClick} disabled={isProcessing} />
+                )}
+                {artifacts.map((art) => (
+                  <AlfredArtifactCard key={art.id} artifact={art} />
+                ))}
                 <span className="text-[9px] text-[#666] mt-1 block">{entry.time}</span>
               </div>
               {entry.role === 'user' && (

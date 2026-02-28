@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAlfredCanvas } from '@/stores/alfred-canvas-store';
 
 const YT_REGEX = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/;
@@ -21,12 +21,21 @@ function extractYouTubeIds(text: string): string[] {
   return [...new Set(ids)];
 }
 
+function isEmbeddableUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const blocked = ['localhost', '127.0.0.1', '0.0.0.0'];
+    if (blocked.includes(parsed.hostname)) return false;
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    return true;
+  } catch { return false; }
+}
+
 function renderInlineMarkup(text: string): React.ReactNode[] {
-  let processed = text;
   const parts: React.ReactNode[] = [];
   let key = 0;
 
-  const segments = processed.split(URL_REGEX);
+  const segments = text.split(URL_REGEX);
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     if (!seg) continue;
@@ -40,7 +49,7 @@ function renderInlineMarkup(text: string): React.ReactNode[] {
         </a>
       );
     } else {
-      let html = seg
+      const html = seg
         .replace(BOLD_REGEX, '<strong class="text-white font-semibold">$1</strong>')
         .replace(CODE_INLINE_REGEX, '<code class="bg-[#2a2a2a] text-emerald-400 px-1 py-0.5 rounded text-[11px]">$1</code>');
       parts.push(<span key={key++} dangerouslySetInnerHTML={{ __html: html }} />);
@@ -50,14 +59,13 @@ function renderInlineMarkup(text: string): React.ReactNode[] {
   return parts;
 }
 
-function SmartContent({ text, tool }: { text: string; tool?: string }) {
+function SmartContent({ text }: { text: string }) {
   const lines = text.split('\n');
   const youtubeIds = useMemo(() => extractYouTubeIds(text), [text]);
   const elements: React.ReactNode[] = [];
   let key = 0;
   let inCodeBlock = false;
   let codeBuffer: string[] = [];
-  let codeLang = '';
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -71,7 +79,6 @@ function SmartContent({ text, tool }: { text: string; tool?: string }) {
         );
         inCodeBlock = false;
         codeBuffer = [];
-        codeLang = '';
       } else {
         codeBuffer.push(line);
       }
@@ -81,7 +88,6 @@ function SmartContent({ text, tool }: { text: string; tool?: string }) {
     const codeStart = line.match(CODE_BLOCK_START);
     if (codeStart) {
       inCodeBlock = true;
-      codeLang = codeStart[1] || '';
       continue;
     }
 
@@ -228,8 +234,45 @@ function SearchResultCards({ text, query }: { text: string; query?: string }) {
   );
 }
 
+function IframeView({ url, title }: { url: string; title?: string }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-3 py-1.5 border-b border-[#2a2a2a] bg-[#1a1a1a] flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${loading ? 'bg-yellow-500 animate-pulse' : error ? 'bg-red-500' : 'bg-green-500'}`} />
+        <span className="text-[11px] text-[#ccc] truncate flex-1">{title || url}</span>
+        <a href={url} target="_blank" rel="noopener noreferrer"
+          className="text-[9px] text-cyan-500 hover:text-cyan-400 px-2 py-0.5 bg-[#2a2a2a] rounded">
+          Open
+        </a>
+      </div>
+      <div className="flex-1 min-h-0 relative">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-[#0d0d0d]">
+            <div className="flex gap-1.5 items-center">
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          </div>
+        )}
+        <iframe
+          src={url}
+          title={title || 'Web Content'}
+          className="w-full h-full border-0"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          onLoad={() => { setLoading(false); setError(false); }}
+          onError={() => { setLoading(false); setError(true); }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ScreenView() {
-  const { content, stats, workflows } = useAlfredCanvas();
+  const { content, stats, workflows, setMode } = useAlfredCanvas();
 
   if (!content || content.type !== 'screen') {
     return <ScreenIdle stats={stats} workflows={workflows} />;
@@ -237,8 +280,42 @@ export function ScreenView() {
 
   const tool = content.meta?.tool as string | undefined;
   const query = content.meta?.query as string | undefined;
+  const url = content.meta?.url as string | undefined;
+  const isIframe = content.meta?.isIframe as boolean | undefined;
   const isSearchResult = tool === 'web_search' || tool === 'research_topic' || tool === 'search_web';
   const dataStr = typeof content.data === 'string' ? content.data : JSON.stringify(content.data, null, 2);
+
+  const ytMatch = dataStr.match(YT_REGEX);
+  if (ytMatch?.[1] && !isSearchResult) {
+    return (
+      <div className="flex flex-col h-full bg-black">
+        {content.title && (
+          <div className="px-3 py-1.5 border-b border-[#2a2a2a] bg-[#111] flex items-center gap-2">
+            <span className="text-[11px] text-[#ccc] truncate flex-1">{content.title}</span>
+            <button
+              onClick={() => setMode('video')}
+              className="text-[9px] text-cyan-500 px-2 py-0.5 bg-[#2a2a2a] rounded hover:bg-[#3a3a3a]"
+            >
+              Full Player
+            </button>
+          </div>
+        )}
+        <div className="flex-1 flex items-center justify-center">
+          <iframe
+            src={`https://www.youtube.com/embed/${ytMatch[1]}?autoplay=0&rel=0`}
+            title={content.title || 'YouTube video'}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if ((isIframe || url) && url && isEmbeddableUrl(url)) {
+    return <IframeView url={url} title={content.title} />;
+  }
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d]">
@@ -249,10 +326,10 @@ export function ScreenView() {
             content.meta?.status === 'error' ? 'bg-red-500' : 'bg-green-500'
           }`} />
           <span className="text-[11px] text-[#ccc] truncate">{content.title}</span>
-          {content.meta?.url ? (
-            <a href={String(content.meta.url)} target="_blank" rel="noopener noreferrer"
+          {url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer"
               className="text-[9px] text-cyan-600 hover:text-cyan-400 truncate ml-auto">
-              {String(content.meta.url)}
+              {url}
             </a>
           ) : null}
           {tool && (
@@ -264,7 +341,7 @@ export function ScreenView() {
         {isSearchResult ? (
           <SearchResultCards text={dataStr} query={query} />
         ) : (
-          <SmartContent text={dataStr} tool={tool} />
+          <SmartContent text={dataStr} />
         )}
       </div>
     </div>

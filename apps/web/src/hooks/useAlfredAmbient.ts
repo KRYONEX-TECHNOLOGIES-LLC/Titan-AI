@@ -7,7 +7,40 @@ import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { serializeBrainContext, saveConversation } from '@/lib/voice/brain-storage';
 import { usePlanStore } from '@/stores/plan-store';
 import { useFileStore } from '@/stores/file-store';
-import { useAlfredCanvas, type CanvasMode } from '@/stores/alfred-canvas-store';
+import { useAlfredCanvas, type CanvasMode, type Artifact } from '@/stores/alfred-canvas-store';
+
+const YT_DETECT = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/;
+const ARTIFACT_DETECT = /\[artifact:\s*(code|html|url|video|simulation)\s*(?:\|([^\]]*))?\]/g;
+
+function resolveToolCanvasMode(toolName: string, args?: Record<string, unknown>): CanvasMode {
+  switch (toolName) {
+    case 'run_command':
+    case 'execute_command':
+      return 'terminal';
+    case 'create_file':
+    case 'edit_file':
+    case 'write_file': {
+      if (args?.path) {
+        const p = String(args.path);
+        if (p.endsWith('.html') || p.endsWith('.htm')) return 'simulation';
+      }
+      return 'code';
+    }
+    case 'web_search':
+    case 'web_browse':
+    case 'browser_navigate':
+    case 'browse_url':
+    case 'research_topic':
+    case 'search_web':
+      return 'screen';
+    case 'list_files':
+    case 'read_file':
+    case 'list_directory':
+      return 'files';
+    default:
+      return 'screen';
+  }
+}
 
 const ALFRED_LOG_KEY_PREFIX = 'alfred-conversation-';
 const ALFRED_TASKS_KEY = 'alfred-pending-tasks';
@@ -304,11 +337,7 @@ export function useAlfredAmbient() {
               if (payload.args) toolCallArgs.set(payload.name, payload.args);
 
               const canvasStore = useAlfredCanvas.getState();
-              const toolCanvasMode: CanvasMode =
-                payload.name === 'run_command' || payload.name === 'execute_command' ? 'terminal' :
-                payload.name === 'create_file' || payload.name === 'edit_file' || payload.name === 'write_file' ? 'code' :
-                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' || payload.name === 'browse_url' || payload.name === 'research_topic' ? 'screen' :
-                payload.name === 'list_files' || payload.name === 'read_file' || payload.name === 'list_directory' ? 'files' : 'screen';
+              const toolCanvasMode: CanvasMode = resolveToolCanvasMode(payload.name, payload.args);
               canvasStore.pushContent({
                 type: toolCanvasMode,
                 title: toolDesc,
@@ -350,11 +379,7 @@ export function useAlfredAmbient() {
               }
 
               const canvasStoreResult = useAlfredCanvas.getState();
-              const resultMode: CanvasMode =
-                payload.name === 'run_command' || payload.name === 'execute_command' ? 'terminal' :
-                payload.name === 'create_file' || payload.name === 'edit_file' || payload.name === 'write_file' ? 'code' :
-                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' || payload.name === 'browse_url' || payload.name === 'research_topic' ? 'screen' :
-                payload.name === 'list_files' || payload.name === 'list_directory' ? 'files' : 'screen';
+              const resultMode: CanvasMode = resolveToolCanvasMode(payload.name);
               const origArgs = toolCallArgs.get(payload.name) || {};
               if (payload.message) {
                 canvasStoreResult.pushContent({
@@ -403,6 +428,39 @@ export function useAlfredAmbient() {
         if (titanVoice.autoSpeak) {
           titanVoice.speak(responseText, 6);
         }
+
+        // Auto-switch canvas for YouTube URLs in response
+        const ytDetect = responseText.match(YT_DETECT);
+        if (ytDetect?.[1]) {
+          const canvasForYt = useAlfredCanvas.getState();
+          canvasForYt.pushContent({
+            type: 'video',
+            title: 'Video from Alfred',
+            data: responseText,
+            timestamp: Date.now(),
+            meta: { url: `https://www.youtube.com/watch?v=${ytDetect[1]}` },
+          });
+        }
+
+        // Auto-detect artifact markers and push to store
+        ARTIFACT_DETECT.lastIndex = 0;
+        let artMatch;
+        while ((artMatch = ARTIFACT_DETECT.exec(responseText)) !== null) {
+          const artType = artMatch[1] as Artifact['type'];
+          const artTitle = artMatch[2]?.trim() || `${artType} artifact`;
+          const canvasForArt = useAlfredCanvas.getState();
+          const artifact: Artifact = {
+            id: `art-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            type: artType,
+            title: artTitle,
+            timestamp: Date.now(),
+          };
+          canvasForArt.addArtifact(artifact);
+          if (artType === 'simulation' || artType === 'html') {
+            canvasForArt.pushContent({ type: 'simulation', title: artTitle, data: responseText, timestamp: Date.now() });
+          }
+        }
+        ARTIFACT_DETECT.lastIndex = 0;
 
         // Detect task commitments from Alfred ("I'll", "I will", "Let me", "I'm going to")
         const taskPattern = /(?:I'll|I will|Let me|I'm going to|I shall)\s+(.{10,80}?)(?:\.|,|$)/i;

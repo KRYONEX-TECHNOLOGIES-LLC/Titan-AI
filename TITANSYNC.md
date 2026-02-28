@@ -518,6 +518,28 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.86 — Alfred God-Tier Full-Page Workspace Overhaul (2026-02-24)
+
+**Major Alfred UI and personality upgrade:**
+
+1. **Store upgrade:** Added `pendingAction`, `artifacts[]`, `simulation` and `video` canvas modes to `alfred-canvas-store.ts`
+2. **Action buttons:** New `AlfredActionBar.tsx` — renders interactive Proceed/Cancel/Play/Run/Save buttons in chat instead of text confirmations. Parses `[actions: ...]` markers from Alfred's responses.
+3. **Artifact cards:** New `AlfredArtifactCard.tsx` — clickable cards for code, simulations, URLs, videos that open directly in the canvas. Parses `[artifact: type | title]` markers.
+4. **Live code sandbox:** Rewrote `VibeCode.tsx` with `@codesandbox/sandpack-react` — full code editor with live preview side-by-side. Supports React, vanilla JS, HTML/CSS templates with a Run button that launches simulation view.
+5. **Simulation view:** New `SimulationView.tsx` — sandboxed iframe that runs HTML/JS code Alfred produces (games, visualizations, web pages) with fullscreen toggle.
+6. **Video view:** New `VideoView.tsx` — dedicated full-canvas YouTube embed and direct video player with autoplay.
+7. **Screen upgrade:** Enhanced `ScreenView.tsx` with iframe mode for URLs, better YouTube detection that auto-routes to video mode, and loading states.
+8. **Dashboard rewrite:** Rewrote `DashboardView.tsx` as "Alfred Command Center" with 8 live metric cards (tasks, completed, success rate, agents, cost, session uptime, workflows, total agents), icons, and live uptime counter.
+9. **Canvas routing:** Updated `AlfredCanvas.tsx` to route `simulation` and `video` modes to new views.
+10. **Smart auto-switching:** Enhanced `useAlfredAmbient.ts` with `resolveToolCanvasMode()` function, YouTube URL auto-detection in responses, and artifact marker parsing for automatic canvas switching.
+11. **Alfred personality:** Updated `titan-personality.ts` with:
+    - ACT-FIRST PROTOCOL: Alfred executes non-destructive actions immediately without asking
+    - ARTIFACT & ACTION MARKERS: `[actions: ...]`, `[artifact: ...]`, `[choices: ...]` for interactive UI elements
+    - Updated canvas docs from 6 modes to 9 modes
+    - BANNED "Would you like me to..." and "Should I proceed?" for non-destructive actions
+
+**New dependency:** `@codesandbox/sandpack-react` (apps/web)
+
 ### v0.3.85 — Strip Desktop-Only Packages from Standalone (2026-02-28)
 
 **Root cause:** v0.3.84 extraction failed with "Can't create '\\?\...\@titan\mcp-servers'" because:
