@@ -246,7 +246,7 @@ interface LiveProviderResponse {
 async function fetchWithTimeout(
   input: RequestInfo | URL,
   init: RequestInit,
-  timeoutMs = 15000
+  timeoutMs = 120000
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
