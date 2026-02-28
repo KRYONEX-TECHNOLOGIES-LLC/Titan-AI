@@ -78,9 +78,9 @@ export function Hero() {
 
         {/* Subtitle */}
         <p className="landing-fade-in mx-auto mt-6 max-w-2xl text-lg text-[#9898b0] leading-relaxed">
-          Titan ships with a full local agent runtime, integrated terminal tooling,
-          multi-model orchestration, and a governance protocol that enforces quality before merge.
-          No browser limitations. No fake tool calls.
+          Titan ships with Alfred — an AI assistant that controls the full IDE, talks with a real voice,
+          and optionally runs 24/7 as a background daemon. Multi-model orchestration, governance protocols,
+          and real tool execution. No browser limitations. No fake tool calls.
         </p>
 
         {/* CTAs */}
@@ -98,6 +98,12 @@ export function Hero() {
             className="rounded-xl border border-[#2d2d42] px-8 py-3.5 text-sm text-[#d2d2e2] hover:bg-white/[0.03] hover:border-[#3d3d55] transition-all duration-200"
           >
             See Features
+          </a>
+          <a
+            href="#comparison"
+            className="rounded-xl border border-[#10b981]/20 bg-[#10b981]/5 px-8 py-3.5 text-sm text-[#10b981] hover:bg-[#10b981]/10 hover:border-[#10b981]/30 transition-all duration-200"
+          >
+            Always-On Mode
           </a>
         </div>
 

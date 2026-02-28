@@ -366,6 +366,93 @@ export async function executeVoiceAction(action: string, params: Record<string, 
       }
     }
 
+    // ── IDE tool fallbacks (delegate to /api/agent/tools) ──
+
+    case 'read_file':
+    case 'create_file':
+    case 'edit_file':
+    case 'write_file':
+    case 'delete_file':
+    case 'list_directory':
+    case 'glob_search':
+    case 'search_code':
+    case 'run_command': {
+      return callAgentTool(action, params);
+    }
+
+    case 'git_commit': {
+      return callAgentTool('run_command', { command: `git add -A && git commit -m "${(params.message || 'auto-commit').replace(/"/g, '\\"')}"` });
+    }
+    case 'git_push': {
+      return callAgentTool('run_command', { command: 'git push origin HEAD' });
+    }
+
+    case 'analyze_codebase': {
+      return scanProject();
+    }
+    case 'query_codebase': {
+      return { success: true, message: `Codebase query: "${params.question}" — use the chat agent for detailed analysis.` };
+    }
+
+    // ── Messaging (channel adapter) ──
+
+    case 'message_send': {
+      try {
+        const { channelManager } = await import('@/lib/channels/channel-adapter');
+        const result = await channelManager.send({
+          channel: (params.channel || 'telegram') as 'telegram' | 'slack' | 'discord',
+          target: params.target || '',
+          text: params.text || '',
+        });
+        return { success: result.success, message: result.success ? `Sent via ${params.channel}` : (result.error || 'Send failed') };
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : 'Messaging failed' };
+      }
+    }
+
+    // ── Device control ──
+
+    case 'device_command': {
+      try {
+        const { deviceBridge } = await import('@/lib/devices/device-bridge');
+        type DA = Parameters<typeof deviceBridge.execute>[1];
+        const result = await deviceBridge.execute(params.deviceId || '', (params.action || 'status') as DA);
+        return { success: result.success, message: result.output || result.error || 'Command sent' };
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : 'Device command failed' };
+      }
+    }
+
+    // ── Session spawn ──
+
+    case 'sessions_spawn': {
+      try {
+        const { spawnAgent } = await import('@/lib/agents/session-spawn');
+        const session = await spawnAgent({ task: params.task || '', label: params.label });
+        return { success: session.status === 'completed', message: session.result || session.error || 'Agent finished' };
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : 'Spawn failed' };
+      }
+    }
+
     default: return { success: false, message: `Unknown action: ${action}` };
+  }
+}
+
+async function callAgentTool(tool: string, params: Record<string, string>): Promise<ControlResult> {
+  try {
+    const res = await fetch('/api/agent/tools', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool, args: params }),
+    });
+    const data = await res.json();
+    return {
+      success: data.success ?? res.ok,
+      message: data.output || data.error || 'Tool executed',
+      data: data.metadata,
+    };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Tool call failed' };
   }
 }

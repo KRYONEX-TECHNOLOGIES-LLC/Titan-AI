@@ -29,6 +29,7 @@ export function Navbar() {
         </Link>
 
         <div className="hidden md:flex items-center gap-8 text-[13px] text-[#a0a0b8]">
+          <a href="#alfred" className="hover:text-white transition-colors">Alfred</a>
           <a href="#features" className="hover:text-white transition-colors">Features</a>
           <a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a>
           <a href="#protocol" className="hover:text-white transition-colors">Protocol</a>

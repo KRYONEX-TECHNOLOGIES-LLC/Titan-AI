@@ -209,13 +209,27 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
 
       try {
         const fullPath = path.resolve(workspace, searchPath);
-        const includeFlag = glob ? `--include="${glob}"` : '--include="*.{ts,tsx,js,jsx,py,rs,go,java,c,cpp,h,md,json,yaml,yml}"';
-        const cmd = process.platform === 'win32'
-          ? `findstr /S /N /C:"${query}" ${fullPath}\\*.*`
-          : `grep -rn "${query}" "${fullPath}" ${includeFlag} 2>/dev/null | head -100`;
+        const isWin = process.platform === 'win32';
 
-        const result = execSync(cmd, { encoding: 'utf-8', timeout: 15000, maxBuffer: 1024 * 1024 });
-        return { success: true, output: result.slice(0, 8000) || 'No results found' };
+        if (isWin) {
+          const defaultExts = '*.ts,*.tsx,*.js,*.jsx,*.py,*.json,*.md,*.css,*.html,*.yaml,*.yml,*.rs,*.go,*.java,*.c,*.cpp,*.h';
+          const includeExts = (glob || defaultExts).split(',').map(e => `'${e.trim()}'`).join(',');
+          const escapedQuery = query.replace(/'/g, "''");
+          const cmd = [
+            `Get-ChildItem -Path '${fullPath}' -Recurse -Include ${includeExts} -File`,
+            `Where-Object { $_.FullName -notmatch '[\\\\/](node_modules|\.git|dist|\.next|\.turbo|coverage|\.cache)[\\\\/]' }`,
+            `Select-String -Pattern '${escapedQuery}' -CaseSensitive:$false`,
+            `Select-Object -First 80`,
+            `ForEach-Object { "$($_.Path | Resolve-Path -Relative):$($_.LineNumber): $($_.Line.TrimStart())" }`,
+          ].join(' | ');
+          const result = execSync(cmd, { cwd: fullPath, encoding: 'utf-8', timeout: 30000, maxBuffer: 2 * 1024 * 1024, shell: 'powershell.exe' });
+          return { success: true, output: result.slice(0, 12000) || 'No results found' };
+        } else {
+          const includeFlag = glob ? `--include="${glob}"` : '--include="*.{ts,tsx,js,jsx,py,rs,go,java,c,cpp,h,md,json,yaml,yml,css,html}"';
+          const cmd = `grep -rn "${query}" "${fullPath}" ${includeFlag} --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=.next --exclude-dir=.turbo --exclude-dir=coverage 2>/dev/null | head -100`;
+          const result = execSync(cmd, { encoding: 'utf-8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
+          return { success: true, output: result.slice(0, 12000) || 'No results found' };
+        }
       } catch {
         return { success: true, output: 'No results found' };
       }
@@ -241,7 +255,7 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
       }
 
       try {
-        const timeout = (call.args.timeout as number) || 30000;
+        const timeout = (call.args.timeout as number) || 120000;
         const shellOpts: Record<string, unknown> = {
           cwd: execDir,
           encoding: 'utf-8',
@@ -308,12 +322,18 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
 
       try {
         const fullPath = path.resolve(workspace, basePath);
-        const cmd = process.platform === 'win32'
-          ? `dir /S /B "${fullPath}\\${pattern}" 2>nul`
-          : `find "${fullPath}" -name "${pattern}" -type f 2>/dev/null | head -100`;
-        const result = execSync(cmd, { encoding: 'utf-8', timeout: 10000, maxBuffer: 512 * 1024 });
-        const files = result.trim().split('\n').filter(Boolean).map(f => path.relative(workspace, f));
-        return { success: true, output: files.join('\n') || 'No files found' };
+        const isWin = process.platform === 'win32';
+        if (isWin) {
+          const cmd = `Get-ChildItem -Path '${fullPath}' -Recurse -Filter '${pattern}' -File | Where-Object { $_.FullName -notmatch '[\\\\/](node_modules|\.git|dist|\.next|\.turbo)[\\\\/]' } | Select-Object -First 100 | ForEach-Object { $_.FullName | Resolve-Path -Relative }`;
+          const result = execSync(cmd, { cwd: fullPath, encoding: 'utf-8', timeout: 15000, maxBuffer: 1024 * 1024, shell: 'powershell.exe' });
+          const files = result.trim().split('\n').filter(Boolean);
+          return { success: true, output: files.join('\n') || 'No files found' };
+        } else {
+          const cmd = `find "${fullPath}" -name "${pattern}" -type f -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" 2>/dev/null | head -100`;
+          const result = execSync(cmd, { encoding: 'utf-8', timeout: 15000, maxBuffer: 1024 * 1024 });
+          const files = result.trim().split('\n').filter(Boolean).map(f => path.relative(workspace, f));
+          return { success: true, output: files.join('\n') || 'No files found' };
+        }
       } catch {
         return { success: true, output: 'No files found' };
       }
@@ -325,21 +345,47 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
 
       try {
         const encoded = encodeURIComponent(query);
+
+        const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+        if (braveKey) {
+          try {
+            const braveRes = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encoded}&count=8`, {
+              headers: { 'Accept': 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': braveKey },
+            });
+            if (braveRes.ok) {
+              const data = await braveRes.json();
+              const results = (data.web?.results || []).slice(0, 8).map((r: { title: string; url: string; description: string }) =>
+                `${r.title}\n  ${r.url}\n  ${r.description || ''}`
+              );
+              if (results.length > 0) {
+                return { success: true, output: results.join('\n\n') };
+              }
+            }
+          } catch { /* fall through to DDG */ }
+        }
+
         const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
           headers: { 'User-Agent': 'Titan AI Agent/1.0' },
         });
         const html = await res.text();
         const results: string[] = [];
-        const snippetPattern = /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g;
-        let match;
-        while ((match = snippetPattern.exec(html)) !== null && results.length < 8) {
-          const url = match[1].replace(/\/\/duckduckgo\.com\/l\/\?uddg=/, '').split('&')[0];
-          const title = match[2].replace(/&amp;/g, '&').replace(/&#x27;/g, "'");
-          try {
-            results.push(`${title}\n  ${decodeURIComponent(url)}`);
-          } catch {
-            results.push(`${title}\n  ${url}`);
-          }
+        const linkPattern = /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+        const snippetBodyPattern = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+        let linkMatch;
+        const snippets: string[] = [];
+        let snippetMatch;
+        while ((snippetMatch = snippetBodyPattern.exec(html)) !== null) {
+          snippets.push(snippetMatch[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').trim());
+        }
+        let idx = 0;
+        while ((linkMatch = linkPattern.exec(html)) !== null && results.length < 8) {
+          const rawUrl = linkMatch[1].replace(/\/\/duckduckgo\.com\/l\/\?uddg=/, '').split('&')[0];
+          const title = linkMatch[2].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").trim();
+          let decodedUrl = rawUrl;
+          try { decodedUrl = decodeURIComponent(rawUrl); } catch { /* keep raw */ }
+          const snippet = snippets[idx] || '';
+          results.push(`${title}\n  ${decodedUrl}${snippet ? `\n  ${snippet}` : ''}`);
+          idx++;
         }
         return { success: true, output: results.length > 0 ? results.join('\n\n') : `No results found for: ${query}` };
       } catch (e) {
@@ -357,14 +403,33 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
           signal: AbortSignal.timeout(15000),
         });
         if (!res.ok) return { success: false, output: '', error: `HTTP ${res.status}` };
-        const text = await res.text();
-        const cleaned = text
-          .replace(/<script[\s\S]*?<\/script>/gi, '')
-          .replace(/<style[\s\S]*?<\/style>/gi, '')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        return { success: true, output: cleaned.slice(0, 12000) };
+        const raw = await res.text();
+        let text = raw;
+        text = text.replace(/<script[\s\S]*?<\/script>/gi, '');
+        text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
+        text = text.replace(/<nav[\s\S]*?<\/nav>/gi, '');
+        text = text.replace(/<footer[\s\S]*?<\/footer>/gi, '');
+        text = text.replace(/<header[\s\S]*?<\/header>/gi, '');
+        text = text.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n# $1\n');
+        text = text.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n## $1\n');
+        text = text.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n');
+        text = text.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, '\n#### $1\n');
+        text = text.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, '\n##### $1\n');
+        text = text.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, '\n###### $1\n');
+        text = text.replace(/<pre[^>]*><code[^>]*(?:class="[^"]*language-(\w+)[^"]*")?[^>]*>([\s\S]*?)<\/code><\/pre>/gi,
+          (_, lang, code) => `\n\`\`\`${lang || ''}\n${code.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')}\n\`\`\`\n`);
+        text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
+        text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
+        text = text.replace(/<a[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
+        text = text.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, '**$1**');
+        text = text.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, '**$1**');
+        text = text.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, '*$1*');
+        text = text.replace(/<br\s*\/?>/gi, '\n');
+        text = text.replace(/<\/p>/gi, '\n\n');
+        text = text.replace(/<[^>]+>/g, '');
+        text = text.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"');
+        text = text.replace(/\n{3,}/g, '\n\n').trim();
+        return { success: true, output: text.slice(0, 15000) };
       } catch (e) {
         return { success: false, output: '', error: `Fetch failed: ${(e as Error).message}` };
       }
@@ -396,6 +461,60 @@ async function executeTool(call: ToolCall): Promise<ToolResult> {
       } catch {
         return { success: true, output: 'Linter not available or no errors found' };
       }
+    }
+
+    case 'auto_debug': {
+      const results: string[] = [];
+      const isWin = process.platform === 'win32';
+      const tscCmd = isWin
+        ? `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; npx tsc --noEmit --pretty 2>&1`
+        : `npx tsc --noEmit --pretty 2>&1 || true`;
+      try {
+        const tscResult = execSync(tscCmd, {
+          cwd: workspace,
+          encoding: 'utf-8',
+          timeout: 120000,
+          maxBuffer: 2 * 1024 * 1024,
+          ...(isWin ? { shell: 'powershell.exe' } : {}),
+        });
+        const errors = (tscResult || '').trim();
+        if (errors && errors.includes('error TS')) {
+          const lines = errors.split('\n').filter(l => l.includes('error TS') || l.trim().startsWith('~'));
+          results.push(`TypeScript errors (${lines.length} issues):\n${lines.slice(0, 40).join('\n')}`);
+        } else {
+          results.push('TypeScript: No errors found');
+        }
+      } catch (e: unknown) {
+        const err = e as { stdout?: string; stderr?: string };
+        const output = (err.stdout || err.stderr || '').trim();
+        if (output.includes('error TS')) {
+          const lines = output.split('\n').filter(l => l.includes('error TS'));
+          results.push(`TypeScript errors (${lines.length} issues):\n${lines.slice(0, 40).join('\n')}`);
+        } else {
+          results.push(`TypeScript check failed: ${output.slice(0, 2000)}`);
+        }
+      }
+
+      const changedFilePath = call.args.path as string;
+      if (changedFilePath) {
+        try {
+          const fullPath = path.resolve(workspace, changedFilePath);
+          const lintCmd = `npx eslint "${fullPath}" --format json --no-error-on-unmatched-pattern 2>/dev/null || true`;
+          const lintResult = execSync(lintCmd, { cwd: workspace, encoding: 'utf-8', timeout: 20000, maxBuffer: 1024 * 1024 });
+          try {
+            const parsed = JSON.parse(lintResult);
+            const messages = (parsed[0]?.messages || []).filter((m: { severity: number }) => m.severity === 2)
+              .map((m: { line: number; column: number; message: string; ruleId: string }) => `Line ${m.line}:${m.column} ${m.message} (${m.ruleId})`);
+            results.push(messages.length > 0 ? `ESLint errors in ${changedFilePath}:\n${messages.join('\n')}` : `ESLint: ${changedFilePath} is clean`);
+          } catch {
+            results.push(`ESLint: ${changedFilePath} - parse error or no issues`);
+          }
+        } catch {
+          results.push('ESLint: not available');
+        }
+      }
+
+      return { success: true, output: results.join('\n\n') };
     }
 
     default:

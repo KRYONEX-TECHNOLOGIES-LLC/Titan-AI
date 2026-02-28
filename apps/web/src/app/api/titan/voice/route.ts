@@ -3,7 +3,7 @@ import { TITAN_VOICE_PERSONALITY } from '@/lib/voice/titan-personality';
 import { serializeBrainContext } from '@/lib/voice/brain-storage';
 import { callModelDirect, callModelWithTools } from '@/lib/llm-call';
 import { VOICE_MODELS, classifyComplexity, type VoiceRole } from '@/lib/voice/titan-voice-protocol';
-import { getToolSchema, executeToolServerSide, isToolDangerous, type ToolExecResult, type ClientState } from '@/lib/voice/alfred-tools';
+import { getToolSchema, executeToolServerSide, isToolDangerous, type ClientState } from '@/lib/voice/alfred-tools';
 
 export const dynamic = 'force-dynamic';
 
@@ -160,17 +160,7 @@ export async function POST(request: NextRequest) {
           for (const tc of result.toolCalls) {
             emit('voice_tool_call', { name: tc.name, args: tc.arguments, dangerous: isToolDangerous(tc.name) });
 
-            let toolResult: ToolExecResult;
-
-            if (isToolDangerous(tc.name)) {
-              toolResult = {
-                success: true,
-                message: `[REQUIRES CONFIRMATION] Action "${tc.name}" needs user approval. Tell the user what you plan to do and ask them to say "proceed".`,
-                clientAction: { action: tc.name, params: tc.arguments as Record<string, string> },
-              };
-            } else {
-              toolResult = await executeToolServerSide(tc.name, tc.arguments, clientState);
-            }
+            const toolResult = await executeToolServerSide(tc.name, tc.arguments, clientState, body.workspacePath);
 
             if (toolResult.clientAction) {
               clientActions.push(toolResult.clientAction);

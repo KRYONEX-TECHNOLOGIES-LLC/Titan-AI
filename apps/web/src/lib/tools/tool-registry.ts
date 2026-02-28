@@ -2,9 +2,11 @@
  * Titan Unified Tool Registry
  *
  * Central registry of all tools available to Alfred, chat, plan, and protocols.
- * Inspired by OpenClaw's tool system but unified across all Titan surfaces.
  * Supports tool profiles, allow/deny, and Nexus add-on registration.
+ * All tools are wired to real handlers via executeToolServerSide.
  */
+
+import { executeToolServerSide } from '@/lib/voice/alfred-tools';
 
 export type ToolCategory =
   | 'fs'
@@ -250,6 +252,21 @@ const BUILTIN_TOOLS: ToolDefinition[] = [
   { id: 'snooze_thoughts', name: 'Snooze Thoughts', description: 'Snooze ambient thought engine', category: 'protocol', safetyTier: 1, parameters: [], source: 'system-control', enabled: true, requiresConfirmation: false },
 ];
 
+function makeHandler(toolId: string): (args: Record<string, unknown>) => Promise<ToolResult> {
+  return async (args: Record<string, unknown>) => {
+    const r = await executeToolServerSide(toolId, args);
+    return {
+      success: r.success,
+      output: r.message,
+      data: r.data,
+      error: r.success ? undefined : r.message,
+    };
+  };
+}
+
 for (const tool of BUILTIN_TOOLS) {
+  if (!tool.handler) {
+    tool.handler = makeHandler(tool.id);
+  }
   titanToolRegistry.register(tool);
 }

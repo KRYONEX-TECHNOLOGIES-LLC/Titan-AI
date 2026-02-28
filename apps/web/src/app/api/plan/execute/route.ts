@@ -32,7 +32,35 @@ function isCodeOrConfigFile(filePath: string): boolean {
   return CODE_EXTENSIONS.test(filePath);
 }
 
-function executeTool(call: ToolCall): ToolResult {
+function htmlToMarkdown(html: string): string {
+  let text = html;
+  text = text.replace(/<script[\s\S]*?<\/script>/gi, '');
+  text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
+  text = text.replace(/<nav[\s\S]*?<\/nav>/gi, '');
+  text = text.replace(/<footer[\s\S]*?<\/footer>/gi, '');
+  text = text.replace(/<header[\s\S]*?<\/header>/gi, '');
+  text = text.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n# $1\n');
+  text = text.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n## $1\n');
+  text = text.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n');
+  text = text.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, '\n#### $1\n');
+  text = text.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, '\n##### $1\n');
+  text = text.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, '\n###### $1\n');
+  text = text.replace(/<pre[^>]*><code[^>]*(?:class="[^"]*language-(\w+)[^"]*")?[^>]*>([\s\S]*?)<\/code><\/pre>/gi,
+    (_, lang, code) => `\n\`\`\`${lang || ''}\n${code.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')}\n\`\`\`\n`);
+  text = text.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, '`$1`');
+  text = text.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n');
+  text = text.replace(/<a[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)');
+  text = text.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, '**$1**');
+  text = text.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, '*$1*');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/p>/gi, '\n\n');
+  text = text.replace(/<[^>]+>/g, '');
+  text = text.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"');
+  text = text.replace(/\n{3,}/g, '\n\n').trim();
+  return text;
+}
+
+async function executeTool(call: ToolCall): Promise<ToolResult> {
   const workspace = call.workspacePath || process.cwd();
 
   switch (call.tool) {
@@ -108,7 +136,7 @@ function executeTool(call: ToolCall): ToolResult {
       command = command.replace(/\btouch\s+/g, 'New-Item -ItemType File -Force -Path ');
       try {
         const cwd = call.args.cwd ? path.resolve(workspace, call.args.cwd as string) : workspace;
-        const result = execSync(command, { cwd, encoding: 'utf-8', timeout: 30000, maxBuffer: 1024 * 1024 });
+        const result = execSync(command, { cwd, encoding: 'utf-8', timeout: 120000, maxBuffer: 2 * 1024 * 1024 });
         return { success: true, output: (result || '').slice(0, 8000) };
       } catch (e: unknown) {
         const err = e as { stdout?: string; stderr?: string; message?: string };
@@ -125,6 +153,133 @@ function executeTool(call: ToolCall): ToolResult {
         fs.rmSync(fullPath, { recursive: true, force: true });
         return { success: true, output: `Deleted: ${filePath}` };
       } catch (e) { return { success: false, output: '', error: (e as Error).message }; }
+    }
+
+    case 'grep_search': {
+      const query = call.args.query as string;
+      const searchPath = (call.args.path as string) || '.';
+      const glob = (call.args.glob as string) || '';
+      if (!query) return { success: false, output: '', error: 'query is required' };
+      if (!isPathSafe(searchPath, workspace)) return { success: false, output: '', error: 'Path outside workspace' };
+      try {
+        const fullPath = path.resolve(workspace, searchPath);
+        const isWin = process.platform === 'win32';
+        if (isWin) {
+          const defaultExts = '*.ts,*.tsx,*.js,*.jsx,*.py,*.json,*.md,*.css,*.html,*.yaml,*.yml';
+          const includeExts = (glob || defaultExts).split(',').map(e => `'${e.trim()}'`).join(',');
+          const escapedQuery = query.replace(/'/g, "''");
+          const cmd = [
+            `Get-ChildItem -Path '${fullPath}' -Recurse -Include ${includeExts} -File`,
+            `Where-Object { $_.FullName -notmatch '[\\\\/](node_modules|\.git|dist|\.next|\.turbo|coverage)[\\\\/]' }`,
+            `Select-String -Pattern '${escapedQuery}' -CaseSensitive:$false`,
+            `Select-Object -First 60`,
+            `ForEach-Object { "$($_.Path | Resolve-Path -Relative):$($_.LineNumber): $($_.Line.TrimStart())" }`,
+          ].join(' | ');
+          const result = execSync(cmd, { cwd: fullPath, encoding: 'utf-8', timeout: 30000, maxBuffer: 2 * 1024 * 1024, shell: 'powershell.exe' });
+          return { success: true, output: result.slice(0, 10000) || 'No results found' };
+        } else {
+          const includeFlag = glob ? `--include="${glob}"` : '--include="*.{ts,tsx,js,jsx,py,json,md,css,html,yaml,yml}"';
+          const cmd = `grep -rn "${query}" "${fullPath}" ${includeFlag} --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=.next 2>/dev/null | head -60`;
+          const result = execSync(cmd, { encoding: 'utf-8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 });
+          return { success: true, output: result.slice(0, 10000) || 'No results found' };
+        }
+      } catch {
+        return { success: true, output: 'No results found' };
+      }
+    }
+
+    case 'glob_search': {
+      const pattern = call.args.pattern as string;
+      const basePath = (call.args.path as string) || '.';
+      if (!pattern) return { success: false, output: '', error: 'pattern is required' };
+      if (!isPathSafe(basePath, workspace)) return { success: false, output: '', error: 'Path outside workspace' };
+      try {
+        const fullPath = path.resolve(workspace, basePath);
+        const isWin = process.platform === 'win32';
+        const cmd = isWin
+          ? `Get-ChildItem -Path '${fullPath}' -Recurse -Filter '${pattern}' -File | Where-Object { $_.FullName -notmatch '[\\\\/](node_modules|\.git|dist|\.next)[\\\\/]' } | Select-Object -First 80 | ForEach-Object { $_.FullName | Resolve-Path -Relative }`
+          : `find "${fullPath}" -name "${pattern}" -type f -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" 2>/dev/null | head -80`;
+        const result = execSync(cmd, { cwd: workspace, encoding: 'utf-8', timeout: 15000, maxBuffer: 1024 * 1024, ...(isWin ? { shell: 'powershell.exe' } : {}) });
+        const files = result.trim().split('\n').filter(Boolean).map(f => path.relative(workspace, f));
+        return { success: true, output: files.join('\n') || 'No files found' };
+      } catch {
+        return { success: true, output: 'No files found' };
+      }
+    }
+
+    case 'web_search': {
+      const query = call.args.query as string;
+      if (!query) return { success: false, output: '', error: 'query is required' };
+      try {
+        const encoded = encodeURIComponent(query);
+        const braveKey = process.env.BRAVE_SEARCH_API_KEY;
+        if (braveKey) {
+          const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encoded}&count=8`, {
+            headers: { 'Accept': 'application/json', 'Accept-Encoding': 'gzip', 'X-Subscription-Token': braveKey },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const results = (data.web?.results || []).slice(0, 8).map((r: { title: string; url: string; description: string }) =>
+              `${r.title}\n  ${r.url}\n  ${r.description || ''}`
+            );
+            return { success: true, output: results.join('\n\n') || `No results for: ${query}` };
+          }
+        }
+        const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
+          headers: { 'User-Agent': 'Titan AI Agent/1.0' },
+        });
+        const html = await res.text();
+        const results: string[] = [];
+        const snippetPattern = /<a[^>]+class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g;
+        let match;
+        while ((match = snippetPattern.exec(html)) !== null && results.length < 8) {
+          const url = match[1].replace(/\/\/duckduckgo\.com\/l\/\?uddg=/, '').split('&')[0];
+          const title = match[2].replace(/&amp;/g, '&').replace(/&#x27;/g, "'");
+          try { results.push(`${title}\n  ${decodeURIComponent(url)}`); } catch { results.push(`${title}\n  ${url}`); }
+        }
+        return { success: true, output: results.length > 0 ? results.join('\n\n') : `No results for: ${query}` };
+      } catch (e) {
+        return { success: false, output: '', error: `Web search failed: ${(e as Error).message}` };
+      }
+    }
+
+    case 'web_fetch': {
+      const url = call.args.url as string;
+      if (!url) return { success: false, output: '', error: 'url is required' };
+      try {
+        const res = await fetch(url, {
+          headers: { 'User-Agent': 'Titan AI Agent/1.0', 'Accept': 'text/html,application/json,text/plain' },
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!res.ok) return { success: false, output: '', error: `HTTP ${res.status}` };
+        const text = await res.text();
+        const cleaned = htmlToMarkdown(text);
+        return { success: true, output: cleaned.slice(0, 15000) };
+      } catch (e) {
+        return { success: false, output: '', error: `Fetch failed: ${(e as Error).message}` };
+      }
+    }
+
+    case 'read_lints': {
+      const filePath = call.args.path as string;
+      if (!filePath) return { success: false, output: '', error: 'path is required' };
+      if (!isPathSafe(filePath, workspace)) return { success: false, output: '', error: 'Path outside workspace' };
+      try {
+        const fullPath = path.resolve(workspace, filePath);
+        const cmd = `npx eslint "${fullPath}" --format json --no-error-on-unmatched-pattern 2>/dev/null || true`;
+        const result = execSync(cmd, { cwd: workspace, encoding: 'utf-8', timeout: 20000, maxBuffer: 1024 * 1024 });
+        try {
+          const parsed = JSON.parse(result);
+          const messages = (parsed[0]?.messages || []).map((m: { line: number; column: number; severity: number; message: string; ruleId: string }) =>
+            `Line ${m.line}:${m.column} [${m.severity === 2 ? 'error' : 'warning'}] ${m.message} (${m.ruleId})`
+          );
+          return { success: true, output: messages.length > 0 ? messages.join('\n') : 'No lint errors found' };
+        } catch {
+          return { success: true, output: result.slice(0, 5000) || 'No lint errors found' };
+        }
+      } catch {
+        return { success: true, output: 'Linter not available or no errors found' };
+      }
     }
 
     default:
@@ -181,6 +336,46 @@ const TOOL_DEFINITIONS = [
       parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
     },
   },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'grep_search',
+      description: 'Search for text/patterns across the codebase. Use BEFORE creating files to find existing patterns and conventions.',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: 'Text or regex pattern to search for' }, path: { type: 'string', description: 'Directory to search in (default: .)' }, glob: { type: 'string', description: 'File type filter (e.g. *.tsx,*.ts)' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'glob_search',
+      description: 'Find files matching a name pattern across the workspace.',
+      parameters: { type: 'object', properties: { pattern: { type: 'string', description: 'Filename pattern (e.g. *.test.ts, layout.tsx)' }, path: { type: 'string', description: 'Base directory (default: .)' } }, required: ['pattern'] },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'web_search',
+      description: 'Search the internet for documentation, APIs, or current best practices. Use when unsure about library APIs or need 2026 docs.',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'web_fetch',
+      description: 'Fetch and read a web page as markdown. Use for reading documentation pages.',
+      parameters: { type: 'object', properties: { url: { type: 'string', description: 'URL to fetch' } }, required: ['url'] },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'read_lints',
+      description: 'Check a file for lint/type errors after editing. Use after creating or editing TypeScript files.',
+      parameters: { type: 'object', properties: { path: { type: 'string', description: 'File path to lint check' } }, required: ['path'] },
+    },
+  },
 ];
 
 const MAX_ROUNDS = 15;
@@ -195,21 +390,33 @@ ${previousFiles?.length ? `\nFILES ALREADY CREATED BY PREVIOUS TASKS:\n${previou
 ${systemContext || ''}
 
 ULTIMATE PROTOCOL — MANDATORY:
+
+PHASE 1 — RESEARCH (do this BEFORE writing any code):
 1. Call list_directory first to see project structure. Do not skip.
-2. For every subtask in the user message: produce at least one create_file or edit_file. No subtask left without a deliverable.
-3. Every create_file must contain FULL content (min 20+ chars for code files). Empty files or placeholder-only files are forbidden and will be rejected by the system.
-4. If modifying existing code: read_file first, then edit_file with exact old_string and new_string.
-5. After writing files: read_file each created path to verify. Fix any empty or incorrect file before finishing.
-6. Use run_command for package installs when the task requires new dependencies.
-7. Do not stop until: (a) every subtask has a file create/edit, (b) every created file has been read back and verified, (c) no TODOs or placeholders remain.
+2. Use grep_search to find existing patterns, conventions, imports, and related code. Understand how the codebase works BEFORE adding to it.
+3. Use glob_search to find existing files with similar names or purposes. Never duplicate existing functionality.
+4. If the task involves an API, library, or framework you're unsure about, use web_search to look up current docs.
+
+PHASE 2 — IMPLEMENT (only after research is done):
+5. For every subtask in the user message: produce at least one create_file or edit_file. No subtask left without a deliverable.
+6. Every create_file must contain FULL content (min 20+ chars for code files). Empty files or placeholder-only files are forbidden and will be rejected by the system.
+7. If modifying existing code: read_file first, then edit_file with exact old_string and new_string.
+8. Match existing code conventions (naming, imports, patterns, styling) found during research phase.
+9. Use run_command for package installs when the task requires new dependencies.
+
+PHASE 3 — VERIFY (do this AFTER writing code):
+10. After writing files: read_file each created path to verify. Fix any empty or incorrect file before finishing.
+11. Do not stop until: (a) every subtask has a file create/edit, (b) every created file has been read back and verified, (c) no TODOs or placeholders remain.
 
 RULES:
 - You MUST use tools. Do NOT describe code without writing it. create_file and edit_file are required for every change.
+- RESEARCH FIRST: Always grep_search for existing code before creating new files. Mirror existing patterns.
 - Write COMPLETE, production-quality code. No "implement later", no empty stubs.
 - Every component: real styling, real logic, real content. Modern best practices (TypeScript, error handling, etc.).
 - Never call create_file or write_file with empty or placeholder content. Every file must be complete and usable.
+- If a tool fails, try a different approach. Do not give up after one attempt.
 
-AVAILABLE TOOLS: create_file, edit_file, read_file, list_directory, run_command, delete_file`;
+AVAILABLE TOOLS: create_file, edit_file, read_file, list_directory, run_command, delete_file, grep_search, glob_search, web_search, web_fetch, read_lints`;
 }
 
 async function runToolLoop(
@@ -243,7 +450,7 @@ async function runToolLoop(
     });
 
     for (const tc of response.toolCalls) {
-      const result = executeTool({ tool: tc.name, args: tc.arguments, workspacePath });
+      const result = await executeTool({ tool: tc.name, args: tc.arguments, workspacePath });
       logs.push({ tool: tc.name, args: tc.arguments, success: result.success, output: result.output.slice(0, 1000), error: result.error });
 
       if ((tc.name === 'create_file' || tc.name === 'write_file') && result.success) {
