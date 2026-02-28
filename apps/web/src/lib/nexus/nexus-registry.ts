@@ -2,20 +2,23 @@
  * Nexus Lab — Add-On Registry and Runtime
  *
  * Users and third parties build add-ons (skills + optional tools).
- * Add-ons are loaded into the unified tool registry and their skill
- * instructions are injected into Alfred/chat when enabled.
+ * Add-ons are stored in localStorage and their skill instructions
+ * are injected into Alfred/chat when enabled.
  *
- * Add-on format:
- *   - SKILL.md  (YAML frontmatter + markdown instructions)
- *   - Optional tool definitions (JSON)
- *   - Optional UI components
+ * Tool registration happens server-side via the voice API route,
+ * NOT in this client-safe module (avoids child_process in bundle).
  */
-
-// Type-only import to avoid pulling child_process into the client bundle
-import type { ToolDefinition } from '../tools/tool-registry';
 
 export type AddonPricing = 'free' | 'paid';
 export type AddonStatus = 'available' | 'installed' | 'enabled' | 'disabled';
+
+export interface NexusToolDef {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  parameters: Array<{ name: string; type: string; description: string; required: boolean }>;
+}
 
 export interface NexusAddon {
   id: string;
@@ -29,7 +32,7 @@ export interface NexusAddon {
   icon?: string;
   permissions: string[];
   skillInstructions: string;
-  tools: ToolDefinition[];
+  tools: NexusToolDef[];
   status: AddonStatus;
   installedAt?: number;
   rating?: number;
@@ -69,9 +72,6 @@ class NexusRegistry {
         const list: NexusAddon[] = JSON.parse(raw);
         for (const addon of list) {
           this.addons.set(addon.id, addon);
-          if (addon.status === 'enabled') {
-            this.activateTools(addon);
-          }
         }
       }
     } catch { /* ignore corrupt storage */ }
@@ -82,31 +82,6 @@ class NexusRegistry {
     try {
       localStorage.setItem(ADDON_STORAGE_KEY, JSON.stringify(Array.from(this.addons.values())));
     } catch { /* quota */ }
-  }
-
-  private activateTools(addon: NexusAddon): void {
-    if (addon.tools.length === 0) return;
-    import('../tools/tool-registry').then(({ titanToolRegistry }) => {
-      for (const tool of addon.tools) {
-        titanToolRegistry.register({
-          ...tool,
-          source: 'nexus',
-          enabled: true,
-          requiresConfirmation: true,
-          safetyTier: 2,
-          category: (tool.category as ToolDefinition['category']) || 'nexus',
-        });
-      }
-    }).catch(() => { /* tool registry not available on client */ });
-  }
-
-  private deactivateTools(addon: NexusAddon): void {
-    if (addon.tools.length === 0) return;
-    import('../tools/tool-registry').then(({ titanToolRegistry }) => {
-      for (const tool of addon.tools) {
-        titanToolRegistry.unregister(tool.id);
-      }
-    }).catch(() => { /* tool registry not available on client */ });
   }
 
   register(addon: NexusAddon): void {
@@ -127,7 +102,6 @@ class NexusRegistry {
     const addon = this.addons.get(addonId);
     if (!addon || addon.status === 'available') return false;
     addon.status = 'enabled';
-    this.activateTools(addon);
     this.saveToStorage();
     return true;
   }
@@ -136,7 +110,6 @@ class NexusRegistry {
     const addon = this.addons.get(addonId);
     if (!addon) return false;
     addon.status = 'disabled';
-    this.deactivateTools(addon);
     this.saveToStorage();
     return true;
   }
@@ -144,7 +117,6 @@ class NexusRegistry {
   uninstall(addonId: string): boolean {
     const addon = this.addons.get(addonId);
     if (!addon) return false;
-    this.deactivateTools(addon);
     this.addons.delete(addonId);
     this.saveToStorage();
     return true;
@@ -209,7 +181,7 @@ class NexusRegistry {
     };
   }
 
-  registerFromSkillMd(content: string, extraTools?: ToolDefinition[]): NexusAddon | null {
+  registerFromSkillMd(content: string, extraTools?: NexusToolDef[]): NexusAddon | null {
     const parsed = this.parseSkillMd(content);
     if (!parsed) return null;
 
