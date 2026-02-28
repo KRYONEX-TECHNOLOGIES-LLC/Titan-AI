@@ -7,6 +7,7 @@ import { useVoiceInput } from '@/hooks/useVoiceInput';
 import { serializeBrainContext, saveConversation } from '@/lib/voice/brain-storage';
 import { usePlanStore } from '@/stores/plan-store';
 import { useFileStore } from '@/stores/file-store';
+import { useAlfredCanvas, type CanvasMode } from '@/stores/alfred-canvas-store';
 
 const ALFRED_LOG_KEY_PREFIX = 'alfred-conversation-';
 const ALFRED_TASKS_KEY = 'alfred-pending-tasks';
@@ -278,6 +279,21 @@ export function useAlfredAmbient() {
               const toolDesc = payload.args?.path ? `${payload.name}: ${String(payload.args.path)}` : payload.name;
               buildSteps.push({ id: stepId, tool: payload.name, description: toolDesc, status: 'running', startedAt: Date.now() });
 
+              // Push live tool activity to canvas
+              const canvasStore = useAlfredCanvas.getState();
+              const toolCanvasMode: CanvasMode =
+                payload.name === 'run_command' || payload.name === 'execute_command' ? 'terminal' :
+                payload.name === 'create_file' || payload.name === 'edit_file' || payload.name === 'write_file' ? 'code' :
+                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' ? 'screen' :
+                payload.name === 'list_files' || payload.name === 'read_file' ? 'files' : 'screen';
+              canvasStore.pushContent({
+                type: toolCanvasMode,
+                title: toolDesc,
+                data: payload.args ? JSON.stringify(payload.args, null, 2) : payload.name,
+                timestamp: Date.now(),
+                meta: { tool: payload.name, status: 'running' },
+              });
+
               // Show live build progress in chat
               if (!buildMsgId) {
                 buildMsgId = `build-${Date.now()}`;
@@ -303,6 +319,24 @@ export function useAlfredAmbient() {
                   m.buildSteps && m.text === '[build]' ? { ...m, buildSteps: [...buildSteps] } : m
                 ));
               }
+
+              // Update canvas with tool result
+              const canvasStoreResult = useAlfredCanvas.getState();
+              const resultMode: CanvasMode =
+                payload.name === 'run_command' || payload.name === 'execute_command' ? 'terminal' :
+                payload.name === 'create_file' || payload.name === 'edit_file' || payload.name === 'write_file' ? 'code' :
+                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' ? 'screen' :
+                payload.name === 'list_files' ? 'files' : 'screen';
+              if (payload.message) {
+                canvasStoreResult.pushContent({
+                  type: resultMode,
+                  title: `${payload.name} ${payload.success !== false ? 'completed' : 'failed'}`,
+                  data: payload.message,
+                  timestamp: Date.now(),
+                  meta: { tool: payload.name, status: payload.success !== false ? 'done' : 'error' },
+                });
+              }
+              canvasStoreResult.incrementTask(payload.success !== false);
             }
           } catch { /* skip malformed events */ }
         }

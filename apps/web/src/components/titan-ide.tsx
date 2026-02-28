@@ -77,6 +77,8 @@ import { initCommandRegistry } from '@/lib/ide/command-registry';
 const PlanModePanel = dynamic(() => import('@/components/ide/PlanModePanel').then(m => ({ default: m.PlanModePanel })), { ssr: false });
 const TitanVoicePopup = dynamic(() => import('@/components/ide/TitanVoicePopup'), { ssr: false });
 
+import { AlfredFullPage } from '@/components/alfred/AlfredFullPage';
+
 /* ═══ MAIN IDE COMPONENT ═══ */
 export default function TitanIDE() {
   const [mounted, setMounted] = useState(false);
@@ -85,6 +87,7 @@ export default function TitanIDE() {
   const titanSession = useSession();
   const alfred = useAlfredAmbient();
   const { alfredState } = alfred;
+  const titanVoice = useTitanVoice();
 
   // Initialize command registry once — use getState directly so we don't
   // subscribe TitanIDE to the entire store (which would re-render on any
@@ -795,9 +798,21 @@ export default function TitanIDE() {
           />
         </div>
 
+        {/* ALFRED FULL-PAGE TAKEOVER */}
+        {activeView === 'alfred' && (
+          <AlfredFullPage
+            onBackToIDE={() => setActiveView('explorer')}
+            alfred={alfred}
+            titanVoice={titanVoice}
+            renderMessage={renderAlfredMessage}
+            WaveformVisualizer={WaveformVisualizer}
+            BuildProgressCard={BuildProgressCard}
+          />
+        )}
+
         {/* LEFT PANEL */}
-        {activeView && activeView !== 'explorer' && (
-          <div className={`${activeView === 'midnight' || activeView === 'alfred' || activeView === 'cartography' ? 'w-[600px]' : 'w-[420px]'} bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden transition-all duration-300`}>
+        {activeView && activeView !== 'explorer' && activeView !== 'alfred' && (
+          <div className={`${activeView === 'midnight' || activeView === 'cartography' ? 'w-[600px]' : 'w-[420px]'} bg-[#1e1e1e] border-r border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden transition-all duration-300`}>
             {activeView === 'search' && <IDESemanticSearch />}
             {activeView === 'git' && <IDEGitPanel workspacePath={fileSystem.workspacePath} />}
             {activeView === 'debug' && <IDEDebugPanel />}
@@ -860,7 +875,6 @@ export default function TitanIDE() {
                 onBackToIDE={() => setActiveView('explorer')}
               />
             )}
-            {activeView === 'alfred' && <AlfredPanel onBackToIDE={() => setActiveView('explorer')} alfred={alfred} />}
             {activeView === 'training-lab' && <TrainingLabPanel />}
             {activeView === 'brain' && <BrainObservatoryPanel />}
             {activeView === 'cartography' && <CartographyPanel />}
@@ -879,8 +893,8 @@ export default function TitanIDE() {
           </div>
         )}
 
-        {/* CENTER: Editor + Terminal */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* CENTER: Editor + Terminal (hidden when Alfred full-page is active) */}
+        {activeView !== 'alfred' && <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <EditorArea
             tabs={tabs} activeTab={activeTab}
             getFileContent={getFileContent}
@@ -901,10 +915,10 @@ export default function TitanIDE() {
               <IDETerminal />
             </div>
           )}
-        </div>
+        </div>}
 
-        {/* RIGHT PANEL - File Explorer + Lane Panel */}
-        {showRightPanel && (
+        {/* RIGHT PANEL - File Explorer + Lane Panel (hidden when Alfred full-page is active) */}
+        {activeView !== 'alfred' && showRightPanel && (
           <div className="w-[280px] bg-[#1e1e1e] border-l border-[#3c3c3c] flex flex-col shrink-0 overflow-hidden">
             {settings.activeModel === 'titan-protocol-v2' ? (
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -1906,230 +1920,6 @@ function BuildProgressCard({ steps }: { steps: Array<{ id: string; tool: string;
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ─── ALFRED PANEL ─── */
-function AlfredPanel({ onBackToIDE, alfred }: { onBackToIDE: () => void; alfred: ReturnType<typeof useAlfredAmbient> }) {
-  const titanVoice = useTitanVoice();
-  const { alfredState, conversationLog, voice, sendManual } = alfred;
-  const logEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll conversation log
-  useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversationLog]);
-
-  // Manual text input
-  const [manualInput, setManualInput] = useState('');
-  const [attachedImages, setAttachedImages] = useState<File[]>([]);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-
-  const handleManualSend = useCallback(() => {
-    if (!manualInput.trim() && attachedImages.length === 0) return;
-    const text = manualInput.trim();
-    if (attachedImages.length > 0) {
-      const imageNames = attachedImages.map(f => f.name).join(', ');
-      sendManual(text ? `${text}\n[Attached images: ${imageNames}]` : `[Attached images: ${imageNames}]`);
-    } else {
-      sendManual(text);
-    }
-    setManualInput('');
-    setAttachedImages([]);
-  }, [manualInput, attachedImages, sendManual]);
-
-  const handleImageDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-    if (files.length > 0) setAttachedImages(prev => [...prev, ...files]);
-  }, []);
-
-  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
-    if (files.length > 0) setAttachedImages(prev => [...prev, ...files]);
-  }, []);
-
-  const isProcessing = alfredState === 'processing';
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#3c3c3c]">
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">A</span>
-            </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-cyan-400 border-2 border-[#1e1e1e] animate-pulse" />
-          </div>
-          <div>
-            <span className="text-[13px] font-semibold text-white">Alfred</span>
-            <span className="text-[10px] ml-2" style={{ color: alfredState === 'activated' ? '#22d3ee' : alfredState === 'listening' ? '#10b981' : isProcessing ? '#f59e0b' : alfredState === 'speaking' ? '#3b82f6' : '#808080' }}>
-              {alfredState === 'activated' ? 'Activated — listening...' : alfredState === 'listening' ? 'In the air — say "Alfred"' : isProcessing ? 'Thinking...' : alfredState === 'speaking' ? 'Speaking' : 'Ready'}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={onBackToIDE} className="text-[11px] text-[#808080] hover:text-white px-2 py-1 rounded hover:bg-[#3c3c3c] transition-colors">
-            Back
-          </button>
-        </div>
-      </div>
-
-      {/* Waveform + Status Bar */}
-      <div className="px-4 py-2 border-b border-[#2a2a2a]">
-        <WaveformVisualizer active={true} speaking={titanVoice.isSpeaking} />
-        {/* Voice error */}
-        {voice.errorMessage && (
-          <div className="mt-2 rounded bg-red-900/20 border border-red-800/40 p-1.5 flex items-center justify-between">
-            <span className="text-[10px] text-red-300">{voice.errorMessage}</span>
-            <button onClick={voice.clearError} className="text-red-400 text-[12px] hover:text-red-300 ml-2">×</button>
-          </div>
-        )}
-        {/* Live interim text */}
-        {voice.interimText && (
-          <div className="mt-2 rounded bg-[#1a1a2e] border border-cyan-800/30 p-1.5">
-            <span className="text-[10px] text-cyan-400 mr-1">Hearing:</span>
-            <span className="text-[11px] text-white/80 italic">{voice.interimText}</span>
-          </div>
-        )}
-      </div>
-
-      {/* Conversation Log */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {conversationLog.map((entry, i) => {
-          if (entry.buildSteps && entry.buildSteps.length > 0) {
-            return (
-              <div key={i} className="flex gap-2 justify-start">
-                <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-white text-[9px] font-bold">A</span>
-                </div>
-                <div className="max-w-[90%] flex-1">
-                  <BuildProgressCard steps={entry.buildSteps} />
-                </div>
-              </div>
-            );
-          }
-          return (
-            <div key={i} className={`flex gap-2 ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              {entry.role === 'alfred' && (
-                <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-white text-[9px] font-bold">A</span>
-                </div>
-              )}
-              <div className={`max-w-[85%] rounded-lg px-3 py-2 ${
-                entry.role === 'user'
-                  ? 'bg-blue-600/20 border border-blue-500/30'
-                  : 'bg-[#252526] border border-[#3c3c3c]'
-              }`}>
-                <div className="text-[12px] text-[#e0e0e0] leading-relaxed whitespace-pre-wrap">{entry.role === 'alfred' ? renderAlfredMessage(entry.text) : entry.text}</div>
-                <span className="text-[9px] text-[#666] mt-1 block">{entry.time}</span>
-              </div>
-              {entry.role === 'user' && (
-                <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-white text-[9px] font-bold">U</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {isProcessing && (
-          <div className="flex gap-2 justify-start">
-            <div className="w-6 h-6 rounded-full bg-cyan-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-[9px] font-bold">A</span>
-            </div>
-            <div className="bg-[#252526] border border-[#3c3c3c] rounded-lg px-3 py-2">
-              <div className="flex gap-1 items-center">
-                <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-            </div>
-          </div>
-        )}
-        <div ref={logEndRef} />
-      </div>
-
-      {/* Bottom Controls */}
-      <div className="px-4 py-3 border-t border-[#3c3c3c] space-y-2">
-        {/* Quick Actions — mic is always on, no toggle needed */}
-        <div className="flex gap-1.5 flex-wrap items-center">
-          {titanVoice.isSpeaking && (
-            <button
-              onClick={() => titanVoice.stopSpeaking()}
-              className="px-2.5 py-1 rounded text-[10px] font-medium bg-red-600/20 text-red-300 border border-red-500/40 hover:bg-red-600/30 transition-all"
-            >
-              Stop Speaking
-            </button>
-          )}
-          <button
-            onClick={() => titanVoice.toggleVoice()}
-            className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
-              titanVoice.voiceEnabled
-                ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40'
-                : 'bg-[#2d2d2d] text-[#808080] border border-[#3c3c3c]'
-            }`}
-          >
-            TTS {titanVoice.voiceEnabled ? 'ON' : 'OFF'}
-          </button>
-        </div>
-
-        {/* Attached Images Preview */}
-        {attachedImages.length > 0 && (
-          <div className="flex gap-1.5 flex-wrap">
-            {attachedImages.map((f, i) => (
-              <div key={i} className="relative group">
-                <div className="w-12 h-12 rounded border border-[#3c3c3c] bg-[#1a1a1a] overflow-hidden">
-                  <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
-                </div>
-                <button
-                  onClick={() => setAttachedImages(prev => prev.filter((_, idx) => idx !== i))}
-                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-[8px] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Text Input */}
-        <div
-          className="flex gap-2"
-          onDragOver={e => e.preventDefault()}
-          onDrop={handleImageDrop}
-        >
-          <input ref={imageInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageSelect} />
-          <button
-            onClick={() => imageInputRef.current?.click()}
-            className="px-2 py-1.5 rounded-lg bg-[#2d2d2d] border border-[#3c3c3c] text-[#808080] hover:text-white hover:border-[#555] transition-colors text-[12px]"
-            title="Attach image"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-          </button>
-          <input
-            type="text"
-            value={manualInput}
-            onChange={e => setManualInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); } }}
-            placeholder={voice.isListening ? 'Listening... or type here' : 'Type a message to Alfred...'}
-            className="flex-1 bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg px-3 py-1.5 text-[12px] text-white placeholder-[#666] focus:border-cyan-600 focus:outline-none transition-colors"
-            disabled={isProcessing}
-          />
-          <button
-            onClick={handleManualSend}
-            disabled={isProcessing || (!manualInput.trim() && attachedImages.length === 0)}
-            className="px-3 py-1.5 rounded-lg bg-cyan-600 text-white text-[11px] font-medium hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Send
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

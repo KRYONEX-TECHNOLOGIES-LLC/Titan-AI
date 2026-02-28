@@ -429,7 +429,19 @@ Alfred is the Titan AI superintelligent overseer — an autonomous learning fram
 | `apps/web/src/lib/voice/web-browser.ts` | URL fetch + content extraction |
 | `apps/web/src/lib/voice/auto-learner.ts` | Autonomous background learning engine |
 | `apps/web/src/stores/titan-voice.store.ts` | TTS state (Zustand) |
-| `apps/web/src/hooks/useAlfredAmbient.ts` | Wake word, tool-call handling, self-improvement hooks |
+| `apps/web/src/hooks/useAlfredAmbient.ts` | Wake word, tool-call handling, self-improvement hooks, canvas event emission |
+| `apps/web/src/stores/alfred-canvas-store.ts` | **Canvas state (Zustand): modes, sessions, workflows, stats** |
+| `apps/web/src/components/alfred/AlfredFullPage.tsx` | **Full-page split-pane layout (canvas + chat)** |
+| `apps/web/src/components/alfred/AlfredHeader.tsx` | **Session tabs, mode tabs, status indicator** |
+| `apps/web/src/components/alfred/AlfredChat.tsx` | **Extracted chat UI with quick actions** |
+| `apps/web/src/components/alfred/AlfredCanvas.tsx` | **Mode router for 6 canvas views** |
+| `apps/web/src/components/alfred/AlfredQuickActions.tsx` | **Context-aware action chips** |
+| `apps/web/src/components/alfred/canvas/ScreenView.tsx` | **Idle dashboard + live web content** |
+| `apps/web/src/components/alfred/canvas/CodePreview.tsx` | **Syntax-highlighted code diffs** |
+| `apps/web/src/components/alfred/canvas/TerminalView.tsx` | **Live terminal output** |
+| `apps/web/src/components/alfred/canvas/FileTreeView.tsx` | **File change tree** |
+| `apps/web/src/components/alfred/canvas/VibeCode.tsx` | **Interactive code sandbox + preview** |
+| `apps/web/src/components/alfred/canvas/DashboardView.tsx` | **Stats, sessions, workflows dashboard** |
 | `apps/web/src/app/api/titan/voice/route.ts` | SSE API with tool-calling loop |
 | `apps/web/src/lib/llm-call.ts` | callModelWithTools (function-calling support) |
 
@@ -498,6 +510,21 @@ All actions are classified into 3 safety tiers:
 ---
 
 ## Changelog
+
+### v0.3.73 — Alfred Full-Page Workspace (2026-02-28)
+
+- **Full-page Alfred UI**: Replaced 600px sidebar with full-page immersive workspace (orgo.ai-killer)
+- **Resizable split-pane**: Canvas (62%) + Chat (38%) with draggable divider, min 280px per pane
+- **Live canvas**: 6 auto-switching views — Screen, Code, Terminal, Files, Vibe Code, Dashboard
+- **Canvas auto-switch**: Automatically shows what Alfred is doing (web browsing, code editing, terminal output, file changes); pin button to lock view
+- **Multi-agent session tabs**: Create multiple agent sessions from the header (like orgo.ai's multiple computers)
+- **Dashboard view**: Real-time stats (tasks completed, success rate, cost), session progress bars, active workflow tracker
+- **Vibe Code sandbox**: Interactive code editor with live HTML preview and push-to-workspace button
+- **Quick action chips**: Context-aware suggested actions (Build, Search, Plan Mode, Scan, Deploy)
+- **Tool-to-canvas wiring**: useAlfredAmbient SSE tool_call/tool_result events push live content to canvas store
+- **ElevenLabs TTS**: Fixed missing .env.local — Alfred now speaks with ElevenLabs voice
+- **Dead code cleanup**: Removed legacy AlfredPanel (220 lines) from titan-ide.tsx
+- **New files**: alfred-canvas-store.ts (Zustand), AlfredFullPage.tsx, AlfredHeader.tsx, AlfredChat.tsx, AlfredCanvas.tsx, AlfredQuickActions.tsx, ScreenView.tsx, CodePreview.tsx, TerminalView.tsx, FileTreeView.tsx, VibeCode.tsx, DashboardView.tsx
 
 ### v0.3.47 — Alfred Superintelligence Upgrade (2026-02-24)
 
