@@ -222,4 +222,45 @@ LOCKFILE RULE — ALWAYS SYNC pnpm-lock.yaml (NON-NEGOTIABLE):
   1. Run: pnpm install (locally)
   2. git add pnpm-lock.yaml; git commit -m "fix: sync pnpm-lock.yaml"
   3. git push origin main
-  4. If a tag was already pushed and failed: delete it, re-tag after the fix commit.`;
+  4. If a tag was already pushed and failed: delete it, re-tag after the fix commit.
+
+DESKTOP BUILD / ELECTRON PACKAGING RULES (NON-NEGOTIABLE):
+  The desktop .exe is built by electron-builder using NSIS. The packaged app includes:
+  - apps/desktop/dist/ (compiled desktop code)
+  - apps/desktop/node_modules/ (desktop dependencies)
+  - apps/web/.next/standalone/ (the entire compiled Next.js server + its node_modules)
+  - apps/web/.next/static/ (static assets)
+  - apps/web/public/ (public assets)
+  
+  NSIS BUFFER OVERFLOW (v0.3.74-v0.3.77 incident):
+  NSIS processes every file individually and logs each one to stdout. When the total file count
+  gets too high (thousands of files from standalone + node_modules), the stdout exceeds Node.js
+  V8 max string length (~512MB), causing: RangeError: Invalid string length at Array.join.
+  The build runs for 1+ hour then crashes. This killed v0.3.74 through v0.3.77 desktop releases.
+  
+  PREVENTION (enforced in electron-builder.config.js):
+  electron-builder.config.js has aggressive file exclusion filters on both 'files' and 'extraResources'.
+  These exclude files that are NEVER needed at runtime:
+  - .map (source maps — only for dev debugging)
+  - .d.ts, .d.mts, .d.cts (TypeScript declarations — only for compilation, not runtime)
+  - README, CHANGELOG, HISTORY, LICENSE, *.md (documentation)
+  - __tests__/, test/, tests/, spec/ (package test suites)
+  - docs/ (documentation directories)
+  - .tsbuildinfo, tsconfig*.json, .eslintrc*, .prettierrc* (dev tooling configs)
+  These are safe to exclude because the standalone output is fully compiled JS — Node.js never
+  reads .d.ts files or source maps at runtime. The user's project files are separate (on their disk).
+  
+  IF THE DESKTOP BUILD FAILS WITH "RangeError: Invalid string length":
+  1. A new dependency probably increased the standalone file count past the NSIS limit
+  2. Check electron-builder.config.js exclusion filters — add more patterns if needed
+  3. NEVER remove the existing exclusion filters — they are the only thing preventing the overflow
+  4. Consider if the new dep is truly needed, or if it can be made optional/lazy-loaded
+  
+  CLIENT VS SERVER MODULE BOUNDARIES:
+  - Client components (anything imported by pages/components rendered in browser) CANNOT import
+    Node.js-only modules (child_process, fs, path, etc.). Webpack will fail at build time.
+  - If a client component needs server functionality, use an API route as a proxy.
+  - The @titan/mcp-servers package is desktop-only (uses Playwright). In web API routes that
+    import it, use: // @ts-ignore + /* webpackIgnore: true */ on the dynamic import.
+    This makes the import skip both TypeScript checking and webpack bundling.
+    On Railway (web deploy), the route returns 503 "not available in web deployment".`;
