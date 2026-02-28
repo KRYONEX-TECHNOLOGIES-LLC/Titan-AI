@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { usePlanStore, type PlanTask, type TaskStatus, type MemoryEntry, type ManagerReport, type FinalChecklist, type ExecutionStatus } from '@/stores/plan-store';
 import { useCodeDirectory } from '@/stores/code-directory';
 import { useFileStore } from '@/stores/file-store';
@@ -177,6 +177,20 @@ export function PlanModePanel() {
   }, []);
 
   const executionRef = useRef(false);
+
+  useEffect(() => {
+    if (exec.status === 'idle' || exec.status === 'done' || exec.status === 'error') {
+      executionRef.current = false;
+    }
+  }, [exec.status]);
+
+  useEffect(() => {
+    const status = usePlanStore.getState().execution.status;
+    if (status === 'executing' || status === 'scanning') {
+      usePlanStore.getState().setExecutionStatus('idle');
+      usePlanStore.getState().setPlanExecuting(false);
+    }
+  }, []);
 
   const handleStartPlan = useCallback(async (resume = false) => {
     if (totalTasks === 0 || executionRef.current) return;
@@ -409,6 +423,7 @@ TAGS: ${task.tags.join(', ')}${subtasksSection}
   }, [store, exec.status]);
 
   const handleStopPlan = useCallback(() => {
+    executionRef.current = false;
     store.stopExecution();
   }, [store]);
 
@@ -564,7 +579,7 @@ TAGS: ${task.tags.join(', ')}${subtasksSection}
         </button>
 
         <button
-          onClick={() => store.clearPlan()}
+          onClick={() => { executionRef.current = false; store.clearPlan(); }}
           className="px-2 py-1 rounded text-[10px] bg-[#2d2d2d] text-[#808080] hover:text-[#ef4444] transition-colors"
           title="Clear plan"
         >
