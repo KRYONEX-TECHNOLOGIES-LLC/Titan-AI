@@ -11,7 +11,8 @@
  *   - Optional UI components
  */
 
-import { titanToolRegistry, type ToolDefinition, type ToolResult } from '../tools/tool-registry';
+// Type-only import to avoid pulling child_process into the client bundle
+import type { ToolDefinition } from '../tools/tool-registry';
 
 export type AddonPricing = 'free' | 'paid';
 export type AddonStatus = 'available' | 'installed' | 'enabled' | 'disabled';
@@ -84,22 +85,28 @@ class NexusRegistry {
   }
 
   private activateTools(addon: NexusAddon): void {
-    for (const tool of addon.tools) {
-      titanToolRegistry.register({
-        ...tool,
-        source: 'nexus',
-        enabled: true,
-        requiresConfirmation: true,
-        safetyTier: 2,
-        category: (tool.category as ToolDefinition['category']) || 'nexus',
-      });
-    }
+    if (addon.tools.length === 0) return;
+    import('../tools/tool-registry').then(({ titanToolRegistry }) => {
+      for (const tool of addon.tools) {
+        titanToolRegistry.register({
+          ...tool,
+          source: 'nexus',
+          enabled: true,
+          requiresConfirmation: true,
+          safetyTier: 2,
+          category: (tool.category as ToolDefinition['category']) || 'nexus',
+        });
+      }
+    }).catch(() => { /* tool registry not available on client */ });
   }
 
   private deactivateTools(addon: NexusAddon): void {
-    for (const tool of addon.tools) {
-      titanToolRegistry.unregister(tool.id);
-    }
+    if (addon.tools.length === 0) return;
+    import('../tools/tool-registry').then(({ titanToolRegistry }) => {
+      for (const tool of addon.tools) {
+        titanToolRegistry.unregister(tool.id);
+      }
+    }).catch(() => { /* tool registry not available on client */ });
   }
 
   register(addon: NexusAddon): void {
