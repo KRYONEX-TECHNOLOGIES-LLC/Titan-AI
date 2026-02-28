@@ -29,6 +29,7 @@ import { setupIndexerIPC } from './ipc/indexer.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
 import * as chokidar from 'chokidar';
 import * as fs from 'fs';
+import tar from 'tar';
 
 // Enforce single instance — if another copy is already running, focus it and exit this one.
 // Use only app.quit() — process.exit() can conflict with elevated NSIS post-install launch.
@@ -349,28 +350,46 @@ const LOADING_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTY
 </html>`)}`;
 
 async function extractWebServerIfNeeded(): Promise<void> {
-  if (app.isPackaged) {
-    const serverJs = path.join(process.resourcesPath, 'web-server', 'apps', 'web', 'server.js');
-    const tarFile = path.join(process.resourcesPath, 'web-server-standalone.tar');
+  if (!app.isPackaged) return;
 
-    if (!fs.existsSync(serverJs) && fs.existsSync(tarFile)) {
-      console.log('[Main] First launch — extracting web server from archive...');
-      const webServerDir = path.join(process.resourcesPath, 'web-server');
-      fs.mkdirSync(webServerDir, { recursive: true });
+  const tarFile = path.join(process.resourcesPath, 'web-server-standalone.tar');
+  const webServerDir = path.join(process.resourcesPath, 'web-server');
+  const serverJs = path.join(webServerDir, 'apps', 'web', 'server.js');
 
-      try {
-        const { execSync } = await import('child_process');
-        execSync(`tar -xf "${tarFile}" -C "${webServerDir}"`, {
-          timeout: 120000,
-          stdio: 'pipe',
-        });
-        console.log('[Main] Web server extracted successfully.');
-        fs.unlinkSync(tarFile);
-        console.log('[Main] Cleaned up tar archive.');
-      } catch (err) {
-        console.error('[Main] Failed to extract web server:', err);
-      }
+  if (!fs.existsSync(tarFile)) {
+    if (!fs.existsSync(serverJs)) {
+      dialog.showErrorBox(
+        'Titan — Missing Files',
+        'The web server files are missing and no archive was found.\n\nPlease reinstall Titan Desktop from titan.kryonextech.com.',
+      );
     }
+    return;
+  }
+
+  console.log('[Main] Found web-server-standalone.tar — extracting web server...');
+  console.log(`[Main] Archive: ${tarFile}`);
+  console.log(`[Main] Target:  ${webServerDir}`);
+
+  fs.mkdirSync(webServerDir, { recursive: true });
+
+  try {
+    await tar.extract({ file: tarFile, cwd: webServerDir });
+
+    if (!fs.existsSync(serverJs)) {
+      throw new Error(`Extraction finished but server.js not found at: ${serverJs}`);
+    }
+
+    console.log('[Main] Web server extracted successfully.');
+
+    try { fs.unlinkSync(tarFile); } catch {}
+    console.log('[Main] Cleaned up tar archive.');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[Main] Extraction failed:', msg);
+    dialog.showErrorBox(
+      'Titan — Extraction Failed',
+      `Could not extract the web server archive.\n\n${msg}\n\nPlease try reinstalling Titan Desktop.`,
+    );
   }
 }
 
@@ -462,7 +481,7 @@ app.whenReady().then(async () => {
   const appUrl = `http://127.0.0.1:${DESKTOP_PORT}/editor`;
   try {
     console.log('[Main] Waiting for Next.js server to be ready...');
-    await waitForServer(DESKTOP_PORT, 20000);
+    await waitForServer(DESKTOP_PORT, 60000);
     console.log('[Main] Server ready.');
   } catch (err) {
     console.error('[Main] Server did not start in time:', err);

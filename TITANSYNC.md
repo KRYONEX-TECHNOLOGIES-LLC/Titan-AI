@@ -518,6 +518,16 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.81 — Fix First-Launch Extraction (2026-02-28)
+
+**Root cause:** v0.3.80 desktop app showed "Titan could not start" because the shell `tar -xf` extraction failed silently on Windows. Windows `tar.exe` can fail with long paths (>260 chars from deeply nested node_modules), and the `catch` block only logged to console — users saw no explanation.
+
+**Fix:**
+- Replaced shell `execSync('tar ...')` with the `tar` npm package (node-tar) for extraction. node-tar handles Windows long paths natively using `\\?\` prefix and has no dependency on system binaries.
+- Added user-visible `dialog.showErrorBox()` on extraction failure and missing files.
+- Increased server startup timeout from 20s to 60s (first launch after extraction needs more time).
+- Verified extraction: checks `server.js` exists after extract, shows clear error if not.
+
 ### v0.3.80 — Fix NSISBI Download URL (2026-02-28)
 
 **Root cause:** v0.3.79 desktop build failed instantly (8s) at "Publish desktop app (Windows)" because the NSISBI custom binary URL pointed to a nonexistent GitHub release (`AstraliteHeart/NSISBI-ElectronBuilder/v1.0.1` — 404). The correct repo is `SoundSafari/NSISBI-ElectronBuilder` at tag `1.0.0`.

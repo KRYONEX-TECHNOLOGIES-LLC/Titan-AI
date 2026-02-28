@@ -1,6 +1,6 @@
 {
   "name": "@titan/desktop",
-  "version": "0.3.80",
+  "version": "0.3.81",
   "private": true,
   "description": "Titan Desktop - AI-native coding operating system",
   "author": "KRYONEX TECHNOLOGIES LLC",
@@ -29,10 +29,12 @@
     "fast-glob": "^3.3.0",
     "node-pty": "^1.0.0",
     "simple-git": "^3.31.1",
+    "tar": "7.5.9",
     "turndown": "^7.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@types/tar": "7.0.87",
     "@types/turndown": "^5.0.5",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",

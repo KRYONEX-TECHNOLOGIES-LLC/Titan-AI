@@ -258,6 +258,15 @@ DESKTOP BUILD / ELECTRON PACKAGING RULES (NON-NEGOTIABLE):
   4. NSISBI custom binary replaces standard NSIS (handles >2GB installers)
   5. On first launch, apps/desktop/src/main.ts extractWebServerIfNeeded() extracts the tar
   
+  FIRST-LAUNCH TAR EXTRACTION (v0.3.81+ — CRITICAL KNOWLEDGE):
+  The extraction uses the 'tar' npm package (NOT shell tar.exe) because:
+  - Shell tar.exe fails silently on Windows with long paths (>260 chars)
+  - node-tar handles Windows long paths natively (uses \\?\ prefix)
+  - node-tar is pure JS — no dependency on system binaries
+  - Extraction shows user-visible error dialog if it fails (not silent console.log)
+  NEVER switch back to execSync('tar ...') or execFileSync('tar', ...) — this was the
+  cause of the v0.3.80 "Titan could not start" bug where extraction failed silently.
+  
   NSISBI CUSTOM BINARY (CRITICAL — v0.3.79-v0.3.80 incident):
   electron-builder.config.js uses customNsisBinary to download NSISBI from GitHub.
   The ONLY valid URL is: https://github.com/SoundSafari/NSISBI-ElectronBuilder/releases/download/1.0.0/nsisbi-electronbuilder-3.10.3.7z
