@@ -117,6 +117,18 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
+      - name: Prepare web standalone for packaging
+        shell: bash
+        run: |
+          echo "[CI] Flattening pnpm symlinks in standalone output..."
+          node apps/desktop/scripts/prepare-standalone.js
+          echo "[CI] Creating tar archive of standalone..."
+          cd apps/web/.next
+          tar -cf web-server-standalone.tar -C standalone .
+          FILECOUNT=$(find standalone -type f | wc -l)
+          TARSIZE=$(du -sh web-server-standalone.tar | cut -f1)
+          echo "[CI] Standalone: ${FILECOUNT} files -> 1 tar archive (${TARSIZE})"
+
       - name: Build desktop app
         run: pnpm --filter @titan/desktop run build
 

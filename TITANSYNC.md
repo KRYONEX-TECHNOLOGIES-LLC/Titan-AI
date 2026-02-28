@@ -516,6 +516,21 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.79 — God-Tier Desktop Build Fix (2026-02-28)
+
+**Root cause:** NSIS processes every file individually and logs each one to stdout. The web standalone output (with `outputFileTracingRoot` spanning the entire monorepo) contained potentially hundreds of thousands of files. After pnpm flattening (symlinks replaced with copies), NSIS's stdout exceeded Node.js V8 max string length (~512MB), crashing with `RangeError: Invalid string length`. File exclusion filters (v0.3.78) were not enough — the file count was still too high.
+
+**The fix (three-layer approach):**
+1. **Pre-compress standalone into a single tar** — CI now flattens pnpm symlinks with `prepare-standalone.js`, then tars the entire standalone directory into ONE file (`web-server-standalone.tar`). NSIS only sees 1 file instead of 100,000+. This eliminates the stdout overflow entirely.
+2. **NSISBI custom binary** — Replaces standard NSIS with NSISBI (NSIS Build Improved) which handles installers >2GB. Community-recommended fix from electron-builder #8399.
+3. **First-launch extraction** — Electron main.ts detects the tar on first launch, extracts it to `resources/web-server/`, then deletes the tar. ~5 second one-time cost. After that, the app runs exactly as before.
+
+**Changes:**
+- `electron-builder.config.js`: Removed afterPack flattening, changed extraResources to use single tar, added NSISBI customNsisBinary, kept file exclusion filters on desktop node_modules
+- `release-desktop.yml`: Added "Prepare web standalone for packaging" step (flatten + tar)
+- `apps/desktop/scripts/prepare-standalone.js`: New script — flattens pnpm symlinks in standalone output
+- `apps/desktop/src/main.ts`: Added `extractWebServerIfNeeded()` for first-launch tar extraction
+
 ### v0.3.78 — Fix Desktop Release Pipeline (2026-02-28)
 
 **Desktop Build Fix:**

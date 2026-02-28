@@ -348,7 +348,35 @@ const LOADING_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTY
 </body>
 </html>`)}`;
 
+async function extractWebServerIfNeeded(): Promise<void> {
+  if (app.isPackaged) {
+    const serverJs = path.join(process.resourcesPath, 'web-server', 'apps', 'web', 'server.js');
+    const tarFile = path.join(process.resourcesPath, 'web-server-standalone.tar');
+
+    if (!fs.existsSync(serverJs) && fs.existsSync(tarFile)) {
+      console.log('[Main] First launch — extracting web server from archive...');
+      const webServerDir = path.join(process.resourcesPath, 'web-server');
+      fs.mkdirSync(webServerDir, { recursive: true });
+
+      try {
+        const { execSync } = await import('child_process');
+        execSync(`tar -xf "${tarFile}" -C "${webServerDir}"`, {
+          timeout: 120000,
+          stdio: 'pipe',
+        });
+        console.log('[Main] Web server extracted successfully.');
+        fs.unlinkSync(tarFile);
+        console.log('[Main] Cleaned up tar archive.');
+      } catch (err) {
+        console.error('[Main] Failed to extract web server:', err);
+      }
+    }
+  }
+}
+
 app.whenReady().then(async () => {
+  await extractWebServerIfNeeded();
+
   const portInUse = await isPortInUse(DESKTOP_PORT);
   if (portInUse) {
     // Kill orphaned servers from a previous crashed instance so we always boot a fresh one
