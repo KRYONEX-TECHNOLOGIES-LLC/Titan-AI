@@ -258,14 +258,13 @@ DESKTOP BUILD / ELECTRON PACKAGING RULES (NON-NEGOTIABLE):
   4. NSISBI custom binary replaces standard NSIS (handles >2GB installers)
   5. On first launch, apps/desktop/src/main.ts extractWebServerIfNeeded() extracts the tar
   
-  FIRST-LAUNCH TAR EXTRACTION (v0.3.81+ — CRITICAL KNOWLEDGE):
-  The extraction uses the 'tar' npm package (NOT shell tar.exe) because:
-  - Shell tar.exe fails silently on Windows with long paths (>260 chars)
-  - node-tar handles Windows long paths natively (uses \\?\ prefix)
-  - node-tar is pure JS — no dependency on system binaries
-  - Extraction shows user-visible error dialog if it fails (not silent console.log)
-  NEVER switch back to execSync('tar ...') or execFileSync('tar', ...) — this was the
-  cause of the v0.3.80 "Titan could not start" bug where extraction failed silently.
+  FIRST-LAUNCH TAR EXTRACTION (v0.3.82+ — CRITICAL KNOWLEDGE):
+  The extraction uses execFileSync('tar', [...]) from child_process (NOT the 'tar' npm package).
+  NEVER add the 'tar' npm package — v7 is ESM-only and crashes Electron's CJS main process
+  with "Cannot read properties of undefined (reading 'extract')". Windows 10+ has tar.exe
+  built-in. Error dialogs (dialog.showErrorBox) make any failure visible to the user.
+  All child_process functions (execFileSync, execSync, spawn) are imported statically at the
+  top of main.ts — NEVER use dynamic await import('child_process').
   
   NSISBI CUSTOM BINARY (CRITICAL — v0.3.79-v0.3.80 incident):
   electron-builder.config.js uses customNsisBinary to download NSISBI from GitHub.

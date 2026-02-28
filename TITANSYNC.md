@@ -518,6 +518,12 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.82 — Fix Extraction Import Crash (2026-02-28)
+
+**Root cause:** v0.3.81 crashed on launch with "Cannot read properties of undefined (reading 'extract')" because the `tar` npm package v7 is ESM-only, but Electron's main process runs CommonJS. `import tar from 'tar'` returned `undefined`.
+
+**Fix:** Removed the `tar` npm package entirely. Uses `execFileSync('tar', [...])` from Node.js `child_process` instead — Windows 10+ ships `tar.exe` built-in. Combined with proper error dialogs (added in v0.3.81), any extraction failure is now visible to the user. Also replaced all dynamic `await import('child_process')` with a static top-level import for reliability.
+
 ### v0.3.81 — Fix First-Launch Extraction (2026-02-28)
 
 **Root cause:** v0.3.80 desktop app showed "Titan could not start" because the shell `tar -xf` extraction failed silently on Windows. Windows `tar.exe` can fail with long paths (>260 chars from deeply nested node_modules), and the `catch` block only logged to console — users saw no explanation.

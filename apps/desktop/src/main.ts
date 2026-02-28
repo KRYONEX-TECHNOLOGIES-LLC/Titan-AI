@@ -29,7 +29,7 @@ import { setupIndexerIPC } from './ipc/indexer.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
 import * as chokidar from 'chokidar';
 import * as fs from 'fs';
-import tar from 'tar';
+import { execFileSync, execSync, spawn } from 'child_process';
 
 // Enforce single instance — if another copy is already running, focus it and exit this one.
 // Use only app.quit() — process.exit() can conflict with elevated NSIS post-install launch.
@@ -224,7 +224,6 @@ async function startNextJsServer(port: number): Promise<void> {
   console.log(`[Next.js] cwd: ${cwd}`);
 
   try {
-    const { spawn } = await import('child_process');
     nextServerProcess = spawn(command, args, {
       cwd,
       stdio: 'pipe',
@@ -373,7 +372,10 @@ async function extractWebServerIfNeeded(): Promise<void> {
   fs.mkdirSync(webServerDir, { recursive: true });
 
   try {
-    await tar.extract({ file: tarFile, cwd: webServerDir });
+    execFileSync('tar', ['-xf', tarFile, '-C', webServerDir], {
+      timeout: 300000,
+      windowsHide: true,
+    });
 
     if (!fs.existsSync(serverJs)) {
       throw new Error(`Extraction finished but server.js not found at: ${serverJs}`);
@@ -401,7 +403,6 @@ app.whenReady().then(async () => {
     // Kill orphaned servers from a previous crashed instance so we always boot a fresh one
     console.log(`[Main] Port ${DESKTOP_PORT} in use — killing stale process...`);
     try {
-      const { execSync } = await import('child_process');
       if (process.platform === 'win32') {
         const out = execSync(`netstat -ano | findstr :${DESKTOP_PORT}`, { encoding: 'utf8', timeout: 5000 });
         const pids = [...new Set(out.split('\n').map(l => l.trim().split(/\s+/).pop()).filter(Boolean))];
