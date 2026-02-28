@@ -250,11 +250,29 @@ DESKTOP BUILD / ELECTRON PACKAGING RULES (NON-NEGOTIABLE):
   These are safe to exclude because the standalone output is fully compiled JS — Node.js never
   reads .d.ts files or source maps at runtime. The user's project files are separate (on their disk).
   
+  GOD-TIER FIX (v0.3.79+): PRE-COMPRESS STANDALONE + NSISBI + FIRST-LAUNCH EXTRACTION:
+  Instead of feeding 100,000+ files to NSIS, the CI pipeline now:
+  1. Flattens pnpm symlinks with apps/desktop/scripts/prepare-standalone.js
+  2. Tars the entire standalone directory into ONE file (web-server-standalone.tar)
+  3. electron-builder packages that single tar file instead of 100k+ individual files
+  4. NSISBI custom binary replaces standard NSIS (handles >2GB installers)
+  5. On first launch, apps/desktop/src/main.ts extractWebServerIfNeeded() extracts the tar
+  
+  NSISBI CUSTOM BINARY (CRITICAL — v0.3.79-v0.3.80 incident):
+  electron-builder.config.js uses customNsisBinary to download NSISBI from GitHub.
+  The ONLY valid URL is: https://github.com/SoundSafari/NSISBI-ElectronBuilder/releases/download/1.0.0/nsisbi-electronbuilder-3.10.3.7z
+  Checksum: WRmZUsACjIc2s7bvsFGFRofK31hfS7riPlcfI1V9uFB2Q8s7tidgI/9U16+X0I9X2ZhNxi8N7Z3gKvm6ojvLvg==
+  - NEVER change this URL unless the NSISBI repo explicitly publishes a new release
+  - v0.3.79 failed because the URL was wrong (pointed to AstraliteHeart/v1.0.1 which doesn't exist)
+  - The error for a bad URL is: "ERR_ELECTRON_BUILDER_CANNOT_EXECUTE" + "status code 404"
+  - If you see that error, CHECK THE customNsisBinary URL FIRST — it's almost certainly a 404
+  
   IF THE DESKTOP BUILD FAILS WITH "RangeError: Invalid string length":
-  1. A new dependency probably increased the standalone file count past the NSIS limit
-  2. Check electron-builder.config.js exclusion filters — add more patterns if needed
-  3. NEVER remove the existing exclusion filters — they are the only thing preventing the overflow
-  4. Consider if the new dep is truly needed, or if it can be made optional/lazy-loaded
+  1. The tar approach should prevent this, but if it recurs: the standalone tar may have been skipped
+  2. Verify release-desktop.yml has the "Prepare web standalone for packaging" step
+  3. Verify electron-builder.config.js extraResources points to web-server-standalone.tar (not the dir)
+  4. Check electron-builder.config.js exclusion filters — add more patterns if needed
+  5. NEVER remove the existing exclusion filters — they are the only thing preventing the overflow
   
   CLIENT VS SERVER MODULE BOUNDARIES:
   - Client components (anything imported by pages/components rendered in browser) CANNOT import

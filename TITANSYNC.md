@@ -99,6 +99,8 @@ If the top commit doesn't contain your version bump, DO NOT create a tag. Commit
 
 - If desktop build fails with TypeScript errors, check `apps/desktop/src/` for strict null issues
 - **If CI fails with `ERR_PNPM_OUTDATED_LOCKFILE`**: the `pnpm-lock.yaml` doesn't match a `package.json`. Run `pnpm install` locally (NOT `--frozen-lockfile`), commit the updated lockfile, and push again. This is the #1 cause of CI failures after dependency changes.
+- **If desktop build fails with `ERR_ELECTRON_BUILDER_CANNOT_EXECUTE` + `status code 404`**: The `customNsisBinary` URL in `electron-builder.config.js` is wrong. The ONLY valid URL is `https://github.com/SoundSafari/NSISBI-ElectronBuilder/releases/download/1.0.0/nsisbi-electronbuilder-3.10.3.7z`. NEVER change this URL unless the NSISBI repo publishes a verified new release. This killed v0.3.79 (wrong org `AstraliteHeart` + wrong tag `v1.0.1`).
+- **If desktop build fails with `RangeError: Invalid string length`**: The tar-based approach (v0.3.79+) should prevent this. If it recurs, verify that `release-desktop.yml` has the "Prepare web standalone for packaging" step and that `electron-builder.config.js` extraResources points to `web-server-standalone.tar` (not the standalone directory).
 - The CI pipeline uses `pnpm install --frozen-lockfile` — run `pnpm install` locally first if you added OR removed deps
 - Railway auto-deploys on push to main (watches `apps/web/**`)
 - If pre-commit hook blocks your commit: run `npx ts-node scripts/validate-versions.ts` to see which files mismatch
