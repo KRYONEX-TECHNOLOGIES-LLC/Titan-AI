@@ -511,6 +511,13 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.77 — Railway Build Fixes (2026-02-28)
+
+**Build Fixes:**
+- **Browser route fix**: `/api/browser/route.ts` was importing `@titan/mcp-servers` which only exists in the desktop app workspace. Railway builds only `apps/web`, so the module was missing. Fixed with `@ts-ignore` + `webpackIgnore` so webpack skips it at bundle time and TypeScript skips it at type-check time. On Railway, the route gracefully returns 503 "not available in web deployment"
+- **Nexus registry fix (v0.3.75)**: Completely removed `tool-registry.ts` imports from `nexus-registry.ts` to eliminate `child_process` module resolution in client bundle
+- **Nexus wiring (v0.3.76)**: Synced built-in add-on lists between `NexusStore.tsx` and `nexus-registry.ts`, wired Nexus skill injection into voice conversations
+
 ### v0.3.74 — Alfred God-Tier Complete Upgrade (2026-02-28)
 
 **Critical Bug Fixes:**

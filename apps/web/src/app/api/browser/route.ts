@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
 
     let browserMod: any;
     try {
+      // @ts-ignore — @titan/mcp-servers is a workspace package only available in the desktop app
       browserMod = await import(/* webpackIgnore: true */ '@titan/mcp-servers');
     } catch {
       return NextResponse.json({
