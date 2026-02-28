@@ -511,6 +511,15 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.78 — Fix Desktop Release Pipeline (2026-02-28)
+
+**Desktop Build Fix:**
+- **NSIS buffer overflow fix**: Desktop builds from v0.3.74-v0.3.77 all failed because the NSIS installer compiler produced >512MB of stdout when processing the web standalone output + flattened node_modules. Node.js `Array.join()` in `child_process.exithandler` hit V8's max string length limit (`RangeError: Invalid string length`). Fixed by adding aggressive file exclusion filters to `electron-builder.config.js`:
+  - Excludes source maps (`.map`), TypeScript declarations (`.d.ts`), README/CHANGELOG/LICENSE, test directories, docs, config files from both `files` and `extraResources`
+  - Also strips `.map` files from static assets
+  - Reduces file count by ~40-60%, bringing NSIS output well under the buffer limit
+- **Root cause**: New dependencies added since v0.3.73 (react-markdown, remark-gfm, zod v4, etc.) increased the standalone output size past the NSIS/Node.js limit
+
 ### v0.3.77 — Railway Build Fixes (2026-02-28)
 
 **Build Fixes:**
