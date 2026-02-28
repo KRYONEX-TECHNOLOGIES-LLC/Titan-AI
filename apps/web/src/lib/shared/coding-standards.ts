@@ -258,20 +258,47 @@ DESKTOP BUILD / ELECTRON PACKAGING RULES (NON-NEGOTIABLE):
   4. NSISBI custom binary replaces standard NSIS (handles >2GB installers)
   5. On first launch, apps/desktop/src/main.ts extractWebServerIfNeeded() extracts the tar
   
-  FIRST-LAUNCH TAR EXTRACTION (v0.3.84+ — CRITICAL KNOWLEDGE):
-  The extraction uses async spawn('tar', [...]) and writes to app.getPath('userData'),
-  NOT to process.resourcesPath. The install dir (Program Files) is READ-ONLY for non-admin
-  processes because perMachine: true in NSIS config. ALWAYS extract to userData (%APPDATA%).
-  Static files, public assets, and .env are COPIED from resources to userData after extraction.
-  A .titan-version marker file triggers re-extraction on app updates.
-  NEVER use spawnSync for tar — use async spawn to drain stderr without ENOBUFS.
-  NEVER add the 'tar' npm package — v7 is ESM-only and crashes Electron's CJS main process.
-  NEVER use dynamic await import('child_process') — use static top-level imports.
+  FIRST-LAUNCH TAR EXTRACTION (v0.3.85 — CRITICAL KNOWLEDGE — HARD-WON FROM v0.3.80-v0.3.85):
+  The web server is packaged as a single tar file, then extracted on first launch.
+  
+  EXTRACTION RULES (ALL MANDATORY):
+  1. Extract to app.getPath('userData') (%APPDATA%/Titan Desktop), NEVER to process.resourcesPath.
+     Reason: perMachine: true installs to C:\Program Files\ which is READ-ONLY without admin.
+     v0.3.80-v0.3.83 all failed because they tried to write to Program Files.
+  2. Use async spawn('tar', [...]) with stdio: ['ignore', 'ignore', 'pipe'].
+     NEVER use execFileSync or spawnSync — they buffer output and cause ENOBUFS with 100k+ files.
+     NEVER use stdio: 'ignore' on all three — you need stderr piped to capture error messages.
+     But stdout MUST be ignored — tar prints every filename and overflows Windows pipe buffers.
+  3. NEVER add the 'tar' npm package — v7+ is ESM-only and returns undefined in Electron CJS.
+     v0.3.81 crashed with "Cannot read properties of undefined (reading 'extract')" from this.
+  4. NEVER use dynamic await import('child_process') — use static top-level imports only.
+  5. Static files (.next/static), public/, and .env are COPIED from process.resourcesPath
+     (read-only install dir) to the userData extraction directory AFTER tar extraction.
+  6. A .titan-version marker file triggers re-extraction only when app version changes.
+  7. Old web-server directory is rmSync'd before extraction for clean upgrades.
+  8. If extraction fails, show dialog.showErrorBox() with the actual error — NEVER silently log.
+  
+  STANDALONE TRACE EXCLUSIONS (next.config.js outputFileTracingExcludes):
+  The following MUST be excluded to keep the standalone tar small and avoid extraction errors:
+  - packages/forge/** (training pipeline — separate deployment)
+  - **/playwright/**, **/@playwright/** (browser automation — desktop-only, not in web server)
+  - **/@titan/mcp-servers/** (Playwright wrapper — causes Windows tar "Invalid argument" on @ paths)
+  - **/trainer/** (ML training configs)
+  - **/__tests__/**, **/test/**, **/tests/** (test files)
+  - **/*.md, **/*.map (docs and source maps)
+  v0.3.85 added @titan/mcp-servers exclusion after Windows tar choked on the @ symbol in paths.
   
   FORGE / SCRAPERS REMOVED FROM DESKTOP (v0.3.83+):
   @titan/forge was removed from apps/web to reduce standalone file count. The packages/forge
   directory still exists for future separate deployment (its own subdomain/service).
-  next.config.js uses outputFileTracingExcludes to exclude forge, playwright, tests, and docs.
+  
+  COMPLETE BUG TIMELINE (so no model ever repeats these mistakes):
+  v0.3.80: "Titan could not start" — shell tar extraction failed silently (catch only logged)
+  v0.3.81: "Cannot read properties of undefined (reading 'extract')" — tar npm v7 is ESM-only
+  v0.3.82: "spawnSync tar ENOBUFS" — execFileSync buffers all output, Windows pipes overflow
+  v0.3.83: "tar exited with code 1" — spawnSync still overflows even with piped stderr
+  v0.3.84: "tar exited with code 1" — extracted to Program Files (read-only, permission denied)
+  v0.3.85: WORKING — async spawn, extract to userData, mcp-servers excluded from trace
   
   NSISBI CUSTOM BINARY (CRITICAL — v0.3.79-v0.3.80 incident):
   electron-builder.config.js uses customNsisBinary to download NSISBI from GitHub.
