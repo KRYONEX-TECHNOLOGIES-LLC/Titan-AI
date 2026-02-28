@@ -7,6 +7,7 @@
  */
 
 import { getHiveContext } from '@/lib/hive-memory';
+import { useAlfredCanvas } from '@/stores/alfred-canvas-store';
 
 export type SpawnMode = 'oneshot' | 'session';
 export type SpawnStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -18,6 +19,7 @@ export interface SpawnRequest {
   agentId?: string;
   mode?: SpawnMode;
   timeout?: number;
+  onProgress?: (progress: number, message?: string) => void;
 }
 
 export interface SpawnSession {
@@ -34,6 +36,7 @@ export interface SpawnSession {
   parentId?: string;
 }
 
+const MAX_SESSIONS = 50;
 const SESSIONS_KEY = 'titan-spawn-sessions';
 let sessionCounter = 0;
 
@@ -52,8 +55,37 @@ function loadSessions(): SpawnSession[] {
 function saveSessions(sessions: SpawnSession[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.slice(-100)));
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.slice(-MAX_SESSIONS)));
   } catch { /* quota */ }
+}
+
+function reportToStore(session: SpawnSession, progress: number): void {
+  try {
+    const store = useAlfredCanvas.getState();
+    const existing = store.agents.find((a) => a.id === session.id);
+    const cost = ((Date.now() - session.createdAt) / 60_000) * 0.0001;
+
+    if (!existing) {
+      store.addAgent({
+        name: session.label,
+        task: session.task,
+        status: session.status === 'running' ? 'running' : session.status === 'completed' ? 'completed' : session.status === 'failed' ? 'failed' : 'paused',
+        progress,
+        cost,
+        startedAt: session.createdAt,
+        completedAt: session.completedAt,
+        output: session.result || session.error,
+      });
+    } else {
+      store.updateAgent(session.id, {
+        status: session.status === 'running' ? 'running' : session.status === 'completed' ? 'completed' : session.status === 'failed' ? 'failed' : 'paused',
+        progress,
+        cost,
+        completedAt: session.completedAt,
+        output: session.result || session.error,
+      });
+    }
+  } catch { /* store may not be available in non-browser context */ }
 }
 
 /**
@@ -61,6 +93,24 @@ function saveSessions(sessions: SpawnSession[]): void {
  * Uses /api/chat/continue (or equivalent) to get a one-shot response.
  */
 export async function spawnAgent(request: SpawnRequest): Promise<SpawnSession> {
+  const activeSessions = loadSessions().filter((s) => s.status === 'running');
+  if (activeSessions.length >= MAX_SESSIONS) {
+    const session: SpawnSession = {
+      id: genSessionId(),
+      task: request.task,
+      label: request.label || request.task.slice(0, 60),
+      model: request.model || 'google/gemini-2.0-flash-001',
+      mode: request.mode || 'oneshot',
+      status: 'failed',
+      error: `Max concurrent sessions (${MAX_SESSIONS}) reached`,
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+    };
+    saveSessions([...loadSessions(), session]);
+    reportToStore(session, 0);
+    return session;
+  }
+
   const session: SpawnSession = {
     id: genSessionId(),
     task: request.task,
@@ -77,6 +127,8 @@ export async function spawnAgent(request: SpawnRequest): Promise<SpawnSession> {
 
   session.status = 'running';
   updateSession(session);
+  request.onProgress?.(10, 'Agent started');
+  reportToStore(session, 10);
 
   try {
     const hiveContext = getHiveContext(1000);
@@ -86,6 +138,9 @@ export async function spawnAgent(request: SpawnRequest): Promise<SpawnSession> {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    request.onProgress?.(30, 'Sending to LLM');
+    reportToStore(session, 30);
 
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -102,12 +157,17 @@ export async function spawnAgent(request: SpawnRequest): Promise<SpawnSession> {
 
     clearTimeout(timer);
 
+    request.onProgress?.(70, 'Processing response');
+    reportToStore(session, 70);
+
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       session.status = 'failed';
       session.error = `HTTP ${res.status}: ${text.slice(0, 200)}`;
       session.completedAt = Date.now();
       updateSession(session);
+      request.onProgress?.(100, 'Failed');
+      reportToStore(session, 100);
       return session;
     }
 
@@ -119,18 +179,21 @@ export async function spawnAgent(request: SpawnRequest): Promise<SpawnSession> {
       session.result = data.choices[0].message.content;
       session.status = 'completed';
     } else {
-      // Streaming response — read text
       session.result = typeof data === 'string' ? data : JSON.stringify(data).slice(0, 2000);
       session.status = 'completed';
     }
     session.completedAt = Date.now();
     updateSession(session);
+    request.onProgress?.(100, 'Completed');
+    reportToStore(session, 100);
     return session;
   } catch (err) {
     session.status = 'failed';
     session.error = err instanceof Error ? err.message : String(err);
     session.completedAt = Date.now();
     updateSession(session);
+    request.onProgress?.(100, 'Failed');
+    reportToStore(session, 100);
     return session;
   }
 }
@@ -160,6 +223,7 @@ export function cancelSession(sessionId: string): boolean {
   session.status = 'cancelled';
   session.completedAt = Date.now();
   saveSessions(sessions);
+  reportToStore(session, 100);
   return true;
 }
 

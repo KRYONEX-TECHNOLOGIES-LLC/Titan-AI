@@ -336,6 +336,34 @@ export async function executeVoiceAction(action: string, params: Record<string, 
     case 'stop_auto_learn': return stopAutoLearn();
     case 'check_markets': return checkMarkets();
 
+    case 'web_search':
+    case 'search_web': {
+      const query = params.query || params.url || '';
+      if (!query) return { success: false, message: 'No search query provided.' };
+      try {
+        const res = await fetch('/api/agent/tools', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tool: 'web_search', args: { query } }),
+        });
+        const data = await res.json();
+        return { success: data.success ?? res.ok, message: data.output || data.error || 'Search complete', data: data.metadata };
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : 'Web search failed' };
+      }
+    }
+
+    case 'canvas_mode': {
+      try {
+        const { useAlfredCanvas } = await import('@/stores/alfred-canvas-store');
+        const mode = params.canvasMode || 'screen';
+        useAlfredCanvas.getState().setMode(mode as import('@/stores/alfred-canvas-store').CanvasMode);
+        return { success: true, message: `Canvas switched to ${mode} view` };
+      } catch (err) {
+        return { success: false, message: err instanceof Error ? err.message : 'Canvas switch failed' };
+      }
+    }
+
     case 'store_knowledge': {
       try {
         const { saveBrainEntry } = await import('./brain-storage');
@@ -364,6 +392,23 @@ export async function executeVoiceAction(action: string, params: Record<string, 
       } catch (err) {
         return { success: false, message: err instanceof Error ? err.message : 'Evaluation failed' };
       }
+    }
+
+    // ── Browser automation (delegate to /api/browser) ──
+
+    case 'browser_navigate':
+    case 'browser_click':
+    case 'browser_type':
+    case 'browser_scroll':
+    case 'browser_screenshot':
+    case 'browser_back':
+    case 'browser_forward':
+    case 'browser_select':
+    case 'browser_get_text':
+    case 'browser_evaluate':
+    case 'browser_wait':
+    case 'browser_close_page': {
+      return callBrowserTool(action, params);
     }
 
     // ── IDE tool fallbacks (delegate to /api/agent/tools) ──
@@ -436,6 +481,24 @@ export async function executeVoiceAction(action: string, params: Record<string, 
     }
 
     default: return { success: false, message: `Unknown action: ${action}` };
+  }
+}
+
+async function callBrowserTool(tool: string, params: Record<string, string>): Promise<ControlResult> {
+  try {
+    const res = await fetch('/api/browser', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tool, args: params }),
+    });
+    const data = await res.json();
+    return {
+      success: data.success ?? res.ok,
+      message: data.output || data.error || 'Browser command executed',
+      data: data.screenshot ? { screenshot: data.screenshot } : undefined,
+    };
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Browser command failed' };
   }
 }
 

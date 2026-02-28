@@ -18,12 +18,24 @@ function getAlfredStorageKey(): string {
   return `${ALFRED_LOG_KEY_PREFIX}${ws.replace(/[\\/:]/g, '_')}`;
 }
 
+function deduplicateLog(log: AlfredMessage[]): AlfredMessage[] {
+  if (log.length < 2) return log;
+  const result: AlfredMessage[] = [log[0]];
+  for (let i = 1; i < log.length; i++) {
+    const prev = result[result.length - 1];
+    if (prev.role === log[i].role && prev.text === log[i].text) continue;
+    result.push(log[i]);
+  }
+  return result;
+}
+
 function loadPersistedLog(): AlfredMessage[] {
   try {
     const raw = localStorage.getItem(getAlfredStorageKey());
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.slice(-MAX_PERSISTED_MESSAGES) : [];
+    if (!Array.isArray(parsed)) return [];
+    return deduplicateLog(parsed.slice(-MAX_PERSISTED_MESSAGES));
   } catch { return []; }
 }
 
@@ -102,7 +114,7 @@ export function useAlfredAmbient() {
 
   const [alfredState, setAlfredState] = useState<AlfredState>('idle');
   const [conversationLog, setConversationLog] = useState<AlfredMessage[]>(() => loadPersistedLog());
-  const [hasGreeted, setHasGreeted] = useState(false);
+  const greetedRef = useRef(false);
 
   // Persist conversation log to localStorage whenever it changes
   useEffect(() => {
@@ -184,10 +196,10 @@ export function useAlfredAmbient() {
     } catch { /* voice commands not available */ }
 
     let memoryContext = '';
-    try { memoryContext = useTitanMemory.getState().serialize(5000); } catch { /* */ }
+    try { memoryContext = useTitanMemory.getState().serialize(2000); } catch { /* */ }
 
     let brainContext = '';
-    try { brainContext = serializeBrainContext(4000); } catch { /* */ }
+    try { brainContext = serializeBrainContext(1500); } catch { /* */ }
 
     let learnedStrategies = '';
     try {
@@ -249,6 +261,7 @@ export function useAlfredAmbient() {
       const pendingClientActions: Array<{ action: string; params: Record<string, string> }> = [];
       const buildSteps: AlfredBuildStep[] = [];
       let buildMsgId: string | null = null;
+      const toolCallArgs = new Map<string, Record<string, unknown>>();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -276,22 +289,31 @@ export function useAlfredAmbient() {
             } else if (eventType === 'voice_tool_call') {
               const payload = JSON.parse(data) as { name: string; dangerous?: boolean; args?: Record<string, unknown> };
               const stepId = `step-${Date.now()}-${buildSteps.length}`;
-              const toolDesc = payload.args?.path ? `${payload.name}: ${String(payload.args.path)}` : payload.name;
+              const toolDesc = payload.args?.path ? `${payload.name}: ${String(payload.args.path)}` :
+                payload.args?.query ? `${payload.name}: ${String(payload.args.query)}` :
+                payload.args?.command ? `${payload.name}: ${String(payload.args.command).slice(0, 60)}` : payload.name;
               buildSteps.push({ id: stepId, tool: payload.name, description: toolDesc, status: 'running', startedAt: Date.now() });
 
-              // Push live tool activity to canvas
+              if (payload.args) toolCallArgs.set(payload.name, payload.args);
+
               const canvasStore = useAlfredCanvas.getState();
               const toolCanvasMode: CanvasMode =
                 payload.name === 'run_command' || payload.name === 'execute_command' ? 'terminal' :
                 payload.name === 'create_file' || payload.name === 'edit_file' || payload.name === 'write_file' ? 'code' :
-                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' ? 'screen' :
-                payload.name === 'list_files' || payload.name === 'read_file' ? 'files' : 'screen';
+                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' || payload.name === 'browse_url' || payload.name === 'research_topic' ? 'screen' :
+                payload.name === 'list_files' || payload.name === 'read_file' || payload.name === 'list_directory' ? 'files' : 'screen';
               canvasStore.pushContent({
                 type: toolCanvasMode,
                 title: toolDesc,
                 data: payload.args ? JSON.stringify(payload.args, null, 2) : payload.name,
                 timestamp: Date.now(),
-                meta: { tool: payload.name, status: 'running' },
+                meta: {
+                  tool: payload.name,
+                  status: 'running',
+                  query: payload.args?.query ? String(payload.args.query) : undefined,
+                  url: payload.args?.url ? String(payload.args.url) : undefined,
+                  path: payload.args?.path ? String(payload.args.path) : undefined,
+                },
               });
 
               // Show live build progress in chat
@@ -320,20 +342,26 @@ export function useAlfredAmbient() {
                 ));
               }
 
-              // Update canvas with tool result
               const canvasStoreResult = useAlfredCanvas.getState();
               const resultMode: CanvasMode =
                 payload.name === 'run_command' || payload.name === 'execute_command' ? 'terminal' :
                 payload.name === 'create_file' || payload.name === 'edit_file' || payload.name === 'write_file' ? 'code' :
-                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' ? 'screen' :
-                payload.name === 'list_files' ? 'files' : 'screen';
+                payload.name === 'web_search' || payload.name === 'web_browse' || payload.name === 'browser_navigate' || payload.name === 'browse_url' || payload.name === 'research_topic' ? 'screen' :
+                payload.name === 'list_files' || payload.name === 'list_directory' ? 'files' : 'screen';
+              const origArgs = toolCallArgs.get(payload.name) || {};
               if (payload.message) {
                 canvasStoreResult.pushContent({
                   type: resultMode,
                   title: `${payload.name} ${payload.success !== false ? 'completed' : 'failed'}`,
                   data: payload.message,
                   timestamp: Date.now(),
-                  meta: { tool: payload.name, status: payload.success !== false ? 'done' : 'error' },
+                  meta: {
+                    tool: payload.name,
+                    status: payload.success !== false ? 'done' : 'error',
+                    query: origArgs.query ? String(origArgs.query) : undefined,
+                    url: origArgs.url ? String(origArgs.url) : undefined,
+                    path: origArgs.path ? String(origArgs.path) : undefined,
+                  },
                 });
               }
               canvasStoreResult.incrementTask(payload.success !== false);
@@ -376,22 +404,19 @@ export function useAlfredAmbient() {
           saveAlfredTask(taskMatch[1].trim());
         }
 
-        // Auto-learn from conversation
         try {
           const memory = useTitanMemory.getState();
-          memory.extractAndStore(text, responseText);
+          memory.extractAndStore(text, '');
           await saveConversation(
             [{ role: 'user', content: text }, { role: 'assistant', content: responseText }],
             `Alfred conversation: ${text.slice(0, 80)}`,
           );
         } catch { /* learning is best-effort */ }
 
-        // Post-conversation self-improvement evaluation
         try {
-          const { captureExperience, shouldDistill, distillStrategies } = await import('@/lib/voice/self-improvement');
-          const conversationCount = conversationLog.length;
+          const { captureExperience, distillStrategies } = await import('@/lib/voice/self-improvement');
           captureExperience(text, responseText, true);
-          if (shouldDistill(conversationCount)) {
+          if (conversationLog.length > 0 && conversationLog.length % 5 === 0) {
             distillStrategies();
           }
         } catch { /* self-improvement is best-effort */ }
@@ -569,10 +594,13 @@ export function useAlfredAmbient() {
     }
   }, [voice.isListening, alfredState]);
 
-  // Greeting on first mount
+  // Greeting: once per browser session, NOT per component mount
   useEffect(() => {
-    if (hasGreeted) return;
-    setHasGreeted(true);
+    if (greetedRef.current) return;
+    const sessionKey = 'alfred-greeted-session';
+    if (sessionStorage.getItem(sessionKey)) { greetedRef.current = true; return; }
+    greetedRef.current = true;
+    sessionStorage.setItem(sessionKey, '1');
 
     const isReturning = localStorage.getItem('alfred-last-visit');
     localStorage.setItem('alfred-last-visit', new Date().toISOString());
@@ -588,7 +616,7 @@ export function useAlfredAmbient() {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [hasGreeted, titanVoice, addToLog]);
+  }, [titanVoice, addToLog]);
 
   // Cleanup
   useEffect(() => {

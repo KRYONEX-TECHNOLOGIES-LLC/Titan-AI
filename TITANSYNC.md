@@ -511,6 +511,45 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.74 — Alfred God-Tier Complete Upgrade (2026-02-28)
+
+**Critical Bug Fixes:**
+- **Greeting loop fix**: Alfred was repeating "I'm ready when you are, sir" 20+ times. Root cause: `hasGreeted` was in-memory state that reset on every component remount (view switch). Fixed: now uses `sessionStorage` flag — one greeting per browser session, plus `deduplicateLog()` strips consecutive duplicate messages from persisted log
+- **"I cannot" refusal eliminated**: Alfred was saying "I cannot directly display..." for any request. Added CAN-DO PROTOCOL + WING-IT PROTOCOL to personality — Alfred now NEVER refuses. Instead he searches, offers clickable choices, or builds it. Banned phrases list enforced
+- **Memory hallucination fix**: Brain storage had zero deduplication — duplicate entries accumulated and polluted context, causing repetition/hallucination. Added `isDuplicate()` fuzzy matching (substring + exact match). Brain context truncation now cuts at entry boundaries, not mid-sentence
+- **Store obsession fix**: Personality said "Store important findings with store_knowledge" which made Alfred mention storing in every response. Softened instruction + added explicit "do NOT mention storing unless user asks"
+- **Double brain context fix**: Voice API route was injecting both client-sent brainContext AND computing its own server-side. Removed server-side `serializeBrainContext()` — only uses client context
+- **Context overflow fix**: Reduced memoryContext from 5000 to 2000 tokens, brainContext from 4000 to 1500 chars to prevent model truncation/hallucination
+- **extractAndStore pollution fix**: Was extracting from BOTH user messages AND Alfred's responses (circular pollution). Now only extracts from user messages
+
+**Browser Automation:**
+- **BrowserServer enhanced**: Added `browser_scroll`, `browser_back`, `browser_forward`, `browser_select` to Playwright BrowserServer
+- **Browser API route**: New `/api/browser/route.ts` proxy manages singleton BrowserServer, accepts any browser command
+- **Browser tools wired**: All 12 browser tools (navigate, click, type, scroll, screenshot, back, forward, select, get_text, evaluate, wait, close) added to system-control.ts
+- **BROWSER MASTERY personality**: Alfred knows he controls a real browser — can click buttons, fill forms, close popups, sign up for services, scroll, navigate
+
+**Smart Canvas + Intelligence:**
+- **Smart ScreenView**: YouTube iframe embeds, clickable URLs, markdown rendering, search result cards, code blocks
+- **Disambiguation choice chips**: New `AlfredChoiceChips.tsx` — when Alfred offers options using `[choices: A | B | C]` format, they render as clickable pill buttons in chat
+- **CAN-DO + WING-IT protocols**: Alfred improvises for ANY request by chaining tools creatively. Example scenarios embedded in personality
+- **10+ new voice patterns**: YouTube lookups, natural language search, canvas mode switching, URL browsing, research queries
+
+**Agent Dashboard & Scaling:**
+- **Agent tracking store**: `AgentInfo` interface + `agents` array + `addAgent/updateAgent/removeAgent` actions in alfred-canvas-store
+- **Enhanced DashboardView**: Agent grid with status badges, progress bars, kill/dismiss buttons, filter tabs (All/Running/Completed/Failed), stats summary with cost tracking
+- **Session spawn upgrade**: MAX_SESSIONS raised to 50, progress callbacks, auto-reports to canvas store
+
+**Slack Integration:**
+- **Slack Events API**: New `/api/integrations/slack/events/route.ts` — handles URL verification, message events, app mentions, forwards to Alfred
+- **Bi-directional Slack**: Added `listen()`, `createChannel()`, `postThread()` to channel-adapter.ts
+
+**Marketplace:**
+- **NexusStore UI**: Full marketplace component with add-on cards, search, category filters, install/uninstall/enable/disable, 8 built-in add-ons
+- **Wired into Extensions**: NexusStore replaces "Coming Soon" placeholder in titan-ide.tsx Extensions panel
+
+**New files**: AlfredChoiceChips.tsx, NexusStore.tsx, /api/browser/route.ts, /api/integrations/slack/events/route.ts
+**Modified (19 files)**: useAlfredAmbient.ts, titan-personality.ts, brain-storage.ts, voice-commands.ts, system-control.ts, ScreenView.tsx, AlfredChat.tsx, DashboardView.tsx, alfred-canvas-store.ts, session-spawn.ts, channel-adapter.ts, titan-ide.tsx, voice/route.ts, self-improvement.ts, browser-server.ts, TITANSYNC.md, 3x package.json
+
 ### v0.3.73 — Alfred Full-Page Workspace (2026-02-28)
 
 - **Full-page Alfred UI**: Replaced 600px sidebar with full-page immersive workspace (orgo.ai-killer)

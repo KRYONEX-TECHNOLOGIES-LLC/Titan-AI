@@ -30,6 +30,18 @@ export interface WorkflowStat {
   platform?: string;
 }
 
+export interface AgentInfo {
+  id: string;
+  name: string;
+  task: string;
+  status: 'running' | 'completed' | 'failed' | 'paused';
+  progress: number;
+  cost: number;
+  startedAt: number;
+  completedAt?: number;
+  output?: string;
+}
+
 interface AlfredCanvasState {
   activeMode: CanvasMode;
   pinned: boolean;
@@ -38,6 +50,7 @@ interface AlfredCanvasState {
   sessions: AlfredSession[];
   activeSessionId: string;
   workflows: WorkflowStat[];
+  agents: AgentInfo[];
   stats: { totalTasks: number; completedTasks: number; successRate: number; totalCost: number; activeAgents: number };
 
   setMode: (mode: CanvasMode) => void;
@@ -54,9 +67,15 @@ interface AlfredCanvasState {
   updateWorkflow: (id: string, updates: Partial<WorkflowStat>) => void;
   removeWorkflow: (id: string) => void;
 
+  addAgent: (agent: Omit<AgentInfo, 'id'>) => void;
+  updateAgent: (id: string, patch: Partial<AgentInfo>) => void;
+  removeAgent: (id: string) => void;
+
   updateStats: (updates: Partial<AlfredCanvasState['stats']>) => void;
   incrementTask: (completed?: boolean) => void;
 }
+
+let agentCounter = 0;
 
 export const useAlfredCanvas = create<AlfredCanvasState>((set) => ({
   activeMode: 'idle',
@@ -66,6 +85,7 @@ export const useAlfredCanvas = create<AlfredCanvasState>((set) => ({
   sessions: [{ id: 'main', name: 'Alfred', createdAt: Date.now(), status: 'active', taskCount: 0, completedCount: 0 }],
   activeSessionId: 'main',
   workflows: [],
+  agents: [],
   stats: { totalTasks: 0, completedTasks: 0, successRate: 100, totalCost: 0, activeAgents: 1 },
 
   setMode: (mode) => set({ activeMode: mode }),
@@ -94,6 +114,30 @@ export const useAlfredCanvas = create<AlfredCanvasState>((set) => ({
     workflows: s.workflows.map((w) => w.id === id ? { ...w, ...updates } : w),
   })),
   removeWorkflow: (id) => set((s) => ({ workflows: s.workflows.filter((w) => w.id !== id) })),
+
+  addAgent: (agent) => set((s) => {
+    const id = `agent-${Date.now().toString(36)}-${(++agentCounter).toString(36)}`;
+    const newAgent: AgentInfo = { ...agent, id };
+    const activeAgents = s.agents.filter((a) => a.status === 'running').length + (agent.status === 'running' ? 1 : 0);
+    return {
+      agents: [...s.agents, newAgent],
+      stats: { ...s.stats, activeAgents },
+    };
+  }),
+
+  updateAgent: (id, patch) => set((s) => {
+    const agents = s.agents.map((a) => a.id === id ? { ...a, ...patch } : a);
+    const activeAgents = agents.filter((a) => a.status === 'running').length;
+    const totalCost = agents.reduce((sum, a) => sum + a.cost, 0);
+    return { agents, stats: { ...s.stats, activeAgents, totalCost } };
+  }),
+
+  removeAgent: (id) => set((s) => {
+    const agents = s.agents.filter((a) => a.id !== id);
+    const activeAgents = agents.filter((a) => a.status === 'running').length;
+    const totalCost = agents.reduce((sum, a) => sum + a.cost, 0);
+    return { agents, stats: { ...s.stats, activeAgents, totalCost } };
+  }),
 
   updateStats: (updates) => set((s) => ({ stats: { ...s.stats, ...updates } })),
   incrementTask: (completed) => set((s) => {

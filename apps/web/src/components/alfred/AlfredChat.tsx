@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useAlfredCanvas } from '@/stores/alfred-canvas-store';
 import { AlfredQuickActions } from './AlfredQuickActions';
+import { AlfredChoiceChips, parseChoices } from './AlfredChoiceChips';
 
 interface ConversationEntry {
   role: 'user' | 'alfred';
@@ -120,6 +121,10 @@ export function AlfredChat({
               </div>
             );
           }
+          const parsed = entry.role === 'alfred' ? parseChoices(entry.text) : null;
+          const displayText = parsed ? parsed.cleanText : entry.text;
+          const choices = parsed?.choices || [];
+
           return (
             <div key={i} className={`flex gap-2 ${entry.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {entry.role === 'alfred' && <AlfredAvatar />}
@@ -129,8 +134,11 @@ export function AlfredChat({
                   : 'bg-[#252526] border border-[#3c3c3c]'
               }`}>
                 <div className="text-[12px] text-[#e0e0e0] leading-relaxed whitespace-pre-wrap">
-                  {entry.role === 'alfred' ? renderMessage(entry.text) : entry.text}
+                  {entry.role === 'alfred' ? renderMessage(displayText) : displayText}
                 </div>
+                {choices.length > 0 && (
+                  <AlfredChoiceChips choices={choices} onSelect={(c) => handleManualSend(c)} disabled={isProcessing} />
+                )}
                 <span className="text-[9px] text-[#666] mt-1 block">{entry.time}</span>
               </div>
               {entry.role === 'user' && (

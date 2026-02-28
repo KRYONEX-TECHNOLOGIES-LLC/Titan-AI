@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { TITAN_VOICE_PERSONALITY } from '@/lib/voice/titan-personality';
-import { serializeBrainContext } from '@/lib/voice/brain-storage';
 import { callModelDirect, callModelWithTools } from '@/lib/llm-call';
 import { VOICE_MODELS, classifyComplexity, type VoiceRole } from '@/lib/voice/titan-voice-protocol';
 import { getToolSchema, executeToolServerSide, isToolDangerous, type ClientState } from '@/lib/voice/alfred-tools';
@@ -49,10 +48,7 @@ export async function POST(request: NextRequest) {
       try {
         emit('voice_start', { message: body.message });
 
-        let brainContext = '';
-        try {
-          brainContext = body.brainContext || serializeBrainContext(1500);
-        } catch { /* client-only function, skip on server */ }
+        const brainContext = body.brainContext || '';
 
         const now = new Date();
         const currentDate = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });

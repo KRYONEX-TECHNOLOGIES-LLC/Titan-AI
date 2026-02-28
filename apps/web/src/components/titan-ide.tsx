@@ -60,6 +60,7 @@ const MidnightPanel = dynamic(() => import('@/components/ide/MidnightPanel'), { 
 const TrainingLabPanel = dynamic(() => import('@/components/ide/TrainingLabPanel'), { ssr: false });
 const BrainObservatoryPanel = dynamic(() => import('@/components/ide/BrainObservatoryPanel'), { ssr: false });
 const CartographyPanel = dynamic(() => import('@/components/ide/CartographyPanel'), { ssr: false });
+const NexusStore = dynamic(() => import('@/components/alfred/NexusStore'), { ssr: false });
 
 // Zustand stores
 import { useLayoutStore } from '@/stores/layout-store';
@@ -1415,12 +1416,6 @@ function ExtensionsPanel() {
     { name: 'Alfred (Titan Voice)', version: '1.0.0', desc: 'AI companion with TTS, proactive thoughts, and system control', tone: 'cyan' },
     { name: 'Plan Sniper', version: '1.0.0', desc: '7-role model orchestra for ultimate plan execution', tone: 'amber' },
   ];
-  const upcoming = [
-    { name: 'Theme Studio', desc: 'Custom UI themes and color schemes' },
-    { name: 'Language Packs', desc: 'Additional language support and grammars' },
-    { name: 'Custom Protocols', desc: 'Create and share your own AI protocols' },
-    { name: 'Plugin Marketplace', desc: 'Community extensions and integrations' },
-  ];
   const toneColors: Record<string, string> = {
     cyan: 'border-cyan-500/40 text-cyan-300',
     amber: 'border-amber-500/40 text-amber-300',
@@ -1455,20 +1450,8 @@ function ExtensionsPanel() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-violet-500/40 bg-[#0d1322]/85 backdrop-blur-sm shadow-[0_0_24px_rgba(139,92,246,0.12)]">
-        <div className="border-b border-white/10 px-3 py-2"><h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-300">Coming Soon</h3></div>
-        <div className="p-3 space-y-2">
-          {upcoming.map((ext) => (
-            <div key={ext.name} className="flex items-center gap-3 rounded-lg border border-white/10 bg-[#0b1120]/50 p-2.5 opacity-70">
-              <div className="w-9 h-9 rounded-lg border border-white/10 bg-[#0a1224] flex items-center justify-center text-[14px] font-bold text-slate-500 flex-shrink-0">{ext.name[0]}</div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] text-slate-300 truncate">{ext.name}</div>
-                <div className="text-[11px] text-slate-500 truncate">{ext.desc}</div>
-              </div>
-              <span className="text-[10px] text-slate-500 flex-shrink-0">Soon</span>
-            </div>
-          ))}
-        </div>
+      <div className="rounded-xl border border-cyan-500/30 bg-[#0d1322]/85 backdrop-blur-sm shadow-[0_0_24px_rgba(34,211,238,0.10)] overflow-hidden">
+        <NexusStore />
       </div>
     </div>
   );

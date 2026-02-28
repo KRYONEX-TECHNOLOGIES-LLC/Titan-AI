@@ -153,6 +153,52 @@ export class BrowserServer implements MCPServer {
         handler: async (input) => this.wait(input.selector as string, input.timeout as number, input.pageId as string),
       },
       {
+        name: 'browser_scroll',
+        description: 'Scroll the page up or down, or to a specific element',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            direction: { type: 'string', description: 'up, down, or to_element' },
+            amount: { type: 'number', description: 'Pixels to scroll (default 500)' },
+            selector: { type: 'string', description: 'CSS selector to scroll to (when direction=to_element)' },
+            pageId: { type: 'string', description: 'Page identifier' },
+          },
+        },
+        handler: async (input) => this.scroll(input.direction as string, input.amount as number, input.selector as string, input.pageId as string),
+      },
+      {
+        name: 'browser_back',
+        description: 'Go back in browser history',
+        inputSchema: {
+          type: 'object',
+          properties: { pageId: { type: 'string', description: 'Page identifier' } },
+        },
+        handler: async (input) => this.goBack(input.pageId as string),
+      },
+      {
+        name: 'browser_forward',
+        description: 'Go forward in browser history',
+        inputSchema: {
+          type: 'object',
+          properties: { pageId: { type: 'string', description: 'Page identifier' } },
+        },
+        handler: async (input) => this.goForward(input.pageId as string),
+      },
+      {
+        name: 'browser_select',
+        description: 'Select an option from a dropdown',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            selector: { type: 'string', description: 'CSS selector for the select element' },
+            value: { type: 'string', description: 'Value to select' },
+            pageId: { type: 'string', description: 'Page identifier' },
+          },
+          required: ['selector', 'value'],
+        },
+        handler: async (input) => this.selectOption(input.selector as string, input.value as string, input.pageId as string),
+      },
+      {
         name: 'browser_close_page',
         description: 'Close a browser page',
         inputSchema: {
@@ -273,6 +319,54 @@ export class BrowserServer implements MCPServer {
       const page = await this.getOrCreatePage(pageId);
       await page.waitForSelector(selector, { timeout: timeout || 30000 });
       return { content: [{ type: 'text', text: `Element found: ${selector}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error: ${error}` }], isError: true };
+    }
+  }
+
+  private async scroll(direction?: string, amount?: number, selector?: string, pageId?: string): Promise<MCPToolResult> {
+    try {
+      const page = await this.getOrCreatePage(pageId);
+      if (direction === 'to_element' && selector) {
+        await page.locator(selector).scrollIntoViewIfNeeded();
+        return { content: [{ type: 'text', text: `Scrolled to element: ${selector}` }] };
+      }
+      const px = amount || 500;
+      const dy = direction === 'up' ? -px : px;
+      await page.evaluate((d: number) => window.scrollBy(0, d), dy);
+      return { content: [{ type: 'text', text: `Scrolled ${direction || 'down'} by ${px}px` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error: ${error}` }], isError: true };
+    }
+  }
+
+  private async goBack(pageId?: string): Promise<MCPToolResult> {
+    try {
+      const page = await this.getOrCreatePage(pageId);
+      await page.goBack({ waitUntil: 'domcontentloaded' });
+      const title = await page.title();
+      return { content: [{ type: 'text', text: `Went back. Now on: ${title}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error: ${error}` }], isError: true };
+    }
+  }
+
+  private async goForward(pageId?: string): Promise<MCPToolResult> {
+    try {
+      const page = await this.getOrCreatePage(pageId);
+      await page.goForward({ waitUntil: 'domcontentloaded' });
+      const title = await page.title();
+      return { content: [{ type: 'text', text: `Went forward. Now on: ${title}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error: ${error}` }], isError: true };
+    }
+  }
+
+  private async selectOption(selector: string, value: string, pageId?: string): Promise<MCPToolResult> {
+    try {
+      const page = await this.getOrCreatePage(pageId);
+      await page.selectOption(selector, value);
+      return { content: [{ type: 'text', text: `Selected "${value}" in ${selector}` }] };
     } catch (error) {
       return { content: [{ type: 'text', text: `Error: ${error}` }], isError: true };
     }

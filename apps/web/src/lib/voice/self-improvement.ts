@@ -13,7 +13,7 @@ import type { BrainEntry, BrainCategory } from './brain-storage';
 
 const EXPERIENCE_KEY = 'alfred-experiences';
 const STRATEGY_KEY = 'alfred-strategies';
-const DISTILL_INTERVAL = 10;
+const DISTILL_INTERVAL = 5;
 
 // ═══ EXPERIENCE CAPTURE ═══
 

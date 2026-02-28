@@ -74,6 +74,17 @@ async function getSupabaseClient(): Promise<{ from: (table: string) => Record<st
 
 // ═══ Brain Entries ═══
 
+function isDuplicate(existing: BrainEntry, newContent: string, newCategory: string): boolean {
+  if (existing.category !== newCategory) return false;
+  const a = existing.content.toLowerCase().trim();
+  const b = newContent.toLowerCase().trim();
+  if (a === b) return true;
+  if (a.length > 20 && b.length > 20) {
+    if (a.includes(b) || b.includes(a)) return true;
+  }
+  return false;
+}
+
 export async function saveBrainEntry(
   entry: Omit<BrainEntry, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>,
   supabaseOnly = false,
@@ -88,6 +99,14 @@ export async function saveBrainEntry(
 
   if (!supabaseOnly) {
     const entries = loadFromLS<BrainEntry>(BRAIN_LS_KEY);
+    const dup = entries.find(e => isDuplicate(e, full.content, full.category));
+    if (dup) {
+      dup.importance = Math.max(dup.importance, full.importance);
+      dup.usageCount++;
+      dup.updatedAt = new Date().toISOString();
+      saveToLS(BRAIN_LS_KEY, entries);
+      return dup;
+    }
     entries.push(full);
     saveToLS(BRAIN_LS_KEY, entries);
   }
@@ -116,19 +135,25 @@ export function saveBrainEntryBatch(
   entries: Array<Omit<BrainEntry, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>>,
 ): BrainEntry[] {
   const now = new Date().toISOString();
-  const fullEntries: BrainEntry[] = entries.map(entry => ({
-    ...entry,
-    id: genId(),
-    usageCount: 0,
-    createdAt: now,
-    updatedAt: now,
-  }));
-
   const existing = loadFromLS<BrainEntry>(BRAIN_LS_KEY);
-  existing.push(...fullEntries);
-  saveToLS(BRAIN_LS_KEY, existing);
+  const added: BrainEntry[] = [];
 
-  return fullEntries;
+  for (const entry of entries) {
+    const dup = existing.find(e => isDuplicate(e, entry.content, entry.category));
+    if (dup) {
+      dup.importance = Math.max(dup.importance, entry.importance);
+      dup.usageCount++;
+      dup.updatedAt = now;
+      added.push(dup);
+    } else {
+      const full: BrainEntry = { ...entry, id: genId(), usageCount: 0, createdAt: now, updatedAt: now };
+      existing.push(full);
+      added.push(full);
+    }
+  }
+
+  saveToLS(BRAIN_LS_KEY, existing);
+  return added;
 }
 
 export function queryBrain(category?: BrainCategory, searchTerm?: string): BrainEntry[] {
@@ -285,7 +310,9 @@ export function serializeBrainContext(maxChars = 4000): string {
   }
 
   const joined = parts.join('\n');
-  return joined.length > maxChars ? joined.slice(0, maxChars) + '...' : joined;
+  if (joined.length <= maxChars) return joined;
+  const cutAt = joined.lastIndexOf('\n', maxChars);
+  return (cutAt > 0 ? joined.slice(0, cutAt) : joined.slice(0, maxChars)) + '\n...';
 }
 
 // ═══ SQL Migration (for documentation) ═══
