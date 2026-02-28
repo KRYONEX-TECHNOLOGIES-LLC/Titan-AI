@@ -1,13 +1,13 @@
 {
   "product": "Titan Desktop",
   "channel": "stable",
-  "version": "0.3.71",
-  "publishedAt": "2026-02-28T01:41:43Z",
+  "version": "0.3.72",
+  "publishedAt": "2026-02-28T02:49:51Z",
   "downloads": {
     "windows": {
       "available": true,
-      "url": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI/releases/download/v0.3.71/Titan-Desktop-0.3.71-win-x64.exe",
-      "checksumUrl": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI/releases/download/v0.3.71/latest.yml",
+      "url": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI/releases/download/v0.3.72/Titan-Desktop-0.3.72-win-x64.exe",
+      "checksumUrl": "https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI/releases/download/v0.3.72/latest.yml",
       "releaseNotesUrl": "/release-notes"
     },
     "macos": {
