@@ -258,13 +258,18 @@ DESKTOP BUILD / ELECTRON PACKAGING RULES (NON-NEGOTIABLE):
   4. NSISBI custom binary replaces standard NSIS (handles >2GB installers)
   5. On first launch, apps/desktop/src/main.ts extractWebServerIfNeeded() extracts the tar
   
-  FIRST-LAUNCH TAR EXTRACTION (v0.3.82+ — CRITICAL KNOWLEDGE):
-  The extraction uses execFileSync('tar', [...]) from child_process (NOT the 'tar' npm package).
-  NEVER add the 'tar' npm package — v7 is ESM-only and crashes Electron's CJS main process
-  with "Cannot read properties of undefined (reading 'extract')". Windows 10+ has tar.exe
-  built-in. Error dialogs (dialog.showErrorBox) make any failure visible to the user.
-  All child_process functions (execFileSync, execSync, spawn) are imported statically at the
-  top of main.ts — NEVER use dynamic await import('child_process').
+  FIRST-LAUNCH TAR EXTRACTION (v0.3.83+ — CRITICAL KNOWLEDGE):
+  The extraction uses spawnSync('tar', [...], { stdio: 'ignore' }) from child_process.
+  ALL THREE stdio channels MUST be 'ignore' — piping even stderr causes ENOBUFS on Windows
+  because tar.exe prints every filename and Windows pipe buffers overflow with 100k+ files.
+  NEVER use execFileSync or execSync for tar — they buffer output and cause ENOBUFS.
+  NEVER add the 'tar' npm package — v7 is ESM-only and crashes Electron's CJS main process.
+  NEVER use dynamic await import('child_process') — use static top-level imports.
+  
+  FORGE / SCRAPERS REMOVED FROM DESKTOP (v0.3.83+):
+  @titan/forge was removed from apps/web to reduce standalone file count. The packages/forge
+  directory still exists for future separate deployment (its own subdomain/service).
+  next.config.js uses outputFileTracingExcludes to exclude forge, playwright, tests, and docs.
   
   NSISBI CUSTOM BINARY (CRITICAL — v0.3.79-v0.3.80 incident):
   electron-builder.config.js uses customNsisBinary to download NSISBI from GitHub.

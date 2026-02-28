@@ -35,63 +35,18 @@ export default function BrainObservatoryPanel() {
   const [harvestMessage, setHarvestMessage] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const harvestAbortRef = useRef<AbortController | null>(null);
-  const [feedLines, setFeedLines] = useState<Array<{ ts: string; text: string; level?: 'info' | 'warn' | 'error' | 'success' }>>([]);
+  const [feedLines] = useState<Array<{ ts: string; text: string; level?: 'info' | 'warn' | 'error' | 'success' }>>([]);
   const [destination, setDestination] = useState('local');
   const [prepareStatus, setPrepareStatus] = useState('');
-  const feedRef = useRef<EventSource | null>(null);
 
   const loadData = useCallback(async () => {
-    try {
-      const [statsRes, sampleRes] = await Promise.all([
-        fetch('/api/forge/stats', { cache: 'no-store' }),
-        fetch(`/api/forge/samples?page=${page}&limit=20`, { cache: 'no-store' }),
-      ]);
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (sampleRes.ok) {
-        const body = await sampleRes.json();
-        setSamples(Array.isArray(body.samples) ? body.samples : []);
-      }
-    } catch {
-      // best effort
-    }
-  }, [page]);
+    // Forge API removed — no stats/samples fetch
+    setStats(null);
+    setSamples([]);
+  }, []);
 
   useEffect(() => {
     void loadData();
-    const interval = setInterval(() => void loadData(), 10000);
-    return () => clearInterval(interval);
-  }, [loadData]);
-
-  useEffect(() => {
-    if (feedRef.current) {
-      feedRef.current.close();
-      feedRef.current = null;
-    }
-    const source = new EventSource('/api/forge/feed');
-    feedRef.current = source;
-    const stamp = () => new Date().toLocaleTimeString();
-
-    source.addEventListener('sample', (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as { model_id?: string; quality_score?: number; outcome?: string };
-      const quality = Number(payload.quality_score || 0);
-      setFeedLines((prev) => [
-        ...prev.slice(-59),
-        {
-          ts: stamp(),
-          text: `${payload.model_id || 'unknown'} · q${quality} · ${payload.outcome || 'unknown'}`,
-          level: quality >= 7 ? 'success' : quality >= 4 ? 'warn' : 'error',
-        },
-      ]);
-      void loadData();
-    });
-    source.addEventListener('heartbeat', () => {
-      setFeedLines((prev) => [...prev.slice(-59), { ts: stamp(), text: 'Neural pulse', level: 'info' }]);
-    });
-    source.onerror = () => {
-      setFeedLines((prev) => [...prev.slice(-59), { ts: stamp(), text: 'Feed reconnecting...', level: 'warn' }]);
-    };
-
-    return () => source.close();
   }, [loadData]);
 
   const readinessCount = useMemo(() => {
@@ -101,45 +56,8 @@ export default function BrainObservatoryPanel() {
   }, [stats]);
 
   const startHarvest = async () => {
-    const abort = new AbortController();
-    harvestAbortRef.current = abort;
-    setHarvestState('running');
-    setHarvestMessage('Launching 100 parallel workers across all sources...');
-    try {
-      const res = await fetch('/api/forge/harvest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source,
-          topic: topic || 'all',
-          limit,
-          parallel: true,
-          workerCount: 100,
-        }),
-        signal: abort.signal,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setHarvestState('error');
-        setHarvestMessage(data?.error || res.statusText);
-        return;
-      }
-      const parts = [`${data.saved || 0} saved`];
-      if (data.evolved) parts.push(`${data.evolved} evolved`);
-      if (data.near_duplicates) parts.push(`${data.near_duplicates} near-dups removed`);
-      if (data.elapsed) parts.push(`${data.elapsed}s`);
-      setHarvestState('complete');
-      setHarvestMessage(parts.join(' · '));
-      await loadData();
-    } catch (err: unknown) {
-      if ((err as Error).name === 'AbortError') {
-        setHarvestState('idle');
-        setHarvestMessage('Harvest stopped.');
-      } else {
-        setHarvestState('error');
-        setHarvestMessage(err instanceof Error ? err.message : 'network error');
-      }
-    }
+    setHarvestState('error');
+    setHarvestMessage('Forge harvester has been removed.');
   };
 
   const stopHarvest = () => {
@@ -152,59 +70,27 @@ export default function BrainObservatoryPanel() {
   const bulkApprove = async () => {
     const ids = samples.filter((s) => s.quality_score >= 7).map((s) => s.id);
     if (ids.length === 0) return;
-    await fetch('/api/forge/samples/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids, target: 'samples' }),
-    });
-    await loadData();
+    // Forge API removed
   };
 
   const bulkRejectLow = async () => {
     const ids = samples.filter((s) => s.quality_score < 4).map((s) => s.id);
     if (ids.length === 0) return;
-    await fetch('/api/forge/samples/reject', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids, target: 'samples' }),
-    });
-    await loadData();
+    // Forge API removed
   };
 
   const approveSelected = async () => {
     if (!selected) return;
-    await fetch('/api/forge/samples/approve', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: [selected.id], target: 'samples' }),
-    });
-    await loadData();
+    // Forge API removed
   };
 
   const rejectSelected = async () => {
     if (!selected) return;
-    await fetch('/api/forge/samples/reject', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: [selected.id], target: 'samples' }),
-    });
-    await loadData();
+    // Forge API removed
   };
 
   const prepareTrainingData = async () => {
-    setPrepareStatus('Preparing...');
-    try {
-      const res = await fetch('/api/forge/export', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format: 'jsonl', minScore: 7, limit: 10000, destination }),
-      });
-      const data = await res.json();
-      setPrepareStatus(res.ok ? `Prepared: ${data.outputPath}` : `Failed: ${data.error || 'unknown error'}`);
-      await loadData();
-    } catch {
-      setPrepareStatus('Failed: network/server error');
-    }
+    setPrepareStatus('Forge export has been removed.');
   };
 
   return (

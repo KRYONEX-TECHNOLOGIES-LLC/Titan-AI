@@ -227,11 +227,6 @@ const BUILTIN_TOOLS: ToolDefinition[] = [
   { id: 'device_list', name: 'List Devices', description: 'List registered smart devices', category: 'devices', safetyTier: 1, parameters: [], source: 'builtin', enabled: true, requiresConfirmation: false },
   { id: 'device_status', name: 'Device Status', description: 'Get status of a smart device', category: 'devices', safetyTier: 1, parameters: [{ name: 'deviceId', type: 'string', description: 'Device ID', required: true }], source: 'builtin', enabled: true, requiresConfirmation: false },
 
-  // ── Harvester / learning ──
-  { id: 'start_harvester', name: 'Start Harvester', description: 'Start the Forge knowledge harvester', category: 'knowledge', safetyTier: 2, parameters: [], source: 'system-control', enabled: true, requiresConfirmation: true },
-  { id: 'stop_harvester', name: 'Stop Harvester', description: 'Stop the Forge knowledge harvester', category: 'knowledge', safetyTier: 2, parameters: [], source: 'system-control', enabled: true, requiresConfirmation: true },
-  { id: 'check_harvest_status', name: 'Harvest Status', description: 'Check harvester status and stats', category: 'knowledge', safetyTier: 1, parameters: [], source: 'system-control', enabled: true, requiresConfirmation: false },
-
   // ── IDE ──
   { id: 'scan_project', name: 'Scan Project', description: 'Scan the codebase for structure analysis', category: 'fs', safetyTier: 1, parameters: [], source: 'system-control', enabled: true, requiresConfirmation: false },
   { id: 'search_code', name: 'Search Code', description: 'Search codebase for a pattern', category: 'fs', safetyTier: 1, parameters: [{ name: 'query', type: 'string', description: 'Search pattern', required: true }], source: 'builtin', enabled: true, requiresConfirmation: false },

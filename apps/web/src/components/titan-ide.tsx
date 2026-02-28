@@ -55,7 +55,6 @@ const EditorArea = dynamic(() => import('@/components/ide/EditorArea'), { ssr: f
 const TitleBar = dynamic(() => import('@/components/ide/TitleBar'), { ssr: false });
 const StatusBar = dynamic(() => import('@/components/ide/StatusBar'), { ssr: false });
 const ChatMessage = dynamic(() => import('@/components/ide/ChatMessage'), { ssr: false });
-const ForgeDashboard = dynamic(() => import('@/components/ide/ForgeDashboard').then(m => ({ default: m.ForgeDashboard })), { ssr: false });
 const MidnightPanel = dynamic(() => import('@/components/ide/MidnightPanel'), { ssr: false });
 const TrainingLabPanel = dynamic(() => import('@/components/ide/TrainingLabPanel'), { ssr: false });
 const BrainObservatoryPanel = dynamic(() => import('@/components/ide/BrainObservatoryPanel'), { ssr: false });
@@ -663,13 +662,6 @@ export default function TitanIDE() {
     return () => window.removeEventListener('titan:openFolder', handler);
   }, [fileSystem]);
 
-  // Auto-start harvester on app boot (fire-and-forget, 4h cooldown on server)
-  useEffect(() => {
-    const t = setTimeout(() => {
-      fetch('/api/forge/auto-harvest').catch(() => {});
-    }, 8000);
-    return () => clearTimeout(t);
-  }, []);
 
   // Close dropdowns on mousedown outside (mousedown fires before click, so button's stopPropagation works)
   useEffect(() => {
@@ -783,11 +775,9 @@ export default function TitanIDE() {
           <ActivityIcon active={activeView === 'debug'} onClick={() => handleActivityClick('debug')} title="Run and Debug"><DebugIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'extensions'} onClick={() => handleActivityClick('extensions')} title="Extensions"><ExtensionsIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'titan-agent'} onClick={() => handleActivityClick('titan-agent')} title="Titan Agent"><TitanAgentIcon /></ActivityIcon>
-          <ActivityIcon active={activeView === 'forge'} onClick={() => handleActivityClick('forge')} title="Forge Dashboard"><ForgeIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'midnight'} onClick={() => handleActivityClick('midnight')} title="Project Midnight"><MoonIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'alfred'} onClick={() => handleActivityClick('alfred')} title="Alfred — AI Companion"><AlfredIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'training-lab'} onClick={() => handleActivityClick('training-lab')} title="LLM Training Lab"><FlaskIcon /></ActivityIcon>
-          <ActivityIcon active={activeView === 'brain'} onClick={() => handleActivityClick('brain')} title="Titan Brain Observatory"><BrainIcon /></ActivityIcon>
           <ActivityIcon active={activeView === 'cartography'} onClick={() => handleActivityClick('cartography')} title="Codebase Cartography"><CartographyIcon /></ActivityIcon>
           <div className="flex-1" />
           <ActivityIcon active={activeView === 'accounts'} onClick={() => handleActivityClick('accounts')} title="Accounts"><AccountIcon /></ActivityIcon>
@@ -860,7 +850,6 @@ export default function TitanIDE() {
                 }}
               />
             )}
-            {activeView === 'forge' && <ForgeDashboard />}
             {activeView === 'midnight' && (
               <MidnightPanel
                 midnightActive={midnight.midnightActive}
@@ -1979,7 +1968,6 @@ function GitIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill
 function DebugIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="5 3 19 12 5 21 5 3"/></svg>; }
 function ExtensionsIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>; }
 function TitanAgentIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>; }
-function ForgeIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>; }
 function MoonIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>; }
 function AlfredIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="8" r="5"/><path d="M3 21v-2a7 7 0 0 1 7-7h4a7 7 0 0 1 7 7v2"/><circle cx="12" cy="8" r="2" fill="currentColor" opacity="0.4"/></svg>; }
 function FlaskIcon() { return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M10 2v7l-5 8a3 3 0 0 0 2.56 4.5h8.88A3 3 0 0 0 19 17l-5-8V2"/><path d="M8 2h8"/><path d="M7 16h10"/></svg>; }

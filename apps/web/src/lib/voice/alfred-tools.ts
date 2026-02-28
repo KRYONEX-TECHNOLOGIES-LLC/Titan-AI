@@ -40,7 +40,6 @@ export const TOOL_SAFETY: Record<string, ToolSafety> = {
   query_knowledge: 'instant',
   store_knowledge: 'instant',
   check_protocol_status: 'instant',
-  check_harvest_status: 'instant',
   evaluate_performance: 'instant',
   read_file: 'instant',
   list_directory: 'instant',
@@ -66,8 +65,6 @@ export const TOOL_SAFETY: Record<string, ToolSafety> = {
   run_command: 'confirm',
   start_protocol: 'confirm',
   stop_protocol: 'confirm',
-  start_harvester: 'confirm',
-  stop_harvester: 'confirm',
   start_auto_learn: 'confirm',
   stop_auto_learn: 'confirm',
   git_commit: 'confirm',
@@ -369,38 +366,6 @@ export const ALFRED_TOOLS: AlfredToolSchema[] = [
     },
   },
 
-  // ── Scraper / harvester ──
-  {
-    type: 'function',
-    function: {
-      name: 'start_harvester',
-      description: 'Start the Forge Harvester with 100 parallel workers to scrape knowledge sources.',
-      parameters: {
-        type: 'object',
-        properties: {
-          sources: { type: 'string', description: 'Comma-separated source types (leave empty for all)' },
-          workers: { type: 'string', description: 'Number of parallel workers (default 100)' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'stop_harvester',
-      description: 'Stop the currently running Forge Harvester.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'check_harvest_status',
-      description: 'Check the Forge Harvester status.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-
   // ── Self-improvement ──
   {
     type: 'function',
@@ -626,7 +591,6 @@ export interface ClientState {
     taskSummary?: string;
   };
   projectFiles?: string;
-  harvestInfo?: string;
 }
 
 // ═══ PATH & COMMAND SAFETY ═══
@@ -1101,28 +1065,6 @@ export async function executeToolServerSide(
       const protocol = String(args.protocol || '');
       const actionName = protocol === 'midnight' ? 'stop_midnight' : `stop_${protocol}`;
       return { success: true, message: `Stopping ${protocol} protocol`, clientAction: { action: actionName, params: {} } };
-    }
-
-    case 'start_harvester':
-      return { success: true, message: 'Starting Forge Harvester...', clientAction: { action: 'start_harvest', params: {} } };
-    case 'stop_harvester':
-      return { success: true, message: 'Stopping Forge Harvester.', clientAction: { action: 'stop_harvest', params: {} } };
-    case 'check_harvest_status': {
-      const hi = clientState?.harvestInfo;
-      if (hi && hi.length > 5) return { success: true, message: `Harvest status: ${hi}` };
-      try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/forge/harvest`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'status' }),
-          signal: AbortSignal.timeout(5000),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          return { success: true, message: `Harvest: ${JSON.stringify(data).slice(0, 800)}`, data };
-        }
-      } catch { /* fall through */ }
-      return { success: true, message: 'Harvester not running. Use start_harvester to begin.' };
     }
 
     case 'start_auto_learn':

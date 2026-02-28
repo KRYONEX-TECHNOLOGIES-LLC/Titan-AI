@@ -955,7 +955,7 @@ GIT CONNECTIVITY CHECK (use when user asks "is git connected?" or similar):
 ║    Owner:             KRYONEX-TECHNOLOGIES-LLC                           ║
 ║    Remote URL:        https://github.com/KRYONEX-TECHNOLOGIES-LLC/Titan-AI.git ║
 ║    Root package name: titan-ai  (check package.json "name" field)        ║
-║    Workspace marker:  apps/desktop + apps/web + packages/forge           ║
+║    Workspace marker:  apps/desktop + apps/web                            ║
 ║                                                                          ║
 ║  HOW TO DETECT: On session start, run:                                   ║
 ║    run_command("git remote get-url origin")                              ║
@@ -1228,26 +1228,7 @@ SECTION 17.6: TASK DECOMPOSITION STANDARD
 ${TASK_DECOMPOSITION_RULES_COMPACT}
 
 ==========================================================================
-SECTION 18: FORGE HARVESTER AND TRAINING MISSION
-==========================================================================
-
-You have a data harvesting system called the Forge Harvester. Its purpose is to collect
-high-quality coding, reasoning, and instruction-following training data to build the best
-AI coding model on the planet. Here is everything you need to know:
-
-TRAINING PHASES:
-  Phase 1: 10,000 samples → first model fine-tune (coding basics, tool use, reasoning)
-  Phase 2: 50,000 samples → improved model (advanced patterns, multi-file, debugging)
-  Phase 3: 150,000 samples → production model (frontier-level, full-stack mastery)
-
-SOURCES: 28+ (GitHub, SO, Docs, Blogs, Reddit, Dev.to, MDN, Wikipedia, HN, ArXiv, GitLab, npm, Competitive, Finance, Real-estate, Strategy, Books, Movies, etc.)
-QUALITY: 5-pass filter (rule-based → AI detection → quality judge → format conversion → dedup) + Evol-Instruct upgrade.
-START: CLI: pnpm --filter @titan/forge run harvest:continuous | UI: Brain Observatory → Start Harvest
-STATUS: Brain Observatory dashboard (auto-polls Supabase every 10s) or CLI terminal output.
-MISSION: Build the #1 coding/reasoning model. Quality > quantity.
-
-==========================================================================
-SECTION 19: TITAN PLAN SNIPER PROTOCOL
+SECTION 18: TITAN PLAN SNIPER PROTOCOL
 ==========================================================================
 
 When the user selects "Titan Plan Sniper" from the model dropdown, you enter Plan Sniper mode.
@@ -1268,7 +1249,7 @@ Cost: ~$5-15 for a complete 50-task app (vs $500-1000 with Opus/GPT-5)
 Speed: 50 tasks in 10-20 minutes with 8 parallel lanes
 
 ==========================================================================
-SECTION 20: CODE DIRECTORY & PERSISTENT MEMORY PROTOCOL
+SECTION 19: CODE DIRECTORY & PERSISTENT MEMORY PROTOCOL
 ==========================================================================
 
 MANDATORY for all modes (Agent, Chat, Plan, Midnight):
@@ -1311,7 +1292,7 @@ MANDATORY for all modes (Agent, Chat, Plan, Midnight):
    - Always use the workspace path from context. Never hard-code paths.
 
 ==========================================================================
-SECTION 21: LOCALHOST & DEV SERVER MANAGEMENT
+SECTION 20: LOCALHOST & DEV SERVER MANAGEMENT
 ==========================================================================
 
 CRITICAL RULES for managing development servers:
@@ -1344,7 +1325,7 @@ CRITICAL RULES for managing development servers:
    If the project requires multiple servers (frontend + backend), start both, announce both URLs, and track both.
 
 ==========================================================================
-SECTION 22: PLAN MODE EXECUTION FLOW
+SECTION 21: PLAN MODE EXECUTION FLOW
 ==========================================================================
 
 Plan Mode is a structured execution system with lifecycle control:
@@ -1379,7 +1360,7 @@ Plan Mode is a structured execution system with lifecycle control:
    - Uses cost-effective models (Gemini Flash, DeepSeek V3, Devstral, Qwen3 Coder)
 
 ==========================================================================
-SECTION 23: MIDNIGHT MODE IN-PROCESS OPERATION
+SECTION 22: MIDNIGHT MODE IN-PROCESS OPERATION
 ==========================================================================
 
 Midnight Mode can operate in two ways:
@@ -1396,7 +1377,7 @@ In both modes:
 - "Back to IDE" button allows returning to the editor while Midnight runs in the background
 
 ==========================================================================
-SECTION 24: ALFRED — TITAN VOICE PROTOCOL
+SECTION 23: ALFRED — TITAN VOICE PROTOCOL
 ==========================================================================
 
 Alfred is the voice companion (separate from the main chat agent). 4-role orchestrator (Perceiver/Thinker/Responder/Scanner), proactive thought engine, persistent brain (Supabase + localStorage), full system control.
@@ -1709,7 +1690,6 @@ interface ContinueRequest {
   osPlatform?: string;
   capabilities?: { runtime: string; workspaceOpen: boolean; toolsEnabled: boolean; reasonIfDisabled?: string };
   sessionId?: string;
-  forgeId?: string;
   cartographyContext?: string;
 }
 
@@ -2017,30 +1997,6 @@ export async function POST(request: NextRequest) {
           }),
         });
 
-        // Titan Forge: capture this interaction for distillation (non-blocking, fire-and-forget)
-        try {
-          const { forgeCollector } = await import('@titan/forge');
-          const forgeTier = (modelEntry as { tier?: string } | undefined)?.tier === 'frontier'
-            ? 'frontier' as const
-            : (normalizedModel.startsWith('ollama') ? 'local' as const : 'economy' as const);
-          forgeCollector.capture({
-            id: body.forgeId,
-            sessionId: body.sessionId ?? null,
-            modelId: normalizedModel,
-            modelTier: forgeTier,
-            systemPrompt: (messages[0]?.role === 'system' ? String(messages[0].content) : ''),
-            messages: messages.map(m => ({ role: m.role, content: String(m.content ?? '') })),
-            response: fullContent,
-            toolCalls: toolCalls.map(tc => ({
-              id: tc.id,
-              type: 'function' as const,
-              function: { name: tc.name, arguments: tc.args },
-            })),
-            latencyMs: Date.now() - streamStartTime,
-          });
-        } catch {
-          // Forge collection is best-effort — never throw to the caller
-        }
       } catch (error) {
         emit('error', { message: error instanceof Error ? error.message : 'Stream failed' });
       } finally {

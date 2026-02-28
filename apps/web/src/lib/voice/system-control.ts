@@ -77,40 +77,6 @@ export async function scanProject(fileTree?: string): Promise<ControlResult> {
 }
 
 /**
- * Start the Forge harvester.
- */
-export async function startHarvest(): Promise<ControlResult> {
-  try {
-    const res = await fetch('/api/forge/harvest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'start', workers: 100, target: 10000 }),
-    });
-    const data = await res.json();
-    return { success: res.ok, message: data.message || 'Forge harvester started', data };
-  } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : 'Failed to start harvester' };
-  }
-}
-
-/**
- * Stop the Forge harvester.
- */
-export async function stopHarvest(): Promise<ControlResult> {
-  try {
-    const res = await fetch('/api/forge/harvest', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'stop' }),
-    });
-    const data = await res.json();
-    return { success: res.ok, message: data.message || 'Forge harvester stopped', data };
-  } catch (err) {
-    return { success: false, message: err instanceof Error ? err.message : 'Failed to stop harvester' };
-  }
-}
-
-/**
  * Get project/plan status.
  */
 export function checkProjectStatus(): ControlResult {
@@ -322,8 +288,6 @@ export async function executeVoiceAction(action: string, params: Record<string, 
     case 'check_protocol_status': return getProtocolStatus();
     case 'scan_project': return scanProject();
     case 'check_status': return checkProjectStatus();
-    case 'start_harvest': return startHarvest();
-    case 'stop_harvest': return stopHarvest();
     case 'start_plan': return startPlanMode(params.goal);
     case 'switch_mode': return switchMode(params.mode || 'agent');
     case 'mute_voice': return muteVoice();

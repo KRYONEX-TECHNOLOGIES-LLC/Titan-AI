@@ -518,6 +518,23 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.83 — Fix ENOBUFS + Remove Forge from Desktop (2026-02-28)
+
+**Root cause:** v0.3.82 crashed with "spawnSync tar ENOBUFS" because the tar extraction of 100k+ files overflows Windows pipe buffers — even with stdout ignored, stderr was still piped and tar writes progress to it.
+
+**Fixes:**
+- Changed `spawnSync` stdio from `['ignore', 'ignore', 'pipe']` to `'ignore'` (all three ignored). No pipe = no overflow.
+- Removed Titan Forge / scrapers from the web app entirely:
+  - Deleted all 11 `/api/forge/` API routes
+  - Removed ForgeDashboard component
+  - Removed forge signals from useChat.ts and chat/continue/route.ts
+  - Removed harvester voice tools and tool registry entries
+  - Removed `@titan/forge` dependency from web package.json
+  - Removed forge webpack externals from next.config.js
+- Added `outputFileTracingExcludes` to next.config.js excluding forge, playwright, tests, docs, and source maps from the standalone output.
+- Net effect: standalone file count reduced dramatically, making tar smaller and extraction faster.
+- The `packages/forge/` package itself remains in the monorepo for future separate deployment.
+
 ### v0.3.82 — Fix Extraction Import Crash (2026-02-28)
 
 **Root cause:** v0.3.81 crashed on launch with "Cannot read properties of undefined (reading 'extract')" because the `tar` npm package v7 is ESM-only, but Electron's main process runs CommonJS. `import tar from 'tar'` returned `undefined`.

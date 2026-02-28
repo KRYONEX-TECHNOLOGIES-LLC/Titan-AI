@@ -29,7 +29,7 @@ import { setupIndexerIPC } from './ipc/indexer.js';
 import { createMainWindow, restoreWindowState, saveWindowState } from './window/main-window.js';
 import * as chokidar from 'chokidar';
 import * as fs from 'fs';
-import { execFileSync, execSync, spawn } from 'child_process';
+import { execSync, spawn, spawnSync } from 'child_process';
 
 // Enforce single instance — if another copy is already running, focus it and exit this one.
 // Use only app.quit() — process.exit() can conflict with elevated NSIS post-install launch.
@@ -372,10 +372,14 @@ async function extractWebServerIfNeeded(): Promise<void> {
   fs.mkdirSync(webServerDir, { recursive: true });
 
   try {
-    execFileSync('tar', ['-xf', tarFile, '-C', webServerDir], {
+    const result = spawnSync('tar', ['-xf', tarFile, '-C', webServerDir], {
       timeout: 300000,
       windowsHide: true,
+      stdio: 'ignore',
     });
+    if (result.status !== 0) {
+      throw new Error(`tar exited with code ${result.status}`);
+    }
 
     if (!fs.existsSync(serverJs)) {
       throw new Error(`Extraction finished but server.js not found at: ${serverJs}`);
