@@ -2,21 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-let browserInstance: any = null;
-
-async function getBrowser() {
-  if (browserInstance) return browserInstance;
-  try {
-    const { createBrowserServer } = await import('@titan/mcp-servers');
-    browserInstance = createBrowserServer();
-    await browserInstance.initialize();
-    return browserInstance;
-  } catch (err) {
-    console.warn('Browser server not available:', err);
-    return null;
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -26,20 +11,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'tool name required' }, { status: 400 });
     }
 
-    const browser = await getBrowser();
-    if (!browser) {
+    let browserMod: any;
+    try {
+      browserMod = await import(/* webpackIgnore: true */ '@titan/mcp-servers');
+    } catch {
       return NextResponse.json({
         success: false,
-        error: 'Browser automation not available. Playwright may not be installed.',
+        error: 'Browser automation requires the desktop app with Playwright installed. Not available in web deployment.',
       }, { status: 503 });
     }
 
-    const toolDef = browser.tools.find((t: any) => t.name === tool);
+    const server = browserMod.createBrowserServer();
+    await server.initialize();
+
+    const toolDef = server.tools.find((t: any) => t.name === tool);
     if (!toolDef) {
+      await server.shutdown();
       return NextResponse.json({ success: false, error: `Unknown browser tool: ${tool}` }, { status: 400 });
     }
 
     const result = await toolDef.handler(args || {});
+    await server.shutdown();
+
     const isError = result.isError === true;
     const textContent = result.content
       ?.filter((c: any) => c.type === 'text')
