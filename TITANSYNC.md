@@ -518,6 +518,18 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.84 — Fix Extraction Permissions (2026-02-28)
+
+**Root cause:** v0.3.83 failed with "tar exited with code 1" because `perMachine: true` installs to `C:\Program Files\` which is read-only for non-admin processes. The tar extraction tried to write to `process.resourcesPath` (inside Program Files) and was denied.
+
+**Fix:**
+- Extraction now writes to `app.getPath('userData')` (%APPDATA%/Titan Desktop) which is ALWAYS writable.
+- Static files, public assets, and .env are copied from the read-only resources dir to userData after extraction.
+- Uses async `spawn` (not spawnSync) to drain stderr in real-time — no ENOBUFS, and error messages are captured.
+- Version marker file (.titan-version) triggers re-extraction on app updates.
+- Cleans old web-server directory before extraction for clean upgrades.
+- Server startup (`startNextJsServer`) now runs from the userData directory.
+
 ### v0.3.83 — Fix ENOBUFS + Remove Forge from Desktop (2026-02-28)
 
 **Root cause:** v0.3.82 crashed with "spawnSync tar ENOBUFS" because the tar extraction of 100k+ files overflows Windows pipe buffers — even with stdout ignored, stderr was still piped and tar writes progress to it.

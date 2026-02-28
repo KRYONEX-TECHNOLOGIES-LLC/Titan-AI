@@ -159,15 +159,13 @@ async function startNextJsServer(port: number): Promise<void> {
     args = ['next', 'dev', '-p', String(port)];
     env = process.env;
   } else {
-    cwd = path.join(process.resourcesPath, 'web-server', 'apps', 'web');
+    cwd = path.join(getWebServerDir(), 'apps', 'web');
     command = process.execPath;
     args = [path.join(cwd, 'server.js')];
 
-    // Next.js standalone server.js does NOT auto-load .env files.
-    // Try multiple locations, merge all found (later files override earlier ones).
     const dotEnvVars: Record<string, string> = {};
     const envPaths = [
-      path.join(cwd, '.env'),                                // bundled by CI via extraResources
+      path.join(cwd, '.env'),                                // copied from resources during extraction
       path.join(app.getPath('userData'), '.env'),             // user-provided fallback
       path.join(app.getPath('home'), '.titan', '.env'),       // global Titan config
     ];
@@ -348,14 +346,25 @@ const LOADING_HTML = `data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTY
 </body>
 </html>`)}`;
 
+function getWebServerDir(): string {
+  return path.join(app.getPath('userData'), 'web-server');
+}
+
 async function extractWebServerIfNeeded(): Promise<void> {
   if (!app.isPackaged) return;
 
   const tarFile = path.join(process.resourcesPath, 'web-server-standalone.tar');
-  const webServerDir = path.join(process.resourcesPath, 'web-server');
+  const webServerDir = getWebServerDir();
   const serverJs = path.join(webServerDir, 'apps', 'web', 'server.js');
+  const versionFile = path.join(webServerDir, '.titan-version');
+  const currentVersion = app.getVersion();
 
-  if (!fs.existsSync(tarFile)) {
+  const needsExtraction = fs.existsSync(tarFile) && (() => {
+    if (!fs.existsSync(serverJs)) return true;
+    try { return fs.readFileSync(versionFile, 'utf8').trim() !== currentVersion; } catch { return true; }
+  })();
+
+  if (!needsExtraction) {
     if (!fs.existsSync(serverJs)) {
       dialog.showErrorBox(
         'Titan — Missing Files',
@@ -365,30 +374,50 @@ async function extractWebServerIfNeeded(): Promise<void> {
     return;
   }
 
-  console.log('[Main] Found web-server-standalone.tar — extracting web server...');
+  console.log(`[Main] Extracting web server v${currentVersion}...`);
   console.log(`[Main] Archive: ${tarFile}`);
   console.log(`[Main] Target:  ${webServerDir}`);
 
+  if (fs.existsSync(webServerDir)) {
+    fs.rmSync(webServerDir, { recursive: true, force: true });
+  }
   fs.mkdirSync(webServerDir, { recursive: true });
 
   try {
-    const result = spawnSync('tar', ['-xf', tarFile, '-C', webServerDir], {
-      timeout: 300000,
-      windowsHide: true,
-      stdio: 'ignore',
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('tar', ['-xf', tarFile, '-C', webServerDir], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+        windowsHide: true,
+      });
+      let stderr = '';
+      child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr.trim() || `tar exited with code ${code}`));
+      });
     });
-    if (result.status !== 0) {
-      throw new Error(`tar exited with code ${result.status}`);
+
+    const resStatic = path.join(process.resourcesPath, 'web-server', 'apps', 'web', '.next', 'static');
+    const resPublic = path.join(process.resourcesPath, 'web-server', 'apps', 'web', 'public');
+    const resEnv = path.join(process.resourcesPath, 'web-server', 'apps', 'web', '.env');
+
+    if (fs.existsSync(resStatic)) {
+      fs.cpSync(resStatic, path.join(webServerDir, 'apps', 'web', '.next', 'static'), { recursive: true });
+    }
+    if (fs.existsSync(resPublic)) {
+      fs.cpSync(resPublic, path.join(webServerDir, 'apps', 'web', 'public'), { recursive: true });
+    }
+    if (fs.existsSync(resEnv)) {
+      fs.cpSync(resEnv, path.join(webServerDir, 'apps', 'web', '.env'));
     }
 
     if (!fs.existsSync(serverJs)) {
       throw new Error(`Extraction finished but server.js not found at: ${serverJs}`);
     }
 
+    fs.writeFileSync(versionFile, currentVersion);
     console.log('[Main] Web server extracted successfully.');
-
-    try { fs.unlinkSync(tarFile); } catch {}
-    console.log('[Main] Cleaned up tar archive.');
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[Main] Extraction failed:', msg);

@@ -258,11 +258,13 @@ DESKTOP BUILD / ELECTRON PACKAGING RULES (NON-NEGOTIABLE):
   4. NSISBI custom binary replaces standard NSIS (handles >2GB installers)
   5. On first launch, apps/desktop/src/main.ts extractWebServerIfNeeded() extracts the tar
   
-  FIRST-LAUNCH TAR EXTRACTION (v0.3.83+ — CRITICAL KNOWLEDGE):
-  The extraction uses spawnSync('tar', [...], { stdio: 'ignore' }) from child_process.
-  ALL THREE stdio channels MUST be 'ignore' — piping even stderr causes ENOBUFS on Windows
-  because tar.exe prints every filename and Windows pipe buffers overflow with 100k+ files.
-  NEVER use execFileSync or execSync for tar — they buffer output and cause ENOBUFS.
+  FIRST-LAUNCH TAR EXTRACTION (v0.3.84+ — CRITICAL KNOWLEDGE):
+  The extraction uses async spawn('tar', [...]) and writes to app.getPath('userData'),
+  NOT to process.resourcesPath. The install dir (Program Files) is READ-ONLY for non-admin
+  processes because perMachine: true in NSIS config. ALWAYS extract to userData (%APPDATA%).
+  Static files, public assets, and .env are COPIED from resources to userData after extraction.
+  A .titan-version marker file triggers re-extraction on app updates.
+  NEVER use spawnSync for tar — use async spawn to drain stderr without ENOBUFS.
   NEVER add the 'tar' npm package — v7 is ESM-only and crashes Electron's CJS main process.
   NEVER use dynamic await import('child_process') — use static top-level imports.
   
