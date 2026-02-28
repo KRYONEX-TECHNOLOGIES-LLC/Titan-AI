@@ -516,6 +516,12 @@ All actions are classified into 3 safety tiers:
 
 ## Changelog
 
+### v0.3.80 — Fix NSISBI Download URL (2026-02-28)
+
+**Root cause:** v0.3.79 desktop build failed instantly (8s) at "Publish desktop app (Windows)" because the NSISBI custom binary URL pointed to a nonexistent GitHub release (`AstraliteHeart/NSISBI-ElectronBuilder/v1.0.1` — 404). The correct repo is `SoundSafari/NSISBI-ElectronBuilder` at tag `1.0.0`.
+
+**Fix:** Corrected `customNsisBinary.url` in `electron-builder.config.js` to `https://github.com/SoundSafari/NSISBI-ElectronBuilder/releases/download/1.0.0/nsisbi-electronbuilder-3.10.3.7z`. Checksum was already correct.
+
 ### v0.3.79 — God-Tier Desktop Build Fix (2026-02-28)
 
 **Root cause:** NSIS processes every file individually and logs each one to stdout. The web standalone output (with `outputFileTracingRoot` spanning the entire monorepo) contained potentially hundreds of thousands of files. After pnpm flattening (symlinks replaced with copies), NSIS's stdout exceeded Node.js V8 max string length (~512MB), crashing with `RangeError: Invalid string length`. File exclusion filters (v0.3.78) were not enough — the file count was still too high.

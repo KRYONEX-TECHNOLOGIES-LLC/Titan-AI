@@ -80,7 +80,7 @@ module.exports = {
     uninstallerIcon: 'resources/icon.ico',
     runAfterFinish: true,
     customNsisBinary: {
-      url: 'https://github.com/AstraliteHeart/NSISBI-ElectronBuilder/releases/download/v1.0.1/nsisbi-electronbuilder-3.10.3.7z',
+      url: 'https://github.com/SoundSafari/NSISBI-ElectronBuilder/releases/download/1.0.0/nsisbi-electronbuilder-3.10.3.7z',
       checksum: 'WRmZUsACjIc2s7bvsFGFRofK31hfS7riPlcfI1V9uFB2Q8s7tidgI/9U16+X0I9X2ZhNxi8N7Z3gKvm6ojvLvg==',
     },
   },
