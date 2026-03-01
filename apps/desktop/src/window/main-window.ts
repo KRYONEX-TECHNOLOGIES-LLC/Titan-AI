@@ -37,16 +37,18 @@ export function createMainWindow(state: WindowState): BrowserWindow {
     icon: app.isPackaged
       ? path.join(process.resourcesPath, 'icon.ico')
       : path.join(__dirname, '..', '..', 'resources', 'icon.ico'),
-    show: false,
+show: false,
     backgroundColor: '#0a0a0a',
     webPreferences: {
       preload: path.join(__dirname, '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       webSecurity: true,
       backgroundThrottling: false,
       spellcheck: false,
+      devTools: !app.isPackaged,
+      offscreen: true,
     },
   });
 
