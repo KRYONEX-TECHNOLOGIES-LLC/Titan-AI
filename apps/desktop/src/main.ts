@@ -3,11 +3,30 @@ import * as path from 'path';
 import * as http from 'http';
 
 // GPU acceleration + input responsiveness — must be set before app.whenReady()
-// app.commandLine.appendSwitch('enable-gpu-rasterization');
-// app.commandLine.appendSwitch('enable-zero-copy');
-// app.commandLine.appendSwitch('disable-software-rasterization');
-// app.commandLine.appendSwitch('disable-renderer-backgrounding');
-// app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+// GPU/Graphics optimizations
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('disable-software-rasterization');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-frame-rate-limit');
+app.commandLine.appendSwitch('enable-quic');
+
+// Input latency fixes
+app.commandLine.appendSwitch('enable-experimental-canvas-features');
+app.commandLine.appendSwitch('enable-gpu-async-worker-context');
+app.commandLine.appendSwitch('enable-parallel-downloading');
+
+// Memory optimizations
+app.commandLine.appendSwitch('enable-back-forward-cache');
+app.commandLine.appendSwitch('disable-dev-shm-usage');
+app.commandLine.appendSwitch('force-device-scale-factor=1');
+
+// Chromium flags
+app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+app.commandLine.appendSwitch('enable-javascript-harmony');
+app.commandLine.appendSwitch('font-antialiasing');
+app.commandLine.appendSwitch('smooth-scrolling');
 // Web Speech API: Google's speech service rejects non-Chrome user agents.
 // Spoof a standard Chrome UA so webkitSpeechRecognition works in Electron.
 app.commandLine.appendSwitch('enable-features', 'WebSpeechAPI');
