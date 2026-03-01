@@ -35,8 +35,9 @@ export interface ToolExecResult {
 // ═══ SAFETY TIERS ═══
 
 export const TOOL_SAFETY: Record<string, ToolSafety> = {
-  browse_url: 'instant',
+  execute_code: 'confirm',
   web_search: 'instant',
+  browse_url: 'instant',
   query_knowledge: 'instant',
   store_knowledge: 'instant',
   check_protocol_status: 'instant',
@@ -79,6 +80,35 @@ export const TOOL_SAFETY: Record<string, ToolSafety> = {
 // ═══ TOOL DEFINITIONS (OpenAI function-calling format) ═══
 
 export const ALFRED_TOOLS: AlfredToolSchema[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'execute_code',
+      description: 'Execute code in an isolated sandbox and return the output. Use this to run scripts, test logic, or verify code behavior.',
+      parameters: {
+        type: 'object',
+        properties: {
+          code: { type: 'string', description: 'The code to execute' },
+          language: { type: 'string', enum: ['python', 'javascript', 'typescript', 'bash'], description: 'The programming language' },
+        },
+        required: ['code', 'language'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: 'Search the web for real-time information, documentation, or current events.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query' },
+        },
+        required: ['query'],
+      },
+    },
+  },
   // ── Protocol control ──
   {
     type: 'function',
@@ -300,20 +330,6 @@ export const ALFRED_TOOLS: AlfredToolSchema[] = [
           url: { type: 'string', description: 'The URL to fetch' },
         },
         required: ['url'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description: 'Search the web for information on a topic.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Search query' },
-        },
-        required: ['query'],
       },
     },
   },
@@ -654,8 +670,77 @@ export async function executeToolServerSide(
     // ────────────────────────────────────────────
     // FILE OPERATIONS (real fs)
     // ────────────────────────────────────────────
+      case 'execute_code': {
+        const { code, language } = args as { code: string; language: string };
+        if (!code || !language) return { success: false, message: 'Missing code or language' };
+        
+        try {
+          // Call the secure execution API route
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const res = await fetch(`${baseUrl}/api/alfred/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, language }),
+            signal: AbortSignal.timeout(10000), // 10s timeout for the API call
+          });
+          
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            return { 
+              success: false, 
+              message: `Execution failed: ${errData.error || res.statusText}` 
+            };
+          }
+          
+          const { data } = await res.json();
+          
+          return {
+            success: true,
+            message: `Executed ${language} code successfully.`,
+            data,
+            clientAction: {
+              action: 'show_execution',
+              params: { data: JSON.stringify(data) }
+            }
+          };
+        } catch (err) {
+          return { 
+            success: false, 
+            message: `Execution service error: ${err instanceof Error ? err.message : String(err)}` 
+          };
+        }
+      }
+      
+      case 'web_search': {
+        const { query } = args as { query: string };
+        if (!query) return { success: false, message: 'Missing query' };
+        
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+          const res = await fetch(`${baseUrl}/api/web/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+            signal: AbortSignal.timeout(15000),
+          });
+          
+          if (!res.ok) {
+            return { success: false, message: `Search failed: ${res.statusText}` };
+          }
+          
+          const { results } = await res.json();
+          
+          return {
+            success: true,
+            message: `Searched for: ${query}`,
+            data: { results }
+          };
+        } catch (err) {
+          return { success: false, message: `Search service error: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      }
 
-    case 'read_file': {
+      case 'read_file': {
       const filePath = String(args.path || '');
       if (!filePath) return { success: false, message: 'path is required' };
       if (!isPathSafe(filePath, workspace)) return { success: false, message: 'Path outside workspace' };
@@ -933,21 +1018,24 @@ export async function executeToolServerSide(
       const query = String(args.query || '');
       if (!query) return { success: false, message: 'Query is required' };
       try {
-        const encoded = encodeURIComponent(query);
-        const res = await fetch(`https://html.duckduckgo.com/html/?q=${encoded}`, {
-          headers: { 'User-Agent': 'TitanAI-Alfred/1.0' },
-          signal: AbortSignal.timeout(10000),
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const res = await fetch(`${baseUrl}/api/web/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+          signal: AbortSignal.timeout(15000),
         });
-        const html = await res.text();
-        const results: string[] = [];
-        const snippetRegex = /<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
-        let match;
-        while ((match = snippetRegex.exec(html)) !== null && results.length < 5) {
-          results.push(match[1].replace(/<[^>]+>/g, '').trim());
+        
+        if (!res.ok) {
+          return { success: false, message: `Search failed: ${res.statusText}` };
         }
+        
+        const { results } = await res.json();
+        const formattedResults = results.map((r: any) => `${r.title}\n${r.snippet}\n${r.url}`).join('\n\n');
+        
         return {
           success: true,
-          message: results.length ? results.join('\n\n') : `No results found for "${query}"`,
+          message: formattedResults || `No results found for "${query}"`,
           data: { resultCount: results.length },
         };
       } catch (err) {

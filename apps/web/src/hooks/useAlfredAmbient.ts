@@ -14,6 +14,12 @@ const ARTIFACT_DETECT = /\[artifact:\s*(code|html|url|video|simulation)\s*(?:\|(
 
 function resolveToolCanvasMode(toolName: string, args?: Record<string, unknown>): CanvasMode {
   switch (toolName) {
+    case 'execute_code':
+    case 'run_code':
+      return 'execution';
+    case 'execute_code':
+    case 'run_code':
+      return 'execution';
     case 'run_command':
     case 'execute_command':
       return 'terminal';
@@ -27,16 +33,27 @@ function resolveToolCanvasMode(toolName: string, args?: Record<string, unknown>)
       return 'code';
     }
     case 'web_search':
+    case 'research_topic':
+    case 'search_web': {
+      const q = String(args?.query || '').toLowerCase();
+      if (q.includes('youtube') || q.includes('video')) return 'video';
+      return 'screen';
+    }
     case 'web_browse':
     case 'browser_navigate':
-    case 'browse_url':
-    case 'research_topic':
-    case 'search_web':
+    case 'browse_url': {
+      const url = String(args?.url || '').toLowerCase();
+      if (url.includes('youtube.com') || url.includes('youtu.be')) return 'video';
       return 'screen';
+    }
     case 'list_files':
     case 'read_file':
     case 'list_directory':
       return 'files';
+    case 'check_protocol_status':
+    case 'evaluate_performance':
+    case 'check_markets':
+      return 'dashboard';
     default:
       return 'screen';
   }
@@ -166,6 +183,14 @@ export function useAlfredAmbient() {
   // Buffer speech received while TTS is playing (so nothing is lost)
   const ttsBufferRef = useRef<string[]>([]);
 
+  // Echo detection: track what Alfred just said to filter mic echo
+  const lastAlfredUtteranceRef = useRef('');
+  const lastAlfredSpokeAtRef = useRef(0);
+  const lastSendAtRef = useRef(0);
+
+  // Deduplication: prevent identical responses from being sent repeatedly
+  const recentSendsRef = useRef<string[]>([]);
+
   // Pending action for "proceed" flow
   const pendingActionRef = useRef<{ action: string; params: Record<string, string>; description: string } | null>(null);
 
@@ -179,8 +204,46 @@ export function useAlfredAmbient() {
   const sendToAlfred = useCallback(async (text: string) => {
     if (!text.trim() || text.trim().length < 2 || processingRef.current) return;
 
+    const trimmed = text.trim();
+
+    // COOLDOWN: block rapid-fire sends (< 2s apart)
+    const now = Date.now();
+    if (now - lastSendAtRef.current < 2000) return;
+
+    // ECHO DETECTION: ignore transcripts that match what Alfred just said
+    const timeSinceAlfred = now - lastAlfredSpokeAtRef.current;
+    if (timeSinceAlfred < 5000 && lastAlfredUtteranceRef.current) {
+      const alfredWords = lastAlfredUtteranceRef.current.toLowerCase().split(/\s+/);
+      const userWords = trimmed.toLowerCase().split(/\s+/);
+      const overlap = userWords.filter(w => alfredWords.includes(w)).length;
+      const similarity = overlap / Math.max(userWords.length, 1);
+      if (similarity > 0.5) {
+        console.log('[alfred] Echo detected — ignoring transcript that matches TTS output');
+        return;
+      }
+    }
+
+    // DEDUP: don't send identical or near-identical messages within 30s
+    const lowerTrimmed = trimmed.toLowerCase();
+    if (recentSendsRef.current.some(prev => {
+      if (prev === lowerTrimmed) return true;
+      const prevWords = prev.split(/\s+/);
+      const curWords = lowerTrimmed.split(/\s+/);
+      const overlap = curWords.filter(w => prevWords.includes(w)).length;
+      return overlap / Math.max(curWords.length, 1) > 0.8;
+    })) {
+      console.log('[alfred] Duplicate message blocked');
+      return;
+    }
+
+    recentSendsRef.current = [...recentSendsRef.current.slice(-5), lowerTrimmed];
+    setTimeout(() => {
+      recentSendsRef.current = recentSendsRef.current.filter(s => s !== lowerTrimmed);
+    }, 30000);
+    lastSendAtRef.current = now;
+
     processingRef.current = true;
-    addToLog('user', text);
+    addToLog('user', trimmed);
     setAlfredState('processing');
     titanVoice.stopSpeaking();
 
@@ -197,9 +260,13 @@ export function useAlfredAmbient() {
             pendingActionRef.current = null;
             const controlResult = await executeVoiceAction(pending.action, pending.params);
             addToLog('alfred', controlResult.message);
+            lastAlfredUtteranceRef.current = controlResult.message;
+            lastAlfredSpokeAtRef.current = Date.now();
             titanVoice.speak(controlResult.message, 8);
           } else {
             addToLog('alfred', 'Nothing pending to execute, sir.');
+            lastAlfredUtteranceRef.current = 'Nothing pending to execute, sir.';
+            lastAlfredSpokeAtRef.current = Date.now();
             titanVoice.speak('Nothing pending to execute, sir.', 6);
           }
           setAlfredState('speaking');
@@ -213,6 +280,8 @@ export function useAlfredAmbient() {
           pendingActionRef.current = { action: result.action, params: result.params, description: result.description };
           const msg = `Ready to ${result.description.toLowerCase()}. Say "proceed" or "go ahead" to confirm.`;
           addToLog('alfred', msg);
+          lastAlfredUtteranceRef.current = msg;
+          lastAlfredSpokeAtRef.current = Date.now();
           titanVoice.speak(msg, 8);
           setAlfredState('speaking');
           processingRef.current = false;
@@ -221,6 +290,8 @@ export function useAlfredAmbient() {
 
         const controlResult = await executeVoiceAction(result.action, result.params);
         addToLog('alfred', controlResult.message);
+        lastAlfredUtteranceRef.current = controlResult.message;
+        lastAlfredSpokeAtRef.current = Date.now();
         titanVoice.speak(controlResult.message, 8);
         setAlfredState('speaking');
         processingRef.current = false;
@@ -338,19 +409,35 @@ export function useAlfredAmbient() {
 
               const canvasStore = useAlfredCanvas.getState();
               const toolCanvasMode: CanvasMode = resolveToolCanvasMode(payload.name, payload.args);
-              canvasStore.pushContent({
-                type: toolCanvasMode,
-                title: toolDesc,
-                data: payload.args ? JSON.stringify(payload.args, null, 2) : payload.name,
-                timestamp: Date.now(),
-                meta: {
-                  tool: payload.name,
-                  status: 'running',
-                  query: payload.args?.query ? String(payload.args.query) : undefined,
-                  url: payload.args?.url ? String(payload.args.url) : undefined,
-                  path: payload.args?.path ? String(payload.args.path) : undefined,
-                },
-              });
+              
+              // Special handling for execution results
+              if (payload.name === 'execute_code' && payload.args) {
+                canvasStore.pushContent({
+                  type: 'execution',
+                  title: `Execution: ${payload.args.language}`,
+                  data: JSON.stringify({
+                    code: payload.args.code,
+                    language: payload.args.language,
+                    status: 'running'
+                  }),
+                  timestamp: Date.now(),
+                  meta: { tool: payload.name, status: 'running' }
+                });
+              } else {
+                canvasStore.pushContent({
+                  type: toolCanvasMode,
+                  title: toolDesc,
+                  data: payload.args ? JSON.stringify(payload.args, null, 2) : payload.name,
+                  timestamp: Date.now(),
+                  meta: {
+                    tool: payload.name,
+                    status: 'running',
+                    query: payload.args?.query ? String(payload.args.query) : undefined,
+                    url: payload.args?.url ? String(payload.args.url) : undefined,
+                    path: payload.args?.path ? String(payload.args.path) : undefined,
+                  },
+                });
+              }
 
               // Show live build progress in chat
               if (!buildMsgId) {
@@ -381,20 +468,53 @@ export function useAlfredAmbient() {
               const canvasStoreResult = useAlfredCanvas.getState();
               const resultMode: CanvasMode = resolveToolCanvasMode(payload.name);
               const origArgs = toolCallArgs.get(payload.name) || {};
+              
               if (payload.message) {
-                canvasStoreResult.pushContent({
-                  type: resultMode,
-                  title: `${payload.name} ${payload.success !== false ? 'completed' : 'failed'}`,
-                  data: payload.message,
-                  timestamp: Date.now(),
-                  meta: {
-                    tool: payload.name,
-                    status: payload.success !== false ? 'done' : 'error',
-                    query: origArgs.query ? String(origArgs.query) : undefined,
-                    url: origArgs.url ? String(origArgs.url) : undefined,
-                    path: origArgs.path ? String(origArgs.path) : undefined,
-                  },
-                });
+                if (payload.name === 'execute_code') {
+                  // For execute_code, the data is already a JSON string from the tool result
+                  // We just need to parse it and push it to the canvas
+                  try {
+                    const execData = JSON.parse(payload.message);
+                    canvasStoreResult.pushContent({
+                      type: 'execution',
+                      title: `Execution: ${execData.language}`,
+                      data: payload.message,
+                      timestamp: Date.now(),
+                      meta: {
+                        tool: payload.name,
+                        status: payload.success !== false ? 'done' : 'error',
+                      },
+                    });
+                  } catch (e) {
+                    // Fallback if it's not JSON
+                    canvasStoreResult.pushContent({
+                      type: 'execution',
+                      title: `Execution Result`,
+                      data: JSON.stringify({
+                        code: origArgs.code || '',
+                        language: origArgs.language || 'unknown',
+                        stdout: payload.message,
+                        status: payload.success !== false ? 'success' : 'error'
+                      }),
+                      timestamp: Date.now(),
+                      meta: { tool: payload.name, status: payload.success !== false ? 'done' : 'error' },
+                    });
+                  }
+                } else {
+                  canvasStoreResult.pushContent({
+                    type: resultMode,
+                    title: `${payload.name} ${payload.success !== false ? 'completed' : 'failed'}`,
+                    data: payload.message,
+                    timestamp: Date.now(),
+                    meta: {
+                      tool: payload.name,
+                      status: payload.success !== false ? 'done' : 'error',
+                      query: origArgs.query ? String(origArgs.query) : undefined,
+                      url: origArgs.url ? String(origArgs.url) : undefined,
+                      path: origArgs.path ? String(origArgs.path) : undefined,
+                    },
+                  });
+                }
               }
               canvasStoreResult.incrementTask(payload.success !== false);
             }
@@ -425,6 +545,8 @@ export function useAlfredAmbient() {
       if (responseText) {
         addToLog('alfred', responseText);
         setAlfredState('speaking');
+        lastAlfredUtteranceRef.current = responseText;
+        lastAlfredSpokeAtRef.current = Date.now();
         if (titanVoice.autoSpeak) {
           titanVoice.speak(responseText, 6);
         }
@@ -500,6 +622,18 @@ export function useAlfredAmbient() {
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    // ECHO GATE: If Alfred is currently speaking or just finished, check for echo
+    if (titanVoice.isSpeaking || (Date.now() - lastAlfredSpokeAtRef.current < 3000)) {
+      if (lastAlfredUtteranceRef.current) {
+        const alfredWords = lastAlfredUtteranceRef.current.toLowerCase().split(/\s+/).slice(0, 20);
+        const inputWords = trimmed.toLowerCase().split(/\s+/);
+        const overlap = inputWords.filter(w => alfredWords.includes(w) && w.length > 2).length;
+        if (overlap >= 3 || (inputWords.length > 0 && overlap / inputWords.length > 0.4)) {
+          return;
+        }
+      }
+    }
+
     // Check for wake word
     if (WAKE_WORD.test(trimmed)) {
       console.log('[alfred] Wake word detected:', trimmed);
@@ -513,6 +647,8 @@ export function useAlfredAmbient() {
         wakeActivatedAtRef.current = Date.now();
         const activation = pickRandom(ACTIVATION_PHRASES);
         addToLog('alfred', activation);
+        lastAlfredUtteranceRef.current = activation;
+        lastAlfredSpokeAtRef.current = Date.now();
         titanVoice.speak(activation, 9);
         setAlfredState('activated');
 

@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 
-export type CanvasMode = 'screen' | 'code' | 'terminal' | 'files' | 'vibe' | 'dashboard' | 'simulation' | 'video' | 'idle';
+export type CanvasMode = 'screen' | 'code' | 'terminal' | 'files' | 'vibe' | 'dashboard' | 'simulation' | 'video' | 'execution' | 'idle';
 
 export interface CanvasContent {
   type: CanvasMode;
@@ -49,16 +49,15 @@ export interface PendingAction {
   cancelLabel?: string;
 }
 
-export interface Artifact {
+export type Artifact = {
   id: string;
-  type: 'code' | 'html' | 'url' | 'image' | 'video' | 'simulation';
+  type: 'code' | 'html' | 'url' | 'video' | 'image' | 'simulation' | 'execution';
   title: string;
   code?: string;
-  url?: string;
   language?: string;
+  url?: string;
   timestamp: number;
-}
-
+};
 interface AlfredCanvasState {
   activeMode: CanvasMode;
   pinned: boolean;

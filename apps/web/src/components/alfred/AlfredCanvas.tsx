@@ -10,6 +10,7 @@ import { VibeCode } from './canvas/VibeCode';
 import { DashboardView } from './canvas/DashboardView';
 import { SimulationView } from './canvas/SimulationView';
 import { VideoView } from './canvas/VideoView';
+import { ExecutionView } from './canvas/ExecutionView';
 
 export function AlfredCanvas() {
   const { activeMode } = useAlfredCanvas();
@@ -31,6 +32,20 @@ export function AlfredCanvas() {
       return <SimulationView />;
     case 'video':
       return <VideoView />;
+    case 'execution':
+      return (
+        <div className="h-full flex flex-col">
+          <ExecutionView />
+          <div className="p-2 bg-[#0a0a0a] border-t border-[#1a1a1a]">
+            <div className="text-[10px] text-[#666] flex items-center gap-2">
+              <span className="text-cyan-400">Sandbox Info:</span>
+              <span>Docker Node:18</span>
+              <span>Mem: 512MB</span>
+              <span>Timeout: 5s</span>
+            </div>
+          </div>
+        </div>
+      );
     case 'idle':
     default:
       return <ScreenView />;

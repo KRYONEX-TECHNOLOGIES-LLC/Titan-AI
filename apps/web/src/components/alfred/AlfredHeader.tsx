@@ -6,11 +6,15 @@ import { useAlfredCanvas, type CanvasMode } from '@/stores/alfred-canvas-store';
 interface AlfredHeaderProps {
   alfredState: string;
   onBackToIDE: () => void;
+  model: string;
+  setModel: (model: string) => void;
+  models: string[];
 }
 
 const MODE_TABS: { mode: CanvasMode; label: string }[] = [
   { mode: 'screen', label: 'Screen' },
   { mode: 'code', label: 'Code' },
+  { mode: 'execution', label: 'Execution' },
   { mode: 'terminal', label: 'Terminal' },
   { mode: 'files', label: 'Files' },
   { mode: 'vibe', label: 'Vibe Code' },
@@ -25,7 +29,7 @@ const STATUS_COLORS: Record<string, string> = {
   speaking: '#3b82f6',
 };
 
-export function AlfredHeader({ alfredState, onBackToIDE }: AlfredHeaderProps) {
+export function AlfredHeader({ alfredState, onBackToIDE, model, setModel, models }: AlfredHeaderProps) {
   const { activeMode, setMode, pinned, setPinned, sessions, activeSessionId, setActiveSession } = useAlfredCanvas();
 
   return (
@@ -71,10 +75,18 @@ export function AlfredHeader({ alfredState, onBackToIDE }: AlfredHeaderProps) {
 
         {/* Status indicator */}
         <div className="flex items-center gap-2 shrink-0 mr-2">
-          <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: STATUS_COLORS[alfredState] || '#555' }} />
-          <span className="text-[10px] text-[#999]">
-            {alfredState === 'activated' ? 'Listening...' : alfredState === 'listening' ? 'Ambient' : alfredState === 'processing' ? 'Working...' : alfredState === 'speaking' ? 'Speaking' : 'Ready'}
-          </span>
+          <span className="text-[10px] text-[#999]">Model:</span>
+          <select
+            className="bg-[#222] text-[#ccc] text-[10px] rounded px-1 py-0.5"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          >
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
         </div>
 
         <button onClick={onBackToIDE} className="text-[10px] text-[#808080] hover:text-white px-2 py-1 rounded hover:bg-[#3c3c3c] transition-colors shrink-0">

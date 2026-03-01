@@ -1,6 +1,10 @@
 'use client';
 
+import { ExecutionView } from './canvas/ExecutionView';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+//import { ExecutionStatus } from './AlfredWorkPanel';
+
+const MODELS = ['phoenix', 'midnight', 'supreme', 'titan'];
 import { AlfredHeader } from './AlfredHeader';
 import { AlfredCanvas } from './AlfredCanvas';
 import { AlfredChat } from './AlfredChat';
@@ -26,9 +30,10 @@ const DEFAULT_SPLIT = 0.62;
 export function AlfredFullPage({
   onBackToIDE, alfred, titanVoice, renderMessage, WaveformVisualizer, BuildProgressCard,
 }: AlfredFullPageProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+const containerRef = useRef<HTMLDivElement>(null);
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT);
   const [isDragging, setIsDragging] = useState(false);
+  const [model, setModel] = useState(MODELS[1]);
 
   const { alfredState, conversationLog, voice, sendManual } = alfred;
 
@@ -62,8 +67,8 @@ export function AlfredFullPage({
 
   return (
     <div className="flex flex-col h-full w-full bg-[#111] select-none">
-      {/* Header with session tabs + mode tabs */}
-      <AlfredHeader alfredState={alfredState} onBackToIDE={onBackToIDE} />
+{/* Header with session tabs + mode tabs */}
+      <AlfredHeader alfredState={alfredState} onBackToIDE={onBackToIDE} model={model} setModel={setModel} models={MODELS} />
 
       {/* Main split content */}
       <div ref={containerRef} className="flex-1 flex min-h-0 overflow-hidden" style={{ cursor: isDragging ? 'col-resize' : undefined }}>
@@ -72,7 +77,10 @@ export function AlfredFullPage({
           className="h-full overflow-hidden"
           style={{ width: `${splitRatio * 100}%` }}
         >
-          <AlfredCanvas />
+          <div className="h-full flex flex-col">
+<AlfredCanvas />
+<ExecutionView />
+</div>
         </div>
 
         {/* Resize handle */}
@@ -88,7 +96,7 @@ export function AlfredFullPage({
           className="h-full overflow-hidden"
           style={{ width: `${(1 - splitRatio) * 100}%` }}
         >
-          <AlfredChat
+<AlfredChat
             alfredState={alfredState}
             conversationLog={conversationLog}
             voice={voice}

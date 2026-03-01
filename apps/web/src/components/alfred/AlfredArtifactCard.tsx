@@ -18,6 +18,8 @@ export function AlfredArtifactCard({ artifact }: AlfredArtifactCardProps) {
       pushContent({ type: 'simulation', title: artifact.title, data: artifact.code || '', timestamp: Date.now(), meta: { language: artifact.language } });
     } else if (artifact.type === 'code') {
       pushContent({ type: 'vibe', title: artifact.title, data: artifact.code || '', timestamp: Date.now(), meta: { language: artifact.language } });
+    } else if (artifact.type === 'execution') {
+      pushContent({ type: 'execution', title: artifact.title, data: artifact.code || '', timestamp: Date.now(), meta: { language: artifact.language } });
     }
   };
 
@@ -28,6 +30,7 @@ export function AlfredArtifactCard({ artifact }: AlfredArtifactCardProps) {
       case 'url': return '🔗';
       case 'video': return '▶';
       case 'image': return '🖼';
+      case 'execution': return '⚡';
       default: return '📄';
     }
   };
@@ -38,6 +41,7 @@ export function AlfredArtifactCard({ artifact }: AlfredArtifactCardProps) {
       case 'html': case 'simulation': return 'border-cyan-500/40 bg-cyan-500/10';
       case 'url': return 'border-blue-500/40 bg-blue-500/10';
       case 'video': return 'border-purple-500/40 bg-purple-500/10';
+      case 'execution': return 'border-yellow-500/40 bg-yellow-500/10';
       default: return 'border-[#444] bg-[#1a1a1a]';
     }
   };
@@ -59,7 +63,7 @@ export function AlfredArtifactCard({ artifact }: AlfredArtifactCardProps) {
   );
 }
 
-const ARTIFACT_REGEX = /\[artifact:\s*(code|html|url|video|simulation)\s*(?:\|([^\]]*))?\]/g;
+const ARTIFACT_REGEX = /\[artifact:\s*(code|html|url|video|simulation|execution)\s*(?:\|([^\]]*))?\]/g;
 
 export function parseArtifacts(text: string, code?: string): { cleanText: string; artifacts: Artifact[] } {
   const artifacts: Artifact[] = [];

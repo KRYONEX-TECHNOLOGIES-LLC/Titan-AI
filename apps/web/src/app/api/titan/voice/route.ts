@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         const toolSchema = getToolSchema();
         const clientActions: Array<{ action: string; params: Record<string, string> }> = [];
         let finalResponse = '';
-        const clientState = body.systemState;
+        const clientState: ClientState = {}; body.systemState ? (typeof body.systemState === 'string' ? JSON.parse(body.systemState) : body.systemState) : {};
 
         // Tool-calling loop: LLM decides tools → execute → feed results → repeat
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -158,13 +158,18 @@ export async function POST(request: NextRequest) {
           for (const tc of result.toolCalls) {
             emit('voice_tool_call', { name: tc.name, args: tc.arguments, dangerous: isToolDangerous(tc.name) });
 
-            const toolResult = await executeToolServerSide(tc.name, tc.arguments, clientState, body.workspacePath);
+            const toolResult = await executeToolServerSide(tc.name, tc.arguments, clientState, body.workspacePath || '');
 
             if (toolResult.clientAction) {
               clientActions.push(toolResult.clientAction);
             }
 
-            emit('voice_tool_result', { name: tc.name, success: toolResult.success, message: toolResult.message.slice(0, 500) });
+            // For execute_code, we want to pass the full JSON string back so the client can parse it
+            const messageToSend = tc.name === 'execute_code' && toolResult.data 
+              ? JSON.stringify(toolResult.data) 
+              : toolResult.message.slice(0, 500);
+
+            emit('voice_tool_result', { name: tc.name, success: toolResult.success, message: messageToSend });
 
             messages.push({
               role: 'tool',
